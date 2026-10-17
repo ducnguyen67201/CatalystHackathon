@@ -165,6 +165,11 @@ tap for the objective, missing inputs, cited figures and frozen source passages.
 an explanation does not run inference. The interface uses compact controls and keeps
 the full scenario context in a disclosure below practice.
 
+The explanation opens beside a read-only evidence worksheet. Select a source period or
+cell to see its saved amount and original CSV row/column; cited values are highlighted.
+Financial sources appear as a table rather than raw JSON. Current and previous snapshots
+stay separate. On narrow screens, switch between **Explanation** and **Source data**.
+
 Guided turns require `OPENAI_API_KEY` and use the existing `SCENARIO_MODEL` setting.
 They use live inference even when the selected scenario was template-generated; fictional
 evidence remains labeled. No provider configuration is changed. Generation runs only after

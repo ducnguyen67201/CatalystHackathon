@@ -1,71 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Info, X } from 'lucide-react';
+import { FileSpreadsheet, Info, X } from 'lucide-react';
 import type { QuestionWhy } from '../contracts/QuestionWhy.js';
-import type { ScenarioInput } from '../contracts/Scenario.js';
 import type { EvaluationContext } from '../contracts/RehearsalEvaluation.js';
+import type { WhySource } from '../features/QuestionEvidence.js';
+import { QuestionEvidenceSheet } from './QuestionEvidenceSheet.js';
 import './GuidedPractice.css';
 
-export interface WhySource {
-  id: string;
-  title: string;
-  text: string;
-  url: string | null;
-  label: string;
-  date: string | null;
-}
-export function scenarioWhySources(input: ScenarioInput): WhySource[] {
-  return input.sources.map((source) => ({
-    id: source.id,
-    title:
-      source.kind === 'investor_research'
-        ? source.title
-        : source.kind === 'founder_initial'
-          ? source.company.name
-          : source.kind === 'financials'
-            ? source.snapshots.map((snapshot) => snapshot.fileName).join(', ')
-            : 'Saved practice',
-    text:
-      source.kind === 'investor_research'
-        ? source.excerpt
-        : source.kind === 'founder_initial'
-          ? source.company.goal
-          : source.kind === 'financials'
-            ? source.snapshots
-                .map(
-                  (snapshot) =>
-                    `${snapshot.fileName} · ${snapshot.role} · ${snapshot.currency ?? 'Currency unknown'}\n` +
-                    snapshot.periods
-                      .map(
-                        (period) =>
-                          `${period.month} · CSV row ${period.sourceRow}: operating income ${period.operatingIncome}; net income ${period.netIncome}; credit ${period.credit}`,
-                      )
-                      .join('\n'),
-                )
-                .join('\n\n')
-            : 'Prior practice is coaching context, not verified business evidence.',
-    url: source.kind === 'investor_research' ? source.url : null,
-    label:
-      source.provenance === 'fictional_demo'
-        ? 'Fictional demo'
-        : source.provenance.replaceAll('_', ' '),
-    date:
-      source.kind === 'investor_research'
-        ? `Published ${source.publishedAt ?? 'unknown'} · Retrieved ${source.retrievedAt}`
-        : source.capturedAt,
-  }));
-}
-export function evaluationWhySources(context: EvaluationContext): WhySource[] {
-  return context.sources.map((source) => ({
-    id: source.id,
-    title: source.title,
-    text: source.text,
-    url: source.url,
-    label: source.origin === 'fictional' ? 'Fictional demo' : source.origin.replaceAll('_', ' '),
-    date: source.recordedAt,
-  }));
-}
+export { scenarioWhySources, evaluationWhySources } from '../features/QuestionEvidence.js';
 
-/** Tooltip and evidence panel read only the explanation saved with this exact question. */
+/** Saved explanations and their actual source data stay visible beside each other. */
 export function QuestionExplanation({
   question,
   why,
@@ -83,6 +26,9 @@ export function QuestionExplanation({
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [suppressed, setSuppressed] = useState(false);
+  const [sourceId, setSourceId] = useState('');
+  const [rowKey, setRowKey] = useState('');
+  const [pane, setPane] = useState<'explanation' | 'evidence'>('explanation');
   useEffect(() => {
     if (open) dialog.current?.showModal();
     else dialog.current?.close();
@@ -93,6 +39,23 @@ export function QuestionExplanation({
     trigger.current?.focus();
   }
   const selected = sources.filter((source) => why.sourceIds.includes(source.id));
+  const rows = selected.flatMap((source) => source.financialRows);
+  const preferred =
+    rows.find((row) => facts.some((fact) => fact.sourceIds.includes(row.sourceId))) ??
+    rows
+      .filter((row) => row.role !== 'previous')
+      .sort((a, b) => a.values.month.localeCompare(b.values.month))
+      .at(-1) ??
+    rows[0];
+  const activeRow = rows.find((row) => row.key === rowKey) ?? preferred;
+  const activeSource =
+    selected.find((source) => source.id === sourceId) ??
+    selected.find((source) => source.id === activeRow?.sourceId) ??
+    selected[0];
+  const nonfinancial = selected.filter(
+    (source) => source.kind !== 'financial' || !source.financialRows.length,
+  );
+  const financialSelected = activeSource?.kind === 'financial' && !!rows.length;
   return (
     <div
       className="question-why"
@@ -109,7 +72,10 @@ export function QuestionExplanation({
         onKeyDown={(event) => {
           if (event.key === 'Escape') setSuppressed(true);
         }}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setPane('explanation');
+          setOpen(true);
+        }}
       >
         <Info size={14} aria-hidden="true" />
         <span>Why?</span>
@@ -142,7 +108,10 @@ export function QuestionExplanation({
         }}
       >
         <div className="question-why-head">
-          <h2 id={titleId}>Why this question?</h2>
+          <div>
+            <h2 id={titleId}>Why this question?</h2>
+            <small>Explanation and saved evidence</small>
+          </div>
           <button
             type="button"
             className="question-why-close"
@@ -152,78 +121,132 @@ export function QuestionExplanation({
             <X size={18} />
           </button>
         </div>
-        <div className="question-why-body">
-          <blockquote>{question}</blockquote>
-          <section>
-            <h3>The connection</h3>
-            <p>{why.explanation}</p>
-            <small>Preparation explanation · Not a prediction of the investor’s questions</small>
-          </section>
-          <section>
-            <h3>A strong answer covers</h3>
-            <p>{why.answerObjective}</p>
-          </section>
-          {why.missingInputs.length > 0 && (
+        <nav className="question-why-mobile-switch" aria-label="Explanation view">
+          <button
+            type="button"
+            aria-pressed={pane === 'explanation'}
+            onClick={() => setPane('explanation')}
+          >
+            Explanation
+          </button>
+          <button
+            type="button"
+            aria-pressed={pane === 'evidence'}
+            onClick={() => setPane('evidence')}
+          >
+            Source data
+          </button>
+        </nav>
+        <div className="question-why-workspace" data-active-pane={pane}>
+          <div className="question-why-body">
+            <blockquote>{question}</blockquote>
             <section>
-              <h3>Still needed</h3>
-              <ul>
-                {why.missingInputs.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
+              <h3>The connection</h3>
+              <p>{why.explanation}</p>
+              <small>Preparation explanation · Not a prediction of the investor’s questions</small>
             </section>
-          )}
-          {facts.length > 0 && (
             <section>
-              <h3>Saved financial facts</h3>
-              <div className="guided-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Metric / period</th>
-                      <th>Saved value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {facts.map((fact) => (
-                      <tr key={fact.id}>
-                        <td>
-                          {fact.metric.replaceAll('_', ' ')}
-                          <small>{fact.period}</small>
-                        </td>
-                        <td>
-                          {fact.value}
-                          <small>
-                            {fact.unit === 'unspecified' ? 'Currency unconfirmed' : fact.unit}
-                          </small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <h3>A strong answer covers</h3>
+              <p>{why.answerObjective}</p>
+            </section>
+            <section>
+              <h3>Supporting sources</h3>
+              <p className="question-source-hint">Select a source to inspect its saved data.</p>
+              <div className="question-source-list">
+                {rows.length > 0 && (
+                  <button
+                    type="button"
+                    className="question-source-button"
+                    aria-pressed={financialSelected}
+                    onClick={() => {
+                      setSourceId(activeRow?.sourceId ?? rows[0]?.sourceId ?? '');
+                      setPane('evidence');
+                    }}
+                  >
+                    <FileSpreadsheet size={16} aria-hidden="true" />
+                    <span>
+                      Financial statement
+                      <small>
+                        {rows.length} saved {rows.length === 1 ? 'period' : 'periods'} ·{' '}
+                        {selected.some(
+                          (source) =>
+                            source.kind === 'financial' && source.label === 'Fictional demo',
+                        )
+                          ? 'Fictional demo'
+                          : 'Saved evidence'}
+                      </small>
+                    </span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                )}
+                {nonfinancial.map((source) => (
+                  <button
+                    type="button"
+                    key={source.id}
+                    className="question-source-button"
+                    aria-pressed={activeSource?.id === source.id}
+                    onClick={() => {
+                      setSourceId(source.id);
+                      setPane('evidence');
+                    }}
+                  >
+                    <span>
+                      {source.title}
+                      <small>{source.label}</small>
+                    </span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                ))}
+                {!selected.length && (
+                  <p>General clarification. No investor-specific priority is claimed.</p>
+                )}
               </div>
             </section>
-          )}
-          <section>
-            <h3>Source snapshot</h3>
-            {selected.length ? (
-              selected.map((source) => (
-                <details key={source.id}>
-                  <summary>
-                    {source.title}
-                    <small>{source.label}</small>
-                  </summary>
-                  <p className="question-source-text">{source.text}</p>
-                  {source.date && <small>{source.date}</small>}
-                  {source.url && (
-                    <a href={source.url} target="_blank" rel="noreferrer">
-                      Read source ↗
-                    </a>
-                  )}
-                </details>
-              ))
+            {why.missingInputs.length > 0 && (
+              <details className="question-missing-inputs">
+                <summary>
+                  Still needed · {why.missingInputs.length}{' '}
+                  {why.missingInputs.length === 1 ? 'input' : 'inputs'}
+                </summary>
+                <ul>
+                  {why.missingInputs.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+          <section className="question-evidence-pane" aria-label="Source data">
+            <div className="question-evidence-heading">
+              <h3>{financialSelected ? 'Financial evidence' : 'Source evidence'}</h3>
+              <small>{activeSource?.label ?? 'No source selected'}</small>
+            </div>
+            {financialSelected && activeRow ? (
+              <QuestionEvidenceSheet
+                open={open}
+                rows={rows}
+                selectedKey={activeRow.key}
+                facts={facts}
+                onSelectPeriod={(key) => {
+                  setRowKey(key);
+                  const row = rows.find((item) => item.key === key);
+                  if (row) setSourceId(row.sourceId);
+                }}
+              />
             ) : (
-              <p>General clarification. No investor-specific priority is claimed.</p>
+              <article className="question-readable-source">
+                <h3>{activeSource?.title ?? 'No supporting source'}</h3>
+                <p>
+                  {activeSource?.text ??
+                    'This is a general preparation question. No sourced investor priority is assumed.'}
+                </p>
+                {activeSource?.date && <small>{activeSource.date}</small>}
+                {activeSource?.url && (
+                  <a href={activeSource.url} target="_blank" rel="noreferrer">
+                    Read original source ↗
+                  </a>
+                )}
+              </article>
             )}
           </section>
         </div>

@@ -244,6 +244,14 @@ scenario reader accepts older records without inventing those fields. The prompt
 source inspector without inference. The practice room defaults to guided text for selected
 scenarios and collapses full scenario details beneath the compact conversation.
 
+`features/QuestionEvidence.ts` projects scenario financial periods and schema-validated
+evaluation source rows into browser-safe evidence rows. Original filenames are used only
+when saved locators provide them; malformed legacy rows retain their citation without a
+fabricated worksheet. `QuestionEvidenceSheet.tsx` displays exact decimal strings across
+periods, source-period selection, cited cells and original CSV locators. The explanation
+and worksheet occupy adjacent panes on desktop; mobile uses explicit view switches.
+The inspector never modifies snapshots, performs financial arithmetic or calls a provider.
+
 `GuidedPractice.ts` defines a versioned optional rehearsal payload. `PracticeTurnService.ts`
 freezes the selected scenario's evaluation evidence, records explicitly submitted answers,
 and queues `guided-turn:<session>:<answer>` work through the existing Prisma save transaction.
