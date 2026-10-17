@@ -70,12 +70,16 @@ export class WorkspaceService {
     }
     return state;
   }
-  async change<T>(operation: (state: Workspace) => T, completedJob?: ClaimedJob): Promise<T> {
+  async change<T>(
+    operation: (state: Workspace) => T,
+    completedJob?: ClaimedJob,
+    checkpointJob?: ClaimedJob,
+  ): Promise<T> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const state = await this.read();
       const result = operation(state);
       try {
-        await this.store.save(state, state.revision, completedJob);
+        await this.store.save(state, state.revision, completedJob, checkpointJob);
         return result;
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt === 3) {

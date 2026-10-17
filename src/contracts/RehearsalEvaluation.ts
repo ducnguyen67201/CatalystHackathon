@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  combinedEvaluationSchema,
+  investorAssessmentContextSchema,
+  investorEvaluationSchema,
+  peerEvaluationSchema,
+} from './CombinedEvaluation.js';
 import { peerComparisonSchema, peerInsightSchema } from './PeerComparison.js';
 
 const id = z.string().min(1).max(200);
@@ -38,6 +44,7 @@ export const metricFactSchema = z.strictObject({
 export const evaluationContextSchema = z.strictObject({
   version: z.literal(1),
   peerComparison: peerComparisonSchema.optional(),
+  investorAssessment: investorAssessmentContextSchema.optional(),
   capturedAt: z.iso.datetime(),
   workspaceRevision: z.int().nonnegative(),
   companyName: z.string().max(100),
@@ -158,17 +165,29 @@ export const coachingGenerationSchema = coachingSchema.extend({
     .max(3),
 });
 export const evaluationReportSchema = z.strictObject({
+  workflows: combinedEvaluationSchema.optional(),
   peerInsights: z.array(peerInsightSchema).max(3).optional(),
   extraction: extractionSchema,
   checks: z.array(evidenceCheckSchema).max(30),
   coaching: coachingSchema,
 });
 export type EvaluationReport = z.infer<typeof evaluationReportSchema>;
+export const evaluationProgressSchema = z.strictObject({
+  version: z.literal(1),
+  extraction: extractionSchema.optional(),
+  peer: peerEvaluationSchema.optional(),
+  investor: investorEvaluationSchema.optional(),
+  answer: z
+    .strictObject({ checks: z.array(evidenceCheckSchema).max(30), coaching: coachingSchema })
+    .optional(),
+});
+export type EvaluationProgress = z.infer<typeof evaluationProgressSchema>;
 const currentEvaluationRecordSchema = z.strictObject({
   id,
   version: z.literal(1),
   legacyDemo: z.boolean().default(false),
   evaluatorVersion: id,
+  progress: evaluationProgressSchema.optional(),
   model: id,
   contextHash: id,
   transcriptHash: id,
@@ -219,5 +238,6 @@ export type EvaluationResponse = z.infer<typeof evaluationResponseSchema>;
 export function withoutPeerComparison(context: EvaluationContext): EvaluationContext {
   const evidence = { ...context };
   delete evidence.peerComparison;
+  delete evidence.investorAssessment;
   return evidence;
 }

@@ -96,6 +96,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
     workspace: Workspace,
     expectedRevision: number,
     completedJob?: ClaimedJob,
+    checkpointJob?: ClaimedJob,
   ): Promise<void> {
     await this.client.$transaction(
       async (tx) => {
@@ -119,6 +120,19 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
           throw new ConflictError('The workspace changed. Retry this operation.');
         }
         // Always lock workspace before jobs, matching ordinary receipt writes.
+        if (checkpointJob) {
+          const guarded = await tx.workflowJob.updateMany({
+            where: {
+              id: checkpointJob.id,
+              workspaceId,
+              status: JobStatus.RUNNING,
+              leaseToken: checkpointJob.leaseToken,
+              leaseUntil: { gt: new Date() },
+            },
+            data: { leaseToken: checkpointJob.leaseToken },
+          });
+          if (guarded.count !== 1) throw new Error('Workflow lease expired.');
+        }
         if (completedJob) {
           const completed = await tx.workflowJob.updateMany({
             where: {

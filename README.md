@@ -391,3 +391,26 @@ is made, and peer snapshots are excluded from model prompts and practice input b
 Restart local development to apply the additive peer-evidence migration. Dashboard loading,
 editing and archiving reuse the existing local-session/origin protections. No provider setup
 or remote deployment is required.
+
+## Evaluation child workflows
+
+New post-practice reports use one parent evaluation job with three child workflows:
+selected-peer business comparison, selected-investor research comparison, and answer
+assessment. All read the session's frozen evidence. The report shows the business
+comparisons even when no answer mentions those metrics; answer assessment remains tied
+to validated transcript claims. Parent synthesis links preparation actions to the same
+claim's peer metrics and cited investor observations without inventing a causal relationship.
+
+Peer comparison reuses the existing three financial metrics and founder-selected group;
+it does not discover segment peers or provide industry averages. Investor comparison uses
+frozen stage, sector and geography attributes from selected-investor research. Unknowns,
+conflicting labels, source passages, retrieval dates and fictional/unverified provenance
+remain visible. Historical deal attributes do not establish a current mandate. Check-size
+fit and qualitative thesis extraction are not part of this workflow release.
+
+The parent checkpoints validated extraction and completed children under its current worker
+lease. A failed coaching request resumes without repeating saved extraction or business
+comparisons. Missing evidence is an explicit unavailable result; provider failures remain
+retryable failures. Final report and job completion commit together. Older reports retain
+their existing layout and do not acquire current research. Opening reports runs no research
+or inference. The child split introduces no extra provider calls or configuration changes.

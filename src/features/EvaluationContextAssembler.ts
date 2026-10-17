@@ -208,5 +208,34 @@ export function assembleEvaluationContext(
       context.capturedAt,
     );
   }
+  const company = scenarioInput ? founder?.company : state.profile;
+  const observations = scenarioInput
+    ? scenarioInput.sources
+        .filter((source) => source.kind === 'investor_research')
+        .map((source) => ({
+          sourceId: `investor:${source.evidenceId}`,
+          stage: source.stage,
+          sector: source.sector,
+          geography: source.geography,
+        }))
+    : state.evidence
+        .filter((source) => evidenceIds.has(source.id))
+        .slice(-10)
+        .map((source) => ({
+          sourceId: `investor:${source.id}`,
+          stage: source.stage,
+          sector: source.sector,
+          geography: source.geography,
+        }));
+  context.investorAssessment = {
+    company: {
+      stage: company?.stage ?? null,
+      sector: company?.sector ?? null,
+      geography: company?.geography ?? null,
+    },
+    observations: observations.filter((observation) =>
+      context.sources.some((source) => source.id === observation.sourceId),
+    ),
+  };
   return evaluationContextSchema.parse(context);
 }
