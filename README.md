@@ -237,6 +237,24 @@ The first release includes the latest twelve financial periods and explicitly re
 
 See [Evaluator workflow](docs/EvaluatorWorkflowPlan.md) for the ASCII diagram, actual input/output contracts, prompts, storage/recovery behavior and instructions for adding more data sources.
 
+Completed reviews now include an **Excel-style evidence sheet** beneath an evidence-linked
+transcript. Hover or focus a highlighted claim for its source preview; select it to pin the
+inspector, then use **Show supporting cells** or **Show transcript claim** to navigate.
+The sheet shows the financial values frozen with that practice, original CSV row/column
+citations, and optional month-over-month changes. Its cell coordinates belong to the
+review layout. Unknown currency and missing cash evidence remain unavailable for numerical
+comparison. Native `.xlsx` import is a later release.
+
+Use **Review version** to inspect earlier feedback with its original transcript and evidence.
+Clarification, dismissal and written retries remain under the selected claim. Inspecting a
+review does not run a model or start a paid conversation. The [engineering spec](docs/EvidenceReviewEngineeringSpec.md)
+records the implementation boundary and the native Excel follow-on.
+
+The [evidence-review preview](docs/previews/EvidenceReviewPreview.html) and
+[minimal financial-focus preview](docs/previews/FinancialFocusPreview.html) use fictional
+data. Financial blind spots and investor-specific preparation in the latter remain
+interactive design concepts; see its [walkthrough and scope](docs/FinancialFocusPreview.md).
+
 ## Research terminal logs
 
 Run `doppler run -- pnpm dev` and watch that terminal (not the browser console). `LOG_LEVEL=debug` is the default; `info` hides per-source decisions and result counts, and `silent` disables workflow logging. This uses JSON console logging without an extra logging service. T3 Env validates the level. Change it in Doppler and restart to change verbosity.

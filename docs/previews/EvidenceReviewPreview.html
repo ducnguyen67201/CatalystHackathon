@@ -1,0 +1,1370 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>June — Evidence review preview</title>
+    <style>
+      :root {
+        --ink: #243c36;
+        --muted: #65736b;
+        --paper: #f6f5f0;
+        --line: #dce2d7;
+        --green: #255b48;
+        --lime: #dcea9b;
+        --amber: #85551b;
+        --red: #a1493d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          14px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      button,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #829e44;
+        outline-offset: 3px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      a {
+        color: var(--green);
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 186px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      aside {
+        border-right: 1px solid var(--line);
+        background: #edf0e8;
+        padding: 28px 20px;
+      }
+      .brand {
+        font:
+          italic 46px Georgia,
+          serif;
+        letter-spacing: -3px;
+        margin-bottom: 34px;
+      }
+      .brand span {
+        color: #79984d;
+      }
+      .workspace {
+        border: 1px solid #d6ddce;
+        border-radius: 8px;
+        padding: 11px;
+        background: #f8f9f4;
+        margin-bottom: 28px;
+      }
+      small,
+      .muted {
+        color: var(--muted);
+      }
+      .workspace small {
+        display: block;
+        font-size: 11px;
+      }
+      .nav-label {
+        font-size: 10px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 24px 10px 8px;
+      }
+      .nav-item {
+        display: block;
+        padding: 11px;
+        color: var(--muted);
+      }
+      .nav-item.active {
+        color: var(--green);
+        background: #dce5d4;
+        border-radius: 7px;
+        font-weight: 650;
+      }
+      .aside-note {
+        margin: 64px 10px 0;
+        font-size: 12px;
+      }
+      main {
+        padding: 26px 34px 36px;
+        max-width: 1600px;
+        width: 100%;
+        margin: auto;
+      }
+      .topline,
+      .heading,
+      .sheet-toolbar,
+      .panel-title,
+      .row,
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+      .topline {
+        font-size: 12px;
+        margin-bottom: 28px;
+      }
+      .demo {
+        background: #efe8cf;
+        border: 1px solid #d9cda6;
+        color: #6c582d;
+        padding: 4px 10px;
+        border-radius: 5px;
+        font-size: 11px;
+      }
+      .eyebrow {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.6px;
+        font-weight: 650;
+        color: var(--muted);
+      }
+      h1 {
+        font:
+          38px/1.15 Georgia,
+          serif;
+        margin: 6px 0 10px;
+        letter-spacing: -1px;
+      }
+      h2 {
+        font:
+          23px/1.25 Georgia,
+          serif;
+      }
+      h3 {
+        font-size: 16px;
+      }
+      .heading {
+        align-items: flex-start;
+        margin-bottom: 24px;
+      }
+      .button {
+        border: 1px solid #cdd6c7;
+        border-radius: 6px;
+        padding: 9px 14px;
+        background: #fff;
+        font-weight: 600;
+      }
+      .button.primary {
+        background: var(--green);
+        color: white;
+        border-color: var(--green);
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin: 0 0 24px;
+      }
+      .summary button {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        text-align: left;
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 14px 17px;
+      }
+      .summary button[aria-pressed='true'] {
+        background: #fffdf8;
+        border-color: #9baa8c;
+        box-shadow: 0 2px 5px #243c3605;
+      }
+      .summary b {
+        font:
+          28px Georgia,
+          serif;
+      }
+      .summary span {
+        display: block;
+      }
+      .summary small {
+        display: block;
+        font-size: 12px;
+      }
+      .tabs {
+        display: flex;
+        gap: 24px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 20px;
+      }
+      .tabs button {
+        background: none;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        padding: 9px 1px 12px;
+        color: var(--muted);
+      }
+      .tabs button[aria-selected='true'] {
+        border-bottom-color: var(--green);
+        font-weight: 650;
+        color: var(--green);
+      }
+      .review-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        gap: 20px;
+        align-items: start;
+      }
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fffefa;
+        overflow: hidden;
+      }
+      .sheet-toolbar,
+      .panel-title {
+        padding: 17px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+      .sheet-toolbar strong {
+        display: block;
+      }
+      .sheet-toolbar small {
+        font-size: 11px;
+      }
+      select {
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: white;
+        padding: 6px;
+        max-width: 165px;
+        font-size: 12px;
+      }
+      .formula {
+        background: #f3f5ee;
+        padding: 10px 18px;
+        font:
+          12px/1.5 ui-monospace,
+          monospace;
+        border-bottom: 1px solid var(--line);
+      }
+      .formula b {
+        border-right: 1px solid #cbd6c5;
+        padding-right: 16px;
+        margin-right: 16px;
+      }
+      .table-scroll {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      th,
+      td {
+        padding: 13px 12px;
+        border-right: 1px solid #e8ece2;
+        border-bottom: 1px solid #e8ece2;
+        text-align: right;
+      }
+      th {
+        background: #f3f5ee;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      th:first-child,
+      td:first-child {
+        width: 40px;
+        text-align: center;
+        color: var(--muted);
+        background: #f6f7f1;
+      }
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+      td button {
+        border: 1px solid transparent;
+        background: none;
+        border-radius: 4px;
+        padding: 4px 7px;
+        font: inherit;
+        font-weight: 650;
+        min-width: 68px;
+      }
+      td .flag {
+        background: #faecd7;
+        border-color: #e5c593;
+        color: #754a18;
+      }
+      td .selected-cell {
+        outline: 2px solid var(--green);
+        outline-offset: 2px;
+        background: #e8efde;
+        color: var(--green);
+      }
+      .sheet-note {
+        padding: 14px 20px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        padding: 12px 20px;
+        border-top: 1px solid var(--line);
+        font-size: 11px;
+      }
+      .dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #b47b29;
+        margin-right: 5px;
+      }
+      .dot.green {
+        background: #6c8b4d;
+      }
+      .dot.gray {
+        background: #8a948a;
+      }
+      .inspector {
+        padding: 20px;
+      }
+      .pill {
+        display: inline-block;
+        border-radius: 4px;
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 0.2px;
+        background: #faecd7;
+        color: #754a18;
+      }
+      .pill.supported {
+        background: #e8efde;
+        color: #3e653d;
+      }
+      .pill.missing {
+        background: #edf0e8;
+        color: #5d665e;
+      }
+      .inspector h2 {
+        margin: 12px 0;
+        font-size: 25px;
+      }
+      .inspector p {
+        font-size: 13px;
+      }
+      .compare {
+        margin: 18px 0;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .compare div {
+        padding: 12px;
+      }
+      .compare div + div {
+        border-left: 1px solid var(--line);
+        background: #f1f5e9;
+      }
+      .compare small {
+        display: block;
+        font-size: 10px;
+      }
+      .compare strong {
+        display: block;
+        font:
+          23px Georgia,
+          serif;
+        margin-top: 5px;
+      }
+      .source {
+        display: block;
+        margin: 12px 0;
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font-size: 11px;
+        background: #f6f7f1;
+      }
+      .recommendation {
+        border-top: 1px solid var(--line);
+        margin-top: 18px;
+        padding-top: 16px;
+      }
+      .recommendation .eyebrow {
+        margin-bottom: 8px;
+      }
+      .inspector .button {
+        width: 100%;
+        margin-top: 15px;
+      }
+      .transcript {
+        padding: 20px;
+      }
+      .turn {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 10px;
+        padding: 17px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .avatar {
+        background: #e9edde;
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        font:
+          italic 19px Georgia,
+          serif;
+      }
+      .avatar.founder {
+        background: #eee4d4;
+        font: 11px sans-serif;
+      }
+      .turn small {
+        font-size: 11px;
+      }
+      .turn p {
+        margin-top: 7px;
+        font-size: 14px;
+        line-height: 1.8;
+      }
+      .claim {
+        display: inline;
+        text-align: left;
+        border: 0;
+        border-bottom: 2px solid #c8a667;
+        border-radius: 3px;
+        color: #67471f;
+        background: #faf0dd;
+        padding: 0 3px;
+        line-height: inherit;
+      }
+      .claim[data-finding='revenue'] {
+        background: #edf3e4;
+        border-color: #7b9855;
+        color: #385837;
+      }
+      .claim[data-finding='runway'] {
+        background: #eef0eb;
+        border-bottom-style: dashed;
+        border-color: #a2ab9b;
+        color: #596353;
+      }
+      .claim-wrap {
+        position: relative;
+      }
+      .tooltip {
+        display: none;
+        position: absolute;
+        z-index: 5;
+        left: 0;
+        bottom: calc(100% + 8px);
+        width: 285px;
+        max-width: 75vw;
+        padding: 12px 14px;
+        border: 1px solid #cfd9c5;
+        background: #fffefa;
+        border-radius: 7px;
+        box-shadow: 0 8px 26px #243c3625;
+        font:
+          12px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        color: var(--ink);
+      }
+      .tooltip strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .claim-wrap:hover .tooltip,
+      .claim-wrap:focus-within .tooltip {
+        display: block;
+      }
+      .claim-wrap.dismissed .tooltip {
+        display: none;
+      }
+      .practice {
+        margin-top: 20px;
+        padding: 18px 20px;
+        background: #edf1e4;
+        border: 1px solid #d8e1ce;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      .practice p {
+        margin-top: 5px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 11px;
+        color: var(--muted);
+        align-items: flex-start;
+      }
+      .response {
+        margin-top: 14px;
+        padding: 20px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 100px;
+        margin: 10px 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        resize: vertical;
+        background: white;
+      }
+      #draft-status {
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      @media (min-width: 1400px) {
+        .review-grid {
+          grid-template-columns: minmax(0, 1fr) 370px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .shell {
+          grid-template-columns: 155px minmax(0, 1fr);
+        }
+        main {
+          padding: 24px;
+        }
+        .review-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .inspector {
+          display: block;
+        }
+      }
+      @media (max-width: 650px) {
+        .shell {
+          display: block;
+        }
+        aside {
+          display: none;
+        }
+        main {
+          padding: 20px 14px;
+        }
+        .summary {
+          gap: 7px;
+        }
+        .summary button {
+          padding: 10px;
+          display: block;
+        }
+        .summary small {
+          font-size: 10px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        .heading,
+        .sheet-toolbar,
+        .practice,
+        .footer {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .topline {
+          align-items: flex-start;
+        }
+        .tooltip {
+          position: fixed;
+          bottom: 20px;
+          left: 14px;
+          max-width: calc(100vw - 28px);
+          width: 340px;
+        }
+      }
+
+      .workbook-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: #217346;
+        color: white;
+        padding: 12px 16px;
+        font-size: 13px;
+      }
+      .workbook-title > span:last-child {
+        margin-left: auto;
+        font-size: 10px;
+        opacity: 0.88;
+      }
+      .excel-icon {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 28px;
+        background: #155832;
+        border: 1px solid #5b9c75;
+        font-size: 19px;
+        font-weight: 700;
+      }
+      .workbook-ribbon {
+        display: flex;
+        gap: 22px;
+        align-items: center;
+        padding: 10px 18px;
+        background: #f4f7f3;
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+      }
+      .workbook-ribbon .muted {
+        margin-left: auto;
+      }
+      .ribbon-selected {
+        color: #217346;
+        text-decoration: underline;
+        text-underline-offset: 6px;
+        font-weight: 650;
+      }
+      .workbook-grid {
+        min-width: 620px;
+      }
+      .workbook-grid thead th {
+        text-align: center;
+        background: #edf1ed;
+        padding: 5px 12px;
+      }
+      .workbook-grid tbody th {
+        width: 36px;
+        text-align: center;
+        padding: 8px;
+        background: #edf1ed;
+      }
+      .workbook-grid td {
+        padding: 8px 12px;
+        background: white;
+        color: var(--ink);
+      }
+      .workbook-grid .periods td {
+        background: #e6eee8;
+        font-weight: 650;
+      }
+      .workbook-grid .subtotal td {
+        border-top: 1px solid #b8c9bb;
+        font-weight: 650;
+      }
+      .workbook-grid .workbook-heading {
+        padding: 16px 12px;
+        font-weight: 700;
+        color: #217346;
+      }
+      .workbook-heading small {
+        margin-left: 16px;
+        font-weight: 400;
+      }
+      .workbook-grid .cell {
+        position: relative;
+      }
+      .workbook-grid .flag:after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        border-top: 7px solid #b38027;
+        border-left: 7px solid transparent;
+      }
+      .worksheet-tabs {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        padding: 0 14px;
+        border-top: 1px solid #cbd8cc;
+        background: #f2f5f0;
+        font-size: 11px;
+      }
+      .worksheet-active {
+        color: #217346;
+        font-weight: 700;
+        padding: 10px 8px;
+        border-bottom: 3px solid #217346;
+        background: white;
+      }
+      .below-transcript {
+        margin-top: 18px;
+      }
+      .mini-range {
+        display: grid;
+        grid-template-columns: 30px 1fr 55px;
+        margin: 9px 0;
+        border: 1px solid #dce2d7;
+        font-size: 10px;
+      }
+      .mini-range > * {
+        padding: 4px;
+        border-bottom: 1px solid #dce2d7;
+        background: #f1f5eb;
+      }
+      .mini-range > :nth-child(3n) {
+        text-align: right;
+      }
+      select {
+        max-width: 215px;
+      }
+      @media (max-width: 650px) {
+        .workbook-title {
+          flex-wrap: wrap;
+        }
+        .workbook-title > span:last-child {
+          margin-left: 38px;
+        }
+        .workbook-ribbon {
+          gap: 14px;
+        }
+        .workbook-ribbon .muted {
+          display: none;
+        }
+        .worksheet-tabs {
+          gap: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside aria-label="Workspace context">
+        <div class="brand">june<span>·</span></div>
+        <div class="workspace"><strong>Tidewell</strong><small>Fictional workspace</small></div>
+        <div class="nav-label">Workspace</div>
+        <span class="nav-item">Overview</span><span class="nav-item">Financials</span
+        ><span class="nav-item">Investor radar</span>
+        <div class="nav-label">Prepare</div>
+        <span class="nav-item">Practice scenarios</span
+        ><span class="nav-item active">Evidence review</span>
+        <p class="aside-note muted">A clearer answer starts with a traceable source.</p>
+      </aside>
+      <main>
+        <div class="topline">
+          <span class="muted">Practice / Session 04 / Review</span
+          ><span class="demo">Interactive concept · all evidence is fictional</span>
+        </div>
+        <header class="heading">
+          <div>
+            <div class="eyebrow">From your numbers to your narrative</div>
+            <h1>Make every claim traceable.</h1>
+            <p class="muted">
+              See what needs explaining, where it came from, and what to say next.
+            </p>
+          </div>
+          <button class="button primary" id="prepare">Prepare a stronger answer ↗</button>
+        </header>
+        <div class="summary" aria-label="Review findings">
+          <button data-finding="profit" aria-pressed="true">
+            <b style="color: var(--amber)">01</b
+            ><span>Figure to explain<small>Profitability vs. operations</small></span>
+          </button>
+          <button data-finding="runway" aria-pressed="false">
+            <b>01</b><span>Evidence gap<small>Runway cannot be checked</small></span>
+          </button>
+          <button data-finding="revenue" aria-pressed="false">
+            <b style="color: var(--green)">01</b
+            ><span>Supported claim<small>September revenue</small></span>
+          </button>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Evidence review views">
+          <button
+            id="sheet-tab"
+            role="tab"
+            aria-selected="true"
+            aria-controls="sheet-view"
+            data-view="sheet"
+          >
+            Excel evidence
+          </button>
+          <button
+            id="transcript-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="transcript-view"
+            tabindex="-1"
+            data-view="transcript"
+          >
+            Interview transcript <small>· 3 linked claims</small>
+          </button>
+        </div>
+        <div class="review-grid">
+          <div>
+            <section class="panel" id="sheet-view" role="tabpanel" aria-labelledby="sheet-tab">
+              <div class="workbook-title">
+                <span class="excel-icon">X</span><strong>TidewellFinancials.xlsx</strong
+                ><span>Fictional workbook · read-only preview</span>
+              </div>
+              <div class="workbook-ribbon">
+                <span>Home</span><span>Insert</span><span>Formulas</span
+                ><span class="ribbon-selected">Review</span
+                ><span class="muted">Saved evidence · CAD</span>
+              </div>
+              <div class="sheet-toolbar">
+                <span
+                  ><strong>Workbook evidence</strong
+                  ><small
+                    >September 2026 · highlighted cells support the selected claim</small
+                  ></span
+                ><label
+                  ><select id="sheet-mode" aria-label="Workbook comparison view">
+                    <option value="original">Original workbook</option>
+                    <option value="comparison">Show Sep − Aug changes</option>
+                  </select></label
+                >
+              </div>
+              <div class="formula">
+                <b id="source-pointer">D10</b><span class="muted">ƒx </span
+                ><span id="source-formula">=D8+D9</span>
+              </div>
+              <div class="table-scroll">
+                <table class="workbook-grid" aria-label="Fictional Excel workbook Income Statement">
+                  <thead>
+                    <tr>
+                      <th scope="col" aria-label="Row number"></th>
+                      <th scope="col">A</th>
+                      <th scope="col">B</th>
+                      <th scope="col">C</th>
+                      <th scope="col">D</th>
+                      <th scope="col" class="delta-cell" hidden>E</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">1</th>
+                      <td class="workbook-heading" colspan="4">
+                        TIDEWELL / INCOME STATEMENT <small>Fictional evidence</small>
+                      </td>
+                      <td class="delta-cell" hidden></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">2</th>
+                      <td>All figures in CAD</td>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      <td class="delta-cell" hidden></td>
+                    </tr>
+                    <tr class="periods">
+                      <th scope="row">3</th>
+                      <td>Account</td>
+                      <td>Jul 2026</td>
+                      <td>Aug 2026</td>
+                      <td>Sep 2026</td>
+                      <td class="delta-cell" hidden>Sep − Aug</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">4</th>
+                      <td>Total revenue</td>
+                      <td>76,000</td>
+                      <td>80,000</td>
+                      <td>
+                        <button
+                          class="cell"
+                          data-finding="revenue"
+                          data-cell="D4"
+                          data-formula="92000"
+                          aria-label="Cell D4, September revenue 92,000 CAD"
+                        >
+                          92,000
+                        </button>
+                      </td>
+                      <td class="delta-cell" hidden>+12,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">5</th>
+                      <td>Cost of goods sold</td>
+                      <td>24,000</td>
+                      <td>26,000</td>
+                      <td>28,000</td>
+                      <td class="delta-cell" hidden>+2,000</td>
+                    </tr>
+                    <tr class="subtotal">
+                      <th scope="row">6</th>
+                      <td>Gross profit</td>
+                      <td>52,000</td>
+                      <td>54,000</td>
+                      <td>64,000</td>
+                      <td class="delta-cell" hidden>+10,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">7</th>
+                      <td>Operating expenses</td>
+                      <td>76,000</td>
+                      <td>76,000</td>
+                      <td>82,000</td>
+                      <td class="delta-cell" hidden>+6,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">8</th>
+                      <td>Operating income</td>
+                      <td>−24,000</td>
+                      <td>−22,000</td>
+                      <td>
+                        <button
+                          class="cell flag selected-cell"
+                          data-finding="profit"
+                          data-cell="D8"
+                          data-formula="=D6-D7"
+                          aria-label="Cell D8, September operating loss 18,000 CAD"
+                        >
+                          −18,000
+                        </button>
+                      </td>
+                      <td class="delta-cell" hidden>+4,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">9</th>
+                      <td>SR&amp;ED credit</td>
+                      <td>0</td>
+                      <td>0</td>
+                      <td>
+                        <button
+                          class="cell flag selected-cell"
+                          data-finding="profit"
+                          data-cell="D9"
+                          data-formula="30000"
+                          aria-label="Cell D9, September credit 30,000 CAD"
+                        >
+                          30,000
+                        </button>
+                      </td>
+                      <td class="delta-cell" hidden>+30,000</td>
+                    </tr>
+                    <tr class="subtotal">
+                      <th scope="row">10</th>
+                      <td>Net income</td>
+                      <td>−24,000</td>
+                      <td>−22,000</td>
+                      <td>
+                        <button
+                          class="cell flag selected-cell"
+                          data-finding="profit"
+                          data-cell="D10"
+                          data-formula="=D8+D9"
+                          aria-label="Cell D10, September net income 12,000 CAD"
+                        >
+                          12,000
+                        </button>
+                      </td>
+                      <td class="delta-cell" hidden>+34,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">11</th>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      <td class="delta-cell" hidden></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="worksheet-tabs">
+                <span class="sheet-arrows" aria-hidden="true">‹　›</span
+                ><span class="worksheet-active">Income Statement</span
+                ><span class="muted">1 sheet · snapshot S-04</span>
+              </div>
+              <p class="sheet-note" id="sheet-caption">
+                The numbers reconcile. The claim about operating profitability needs explaining.
+              </p>
+              <div class="legend">
+                <span><i class="dot"></i>Needs explanation</span
+                ><span><i class="dot green"></i>Selected evidence</span
+                ><span><i class="dot gray"></i>Original values preserved</span>
+              </div>
+            </section>
+            <section
+              class="panel"
+              id="transcript-view"
+              role="tabpanel"
+              aria-labelledby="transcript-tab"
+              hidden
+            >
+              <div class="panel-title">
+                <div>
+                  <strong>Financial story · practice interview</strong>
+                  <p class="muted" style="font-size: 12px">
+                    Fictional final transcript · hover, focus or select an underlined claim
+                  </p>
+                </div>
+                <span class="pill supported">Review ready</span>
+              </div>
+              <div class="transcript">
+                <div class="turn">
+                  <div class="avatar">j</div>
+                  <div>
+                    <small>June · AI interviewer · Turn 1</small>
+                    <p>What changed in September, and are you profitable from operations?</p>
+                  </div>
+                </div>
+                <div class="turn">
+                  <div class="avatar founder">MK</div>
+                  <div>
+                    <small>Mark · fictional founder · Turn 2</small>
+                    <p>
+                      <span class="claim-wrap"
+                        ><button
+                          class="claim"
+                          data-finding="revenue"
+                          aria-describedby="tip-revenue"
+                        >
+                          September revenue was CAD 92,000.</button
+                        ><span class="tooltip" role="tooltip" id="tip-revenue"
+                          ><strong>Supported by the saved source</strong
+                          >TidewellFinancials.xlsx<br />Income Statement!D4<br />September 2026 ·
+                          CAD 92,000.<br />Select to inspect the source.</span
+                        ></span
+                      >
+                      And
+                      <span class="claim-wrap"
+                        ><button class="claim" data-finding="profit" aria-describedby="tip-profit">
+                          we made CAD 12,000 in operating profit.</button
+                        ><span class="tooltip" role="tooltip" id="tip-profit"
+                          ><strong>Conflicts with operating income</strong>TidewellFinancials.xlsx ·
+                          Income Statement
+                          <span class="mini-range"
+                            ><span>Cell</span><span>Account</span><span>CAD</span><b>D8</b
+                            ><span>Operating income</span><b>−18,000</b><b>D9</b
+                            ><span>SR&amp;ED credit</span><b>30,000</b><b>D10</b
+                            ><span>Net income</span><b>12,000</b></span
+                          ><br />Select to compare the figures.</span
+                        ></span
+                      >
+                    </p>
+                  </div>
+                </div>
+                <div class="turn">
+                  <div class="avatar">j</div>
+                  <div>
+                    <small>June · AI interviewer · Turn 3</small>
+                    <p>How much runway does that give you?</p>
+                  </div>
+                </div>
+                <div class="turn">
+                  <div class="avatar founder">MK</div>
+                  <div>
+                    <small>Mark · fictional founder · Turn 4</small>
+                    <p>
+                      I think
+                      <span class="claim-wrap"
+                        ><button class="claim" data-finding="runway" aria-describedby="tip-runway">
+                          we have eighteen months of runway.</button
+                        ><span class="tooltip" role="tooltip" id="tip-runway"
+                          ><strong>Insufficient evidence</strong>The frozen source has no cash
+                          balance or cash-flow history. An income statement cannot establish
+                          runway.<br />Select to see what is missing.</span
+                        ></span
+                      >
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p class="sheet-note">
+                Coaching appears after a final transcript is saved. Live captions are an unsaved
+                preview.
+              </p>
+            </section>
+            <section class="practice">
+              <div>
+                <div class="eyebrow">Suggested next practice</div>
+                <h3 id="practice-title">Explain the bridge from operating loss to net income.</h3>
+                <p id="practice-note">Keep the positive result. Make its source clear.</p>
+              </div>
+              <button class="button" id="draft-button">Draft answer →</button>
+            </section>
+            <section class="panel response" id="response" hidden>
+              <h3>Your revised answer</h3>
+              <p class="muted">Local preview draft · no model evaluation</p>
+              <label for="answer">Try the suggested framing in your own words.</label
+              ><textarea id="answer"></textarea
+              ><button class="button primary" id="save-draft">Keep draft in this preview</button>
+              <p id="draft-status" role="status"></p>
+            </section>
+          </div>
+          <section class="panel inspector" aria-label="Selected claim and supporting evidence">
+            <div class="row">
+              <span class="eyebrow">Evidence inspector</span
+              ><span class="muted" style="font-size: 11px">Frozen at session start</span>
+            </div>
+            <span class="pill" id="finding-status" style="margin-top: 18px"
+              >Conflicts with source</span
+            >
+            <h2 id="finding-title">Positive net income ≠ operating profit.</h2>
+            <p id="finding-description">
+              The CAD 12,000 figure is real in this fictional source. It includes a CAD 30,000
+              credit while operations lost CAD 18,000.
+            </p>
+            <div class="compare">
+              <div>
+                <small id="said-label">YOU SAID · OPERATING PROFIT</small
+                ><strong id="said-value">12,000</strong>
+              </div>
+              <div>
+                <small id="source-label">SOURCE · OPERATING INCOME</small
+                ><strong id="source-value">−18,000</strong>
+              </div>
+            </div>
+            <small id="comparison-unit">CAD · September 2026 · difference: 30,000</small>
+            <div class="source" id="finding-source">
+              <strong>TidewellFinancials.xlsx · Income Statement!D8:D10</strong><br />D10 = D8 +
+              D9<br />−18,000 + 30,000 = 12,000 CAD
+            </div>
+            <div class="recommendation">
+              <div class="eyebrow">Suggested framing</div>
+              <p id="suggestion">
+                “September net income was CAD 12,000, including a CAD 30,000 SR&amp;ED credit. We
+                still had an operating loss of CAD 18,000.”
+              </p>
+            </div>
+            <button class="button" id="jump">See exact transcript claim ↗</button>
+            <p class="muted" style="font-size: 11px; margin-top: 12px">
+              A review flag asks for an explanation. It does not imply fraud or edit the source.
+            </p>
+          </section>
+        </div>
+        <footer class="footer">
+          <span>Review v1 · fictional source snapshot S-04 · amounts in CAD</span
+          ><span>Excel-style HTML mockup · fictional cells and formulas</span>
+        </footer>
+      </main>
+    </div>
+    <script>
+      const findings = {
+        profit: {
+          status: 'Conflicts with source',
+          tone: '',
+          title: 'Positive net income ≠ operating profit.',
+          description:
+            'The CAD 12,000 figure is real in this fictional source. It includes a CAD 30,000 credit while operations lost CAD 18,000.',
+          saidLabel: 'YOU SAID · OPERATING PROFIT',
+          said: '12,000',
+          sourceLabel: 'SOURCE · OPERATING INCOME',
+          value: '−18,000',
+          unit: 'CAD · September 2026 · difference: 30,000',
+          source:
+            'TidewellFinancials.xlsx · Income Statement!D8:D10. D8: operating income −18,000. D9: credit 30,000. D10 = D8+D9: net income 12,000 CAD.',
+          suggestion:
+            '“September net income was CAD 12,000, including a CAD 30,000 SR&ED credit. We still had an operating loss of CAD 18,000.”',
+          practice: 'Explain the bridge from operating loss to net income.',
+          note: 'Keep the positive result. Make its source clear.',
+          cell: 'D10',
+          formula: '=D8+D9',
+          caption:
+            'The numbers reconcile. The claim about operating profitability needs explaining.',
+        },
+        revenue: {
+          status: 'Supported by source',
+          tone: 'supported',
+          title: 'The revenue figure matches.',
+          description:
+            'The transcript and the saved September row both show CAD 92,000 in total revenue. This supports the amount, not a claim about recurring revenue or cash received.',
+          saidLabel: 'YOU SAID · TOTAL REVENUE',
+          said: '92,000',
+          sourceLabel: 'SOURCE · TOTAL REVENUE',
+          value: '92,000',
+          unit: 'CAD · September 2026 · difference: 0',
+          source:
+            'TidewellFinancials.xlsx · Income Statement!D4 = 92,000 CAD. Prior period: C4, August 2026, 80,000 CAD. D4−C4 = 12,000 CAD (15%).',
+          suggestion:
+            '“September total revenue was CAD 92,000, up from CAD 80,000 in August. I would show the subscription and services breakdown before describing recurring growth.”',
+          practice: 'Explain what drove the revenue increase.',
+          note: 'The amount is supported; the drivers still need evidence.',
+          cell: 'D4',
+          formula: '92000',
+          caption:
+            'September revenue matches the transcript. Select month-over-month changes to inspect the prior period.',
+        },
+        runway: {
+          status: 'Insufficient evidence',
+          tone: 'missing',
+          title: 'Runway needs a cash picture.',
+          description:
+            'The eighteen-month claim cannot be checked from this income statement. No cash balance, cash-flow history or forward cash plan is included in the frozen source.',
+          saidLabel: 'YOU SAID · RUNWAY',
+          said: '18 months',
+          sourceLabel: 'SOURCE · RUNWAY',
+          value: 'Unknown',
+          unit: 'Not checked · missing cash evidence',
+          source:
+            'No supporting source in snapshot S-04. Transcript: founder, turn 4. Needed: dated unrestricted cash balance, net cash burn and planned changes in cash flows.',
+          suggestion:
+            '“I need to reconcile our cash balance and forward cash plan before confirming runway. The income statement alone does not support eighteen months.”',
+          practice: 'Explain the inputs needed to establish runway.',
+          note: 'Missing evidence is a gap to resolve, not a proven false claim.',
+          cell: 'No source',
+          formula: 'runway unavailable — cash evidence missing',
+          caption:
+            'No cell in this income statement establishes cash runway. The inspector lists the missing inputs.',
+        },
+      };
+      const workbook = document.getElementById('sheet-view');
+      const transcript = document.getElementById('transcript-view');
+      workbook.before(transcript);
+      let selected = 'profit';
+      let view = 'sheet';
+      const drafts = new Map();
+      const byId = (id) => document.getElementById(id);
+      function selectFinding(key) {
+        if (!Object.hasOwn(findings, key)) return;
+        selected = key;
+        const f = findings[key];
+        const fields = {
+          'finding-status': f.status,
+          'finding-title': f.title,
+          'finding-description': f.description,
+          'said-label': f.saidLabel,
+          'said-value': f.said,
+          'source-label': f.sourceLabel,
+          'source-value': f.value,
+          'comparison-unit': f.unit,
+          'finding-source': f.source,
+          suggestion: f.suggestion,
+          'practice-title': f.practice,
+          'practice-note': f.note,
+          'source-formula': f.formula,
+          'sheet-caption': f.caption,
+        };
+        Object.entries(fields).forEach(([id, value]) => {
+          byId(id).textContent = value;
+        });
+        byId('finding-status').className = 'pill ' + f.tone;
+        byId('source-pointer').textContent = f.cell;
+        document
+          .querySelectorAll('.summary button')
+          .forEach((button) =>
+            button.setAttribute('aria-pressed', String(button.dataset.finding === key)),
+          );
+        document
+          .querySelectorAll('.cell')
+          .forEach((button) =>
+            button.classList.toggle('selected-cell', button.dataset.finding === key),
+          );
+        byId('response').hidden = true;
+      }
+      function showView(next) {
+        view = next;
+        byId('sheet-view').classList.toggle('below-transcript', next === 'transcript');
+        ['sheet', 'transcript'].forEach((name) => {
+          byId(name + '-view').hidden = name === 'transcript' && next !== 'transcript';
+          byId(name + '-tab').setAttribute('aria-selected', String(name === next));
+          byId(name + '-tab').tabIndex = name === next ? 0 : -1;
+        });
+        byId('jump').textContent =
+          next === 'sheet'
+            ? 'See exact transcript claim ↗'
+            : selected === 'runway'
+              ? 'Inspect missing source evidence ↗'
+              : 'Show cells in Excel evidence ↗';
+      }
+      document.querySelectorAll('[data-finding]').forEach((button) =>
+        button.addEventListener('click', () => {
+          selectFinding(button.dataset.finding);
+          if (button.dataset.cell) {
+            byId('source-pointer').textContent = button.dataset.cell;
+            byId('source-formula').textContent = button.dataset.formula;
+          }
+          showView(view);
+        }),
+      );
+      document.querySelectorAll('[data-view]').forEach((button) => {
+        button.addEventListener('click', () => showView(button.dataset.view));
+        button.addEventListener('keydown', (event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const next =
+            event.key === 'Home'
+              ? 'sheet'
+              : event.key === 'End'
+                ? 'transcript'
+                : view === 'sheet'
+                  ? 'transcript'
+                  : 'sheet';
+          showView(next);
+          byId(next + '-tab').focus();
+        });
+      });
+      byId('jump').addEventListener('click', () => {
+        showView(view === 'sheet' ? 'transcript' : 'sheet');
+        const target =
+          view === 'transcript'
+            ? document.querySelector('.claim[data-finding="' + selected + '"]')
+            : selected === 'runway'
+              ? byId('sheet-mode')
+              : document.querySelector('.cell[data-finding="' + selected + '"]');
+        target.focus();
+        target.scrollIntoView({ block: 'nearest' });
+      });
+      byId('sheet-mode').addEventListener('change', (event) => {
+        document.querySelectorAll('.delta-cell').forEach((cell) => {
+          cell.hidden = event.target.value !== 'comparison';
+        });
+      });
+      function openDraft() {
+        byId('response').hidden = false;
+        byId('answer').value = drafts.get(selected) ?? '';
+        byId('draft-status').textContent =
+          'This draft stays in page memory only. Reloading clears it.';
+        byId('answer').focus();
+        byId('response').scrollIntoView({ block: 'nearest' });
+      }
+      byId('draft-button').addEventListener('click', openDraft);
+      byId('prepare').addEventListener('click', openDraft);
+      byId('answer').addEventListener('input', () => drafts.set(selected, byId('answer').value));
+      byId('save-draft').addEventListener('click', () => {
+        byId('draft-status').textContent = byId('answer').value.trim()
+          ? 'Draft kept for this claim in the preview. No evaluation was run.'
+          : 'Write an answer first.';
+      });
+      document.querySelectorAll('.claim-wrap').forEach((wrapper) => {
+        wrapper.addEventListener('mouseenter', () => wrapper.classList.remove('dismissed'));
+        wrapper.addEventListener('focusin', () => wrapper.classList.remove('dismissed'));
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape')
+          document
+            .querySelectorAll('.claim-wrap')
+            .forEach((wrapper) => wrapper.classList.add('dismissed'));
+      });
+    </script>
+  </body>
+</html>

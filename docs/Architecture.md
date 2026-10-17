@@ -215,6 +215,22 @@ The current single-workspace aggregate is reused for event/outbox transactions; 
 
 `EvaluationRoutes.ts` exposes local authenticated review, retry and response endpoints. `EvaluationPanel.tsx` is shared by voice and video history and polls only selected pending reviews while visible. The general state endpoint omits evaluation contexts/reports; selected-session reads retrieve them separately. Storage and history reads still follow the small single-workspace aggregate model; larger histories should move to dedicated tables and paginated queries.
 
+`contracts/EvidenceReview.ts` owns the validated evidence projection; `features/EvidenceReview.ts`
+resolves exact transcript spans, validated frozen financial rows, original CSV locators,
+fact-to-cell links and Decimal.js comparisons. The session-scoped read route
+`GET /api/rehearsals/:id/evaluations/:evaluationId/evidence` returns private, non-cacheable
+data without inference or storage mutations. New financial sources include optional structured
+CSV location metadata; absent metadata in older contexts remains absent to preserve their
+original hashes. Legacy row citations remain readable without inferring a filename from a title.
+
+`web/EvidenceReview.tsx`, `FinancialEvidenceGrid.tsx` and `TranscriptEvidence.tsx` render
+the embedded sheet, synchronized inspector, accessible quote previews and whole-turn fallbacks.
+The shared evaluation panel keys state by session, supports earlier review selection, and
+keeps drafts keyed by review/item. Completed evidence views use a bounded component-local
+memory cache; late responses are ignored after selection changes. The sheet is an Excel-style
+view of saved CSV evidence, with clearly identified review coordinates; native Excel ingestion
+is not implemented. No migration or new provider is required.
+
 `AvatarTranscript.ts` shares authoritative intake between browser/manual fetches and the worker. Ended video sessions enqueue an idempotent transcript job with bounded retries. Abandoned active sessions still require explicit stopping.
 
 Every new session freezes evaluation context, and its final transcript automatically queues a model review. There is no mode toggle or demo execution path. Missing OpenAI credentials fail the review job without losing the transcript. Provider-delivered context, the legacy topic checker and brief mutation rules remain separate. See [Evaluator workflow](EvaluatorWorkflowPlan.md) for ASCII flow, prompt contracts, limitations and extension points.

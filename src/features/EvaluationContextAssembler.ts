@@ -122,6 +122,12 @@ export function assembleEvaluationContext(
         )
           ? 'fictional'
           : 'uploaded',
+        financialLocation: {
+          kind: 'csv',
+          snapshotId: snapshot.id,
+          fileName: snapshot.fileName,
+          sourceRow: row.sourceRow,
+        },
       });
       const fields = {
         revenue: row.revenue,

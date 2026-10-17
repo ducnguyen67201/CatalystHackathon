@@ -2,9 +2,23 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { evaluationResponseSchema } from '../contracts/RehearsalEvaluation.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
+import { evidenceReviewSchema } from '../contracts/EvidenceReview.js';
 
 const paramsSchema = z.object({ id: z.uuid(), evaluationId: z.uuid().optional() });
 export function registerEvaluationRoutes(app: FastifyInstance, service: WorkspaceService): void {
+  app.get(
+    '/api/rehearsals/:id/evaluations/:evaluationId/evidence',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute', groupId: 'evaluation-reads' } } },
+    async (request, reply) => {
+      const { id, evaluationId } = paramsSchema
+        .extend({ evaluationId: z.uuid() })
+        .parse(request.params);
+      const evidence = await service.evaluations.getEvidence(id, evaluationId);
+      reply.header('Cache-Control', 'private, no-store');
+      if (!evidence) return reply.code(404).send({ error: 'Review unavailable.' });
+      return evidenceReviewSchema.parse(evidence);
+    },
+  );
   app.get(
     '/api/rehearsals/:id/evaluations',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute', groupId: 'evaluation-reads' } } },

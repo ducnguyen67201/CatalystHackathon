@@ -1,0 +1,1170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>June — Financial focus</title>
+    <style>
+      :root {
+        --ink: #243c36;
+        --muted: #657269;
+        --green: #255b48;
+        --line: #dce2d7;
+        --paper: #f7f7f2;
+        --amber: #86591f;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          14px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+      }
+      button,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      a {
+        color: var(--green);
+      }
+      :focus-visible {
+        outline: 3px solid #839c58;
+        outline-offset: 4px;
+      }
+      button {
+        transition:
+          background-color 140ms ease,
+          border-color 140ms ease;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1,
+      h2,
+      h3 {
+        text-wrap: balance;
+      }
+      p {
+        text-wrap: pretty;
+      }
+      h1 {
+        font:
+          34px/1.2 Georgia,
+          serif;
+        letter-spacing: -0.7px;
+        margin-bottom: 9px;
+      }
+      h2 {
+        font:
+          27px/1.25 Georgia,
+          serif;
+        letter-spacing: -0.3px;
+      }
+      h3 {
+        font-size: 13px;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 26px 32px 35px;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        font:
+          italic 34px Georgia,
+          serif;
+        letter-spacing: -2px;
+      }
+      .brand span {
+        color: #79984d;
+      }
+      .brandline {
+        display: flex;
+        align-items: center;
+        gap: 23px;
+      }
+      .brandline small {
+        border-left: 1px solid var(--line);
+        padding-left: 22px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .demo {
+        font-size: 10px;
+        color: #776033;
+        border: 1px solid #ded6be;
+        background: #f3efdf;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      .heading {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 30px 0 24px;
+      }
+      .muted,
+      small {
+        color: var(--muted);
+      }
+      .heading p {
+        font-size: 12px;
+      }
+      .investor-control {
+        display: grid;
+        gap: 5px;
+        flex-shrink: 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      select {
+        border: 1px solid #cdd7c4;
+        border-radius: 6px;
+        background: #fffefa;
+        padding: 10px 32px 10px 12px;
+        font-size: 12px;
+        min-height: 42px;
+        max-width: 100%;
+        color: var(--ink);
+      }
+      .pitch {
+        border-block: 1px solid var(--line);
+        padding: 10px 0;
+        margin-bottom: 24px;
+        font-size: 12px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--green);
+        min-height: 40px;
+        display: list-item;
+        align-content: center;
+      }
+      .pitch p {
+        padding: 8px 0 12px;
+        max-width: 850px;
+        line-height: 1.9;
+      }
+      .claim {
+        background: #f6ecd6;
+        border: 0;
+        border-bottom: 1px solid #bb995b;
+        border-radius: 2px;
+        padding: 0 3px;
+        font: inherit;
+      }
+      .review {
+        display: grid;
+        grid-template-columns: 255px minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+      }
+      .list-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .issue-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .issue {
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: 6px;
+        padding: 13px 12px;
+        text-align: left;
+        display: grid;
+        grid-template-columns: 8px 1fr;
+        gap: 12px;
+        width: 100%;
+        min-height: 74px;
+      }
+      .issue:hover {
+        background: #f0f3e9;
+      }
+      .issue[aria-pressed='true'] {
+        background: #eaf0df;
+        border-color: #cfdbbd;
+      }
+      .issue .dot {
+        width: 6px;
+        height: 6px;
+        background: #a58245;
+        border-radius: 50%;
+        margin-top: 8px;
+      }
+      .issue .dot.gap {
+        background: #929d8a;
+      }
+      .issue strong {
+        display: block;
+        font-size: 13px;
+      }
+      .issue small {
+        font-size: 11px;
+        display: block;
+        margin-top: 3px;
+      }
+      .list-note {
+        color: var(--muted);
+        font-size: 10px;
+        padding: 16px 12px 0;
+      }
+      .detail {
+        background: #fffefa;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 25px 28px;
+        min-width: 0;
+      }
+      .detail-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .eyebrow {
+        font-size: 10px;
+        font-weight: 650;
+        letter-spacing: 1.3px;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .status {
+        font-size: 10px;
+        color: var(--amber);
+        background: #f6ecd8;
+        padding: 3px 7px;
+        border-radius: 3px;
+      }
+      .status.gap {
+        background: #eef0e9;
+        color: #5c675c;
+      }
+      .detail > p {
+        margin-top: 12px;
+        font-size: 13px;
+      }
+      .proof {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-block: 1px solid var(--line);
+        margin: 20px 0 10px;
+      }
+      .proof > div {
+        padding: 14px 0;
+      }
+      .proof > div + div {
+        border-left: 1px solid var(--line);
+        padding-left: 22px;
+      }
+      .proof small {
+        display: block;
+        font-size: 10px;
+      }
+      .proof b {
+        display: block;
+        font:
+          27px Georgia,
+          serif;
+        margin: 5px 0 3px;
+        font-variant-numeric: tabular-nums;
+      }
+      .proof-unit {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .text-button {
+        border: 0;
+        padding: 9px 0;
+        background: none;
+        color: var(--green);
+        text-align: left;
+        font-size: 11px;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        min-height: 40px;
+      }
+      .next {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+      }
+      .next h3 {
+        margin: 5px 0 7px;
+      }
+      .next p {
+        font-size: 13px;
+      }
+      .input-list {
+        font-size: 12px;
+        padding-left: 17px;
+        margin: 12px 0 2px;
+      }
+      .input-list li {
+        margin: 5px 0;
+      }
+      .lens-context {
+        margin-top: 20px;
+        padding: 14px 16px;
+        background: #f0f4e8;
+        border: 1px solid #dde6d2;
+        border-radius: 6px;
+      }
+      .lens-context .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .lens-context .row strong {
+        font-size: 12px;
+      }
+      .lens-context p {
+        font-size: 12px;
+        margin-top: 5px;
+      }
+      .lens-context .text-button {
+        padding: 4px 0;
+        min-height: 32px;
+      }
+      .question {
+        font:
+          italic 15px/1.6 Georgia,
+          serif !important;
+        margin-top: 10px !important;
+      }
+      .answer {
+        margin-top: 17px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .answer blockquote {
+        margin: 6px 0 10px;
+        border-left: 2px solid #9bab80;
+        padding: 6px 12px;
+        line-height: 1.8;
+      }
+      .comparison {
+        margin: 25px 0 0 283px;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+        font-size: 12px;
+      }
+      .comparison-intro {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 4px 0 15px;
+      }
+      .investor-table {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .investor-column {
+        padding: 16px;
+        border: 1px solid var(--line);
+        background: #fffefa;
+        border-radius: 6px;
+      }
+      .investor-column h3 {
+        margin-bottom: 12px;
+      }
+      .investor-column dt {
+        font-size: 10px;
+        color: var(--muted);
+        margin: 14px 0 4px;
+      }
+      .investor-column dd {
+        margin: 0;
+        font-size: 12px;
+      }
+      .investor-column blockquote {
+        margin: 14px 0 0;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 15px;
+        color: var(--muted);
+        font-size: 10px;
+        margin-top: 28px;
+      }
+      dialog {
+        color: var(--ink);
+        background: #fffefa;
+        width: min(950px, calc(100vw - 28px));
+        max-height: 90vh;
+        padding: 0;
+        border: 1px solid #c0cdb5;
+        border-radius: 10px;
+      }
+      dialog::backdrop {
+        background: #18312665;
+      }
+      .dialog-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+        padding: 18px 20px;
+      }
+      .dialog-head h2 {
+        font-size: 24px;
+      }
+      .close {
+        background: #f0f3e9;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        min-height: 40px;
+        min-width: 66px;
+        padding: 7px 12px;
+        font-size: 12px;
+      }
+      .workbook-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        background: #217346;
+        color: white;
+        padding: 11px 18px;
+        font-size: 12px;
+      }
+      .workbook-title small {
+        color: #e7f0df;
+        font-size: 10px;
+      }
+      .formula {
+        background: #f0f5e9;
+        border-bottom: 1px solid var(--line);
+        padding: 11px 18px;
+        font:
+          12px/1.5 ui-monospace,
+          monospace;
+      }
+      .formula b {
+        border-right: 1px solid #d1ddc7;
+        margin-right: 15px;
+        padding-right: 15px;
+      }
+      .grid-scroll {
+        overflow: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        border: 1px solid #e2e7dc;
+        text-align: right;
+        padding: 8px 12px;
+      }
+      th {
+        font-weight: 500;
+        color: var(--muted);
+        background: #f0f4ec;
+      }
+      th:first-child,
+      td:first-child {
+        text-align: center;
+        background: #f0f4ec;
+        color: var(--muted);
+        width: 36px;
+      }
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+        min-width: 170px;
+      }
+      td button {
+        font: inherit;
+        min-width: 70px;
+        min-height: 36px;
+        border: 1px solid transparent;
+        border-radius: 3px;
+        background: none;
+        padding: 4px 6px;
+      }
+      td button.highlight {
+        outline: 2px solid #6b884a;
+        background: #e7efdc;
+      }
+      .sheet-footer {
+        padding: 10px 20px;
+        background: #eef3e7;
+        color: #217346;
+        font-size: 11px;
+      }
+      .sheet-note {
+        padding: 15px 20px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .thesis-body {
+        padding: 0 22px 22px;
+        font-size: 13px;
+      }
+      .thesis-body blockquote {
+        border-left: 2px solid #8ca16b;
+        margin: 15px 0;
+        padding: 10px 14px;
+        background: #f0f4e8;
+      }
+      @media (max-width: 800px) {
+        main {
+          padding: 20px;
+        }
+        .heading {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 16px;
+        }
+        .review {
+          grid-template-columns: 1fr;
+          gap: 18px;
+        }
+        .issue-list {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 5px;
+        }
+        .issue {
+          border-color: var(--line);
+          min-height: 83px;
+        }
+        .list-note {
+          padding-top: 10px;
+        }
+        .comparison {
+          margin-left: 0;
+        }
+      }
+      @media (max-width: 480px) {
+        main {
+          padding: 16px 14px 25px;
+        }
+        .topbar {
+          align-items: flex-start;
+        }
+        .brandline {
+          gap: 12px;
+        }
+        .brandline small {
+          padding-left: 12px;
+        }
+        .demo {
+          max-width: 135px;
+          font-size: 9px;
+        }
+        h1 {
+          font-size: 29px;
+        }
+        .detail {
+          padding: 20px 17px;
+        }
+        .detail h2 {
+          font-size: 25px;
+        }
+        .issue {
+          padding: 10px 8px;
+          gap: 7px;
+        }
+        .issue strong {
+          font-size: 12px;
+        }
+        .issue small {
+          font-size: 10px;
+        }
+        .investor-table {
+          grid-template-columns: 1fr;
+        }
+        .lens-context .row {
+          align-items: flex-start;
+        }
+        .footer {
+          flex-direction: column;
+          gap: 4px;
+        }
+        .workbook-title {
+          flex-wrap: wrap;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topbar">
+        <div class="brandline">
+          <div class="brand">june<span>·</span></div>
+          <small>Tidewell / Financial focus</small>
+        </div>
+        <span class="demo">Fictional data & investors · interactive concept</span>
+      </div>
+      <header class="heading">
+        <div>
+          <h1>A clearer financial story.</h1>
+          <p class="muted">2 signals to explain · 2 evidence gaps · September 2026 · CAD</p>
+        </div>
+        <label class="investor-control"
+          >Preparing for<select id="investor-select">
+            <option value="efficiency">Harbor Capital · capital efficiency</option>
+            <option value="growth">Summit Ventures · durable growth</option>
+          </select></label
+        >
+      </header>
+      <details class="pitch">
+        <summary>See the original pitch</summary>
+        <p>
+          “September revenue was CAD 92,000. Our ROAS is
+          <button class="claim" data-finding="roas">4.2×</button>, so growth looks healthy. We made
+          <button class="claim" data-finding="profit">CAD 12,000 in operating profit</button>, and
+          we have <button class="claim" data-finding="cash">eighteen months of runway</button>.”
+        </p>
+        <small>Fictional founder claims. Select an underlined claim to inspect it.</small>
+      </details>
+      <div class="review">
+        <nav aria-label="Financial review findings">
+          <div class="list-title"><span>What needs attention</span><span>4 items</span></div>
+          <div class="issue-list">
+            <button class="issue" data-finding="profit" aria-pressed="true">
+              <span class="dot"></span
+              ><span
+                ><strong>Profitability</strong><small>Net income includes a credit</small></span
+              >
+            </button>
+            <button class="issue" data-finding="margin" aria-pressed="false">
+              <span class="dot"></span
+              ><span><strong>Growth & margin</strong><small>Revenue up, margin down</small></span>
+            </button>
+            <button class="issue" data-finding="cash" aria-pressed="false">
+              <span class="dot gap"></span
+              ><span><strong>Cash runway</strong><small>Cash evidence missing</small></span>
+            </button>
+            <button class="issue" data-finding="roas" aria-pressed="false">
+              <span class="dot gap"></span
+              ><span
+                ><strong>ROAS in context</strong><small>Attribution inputs missing</small></span
+              >
+            </button>
+          </div>
+          <p class="list-note">
+            Findings ask for context or evidence.<br />They do not imply fraud.
+          </p>
+        </nav>
+        <article
+          class="detail"
+          aria-label="Selected financial finding"
+          tabindex="-1"
+          id="detail-panel"
+        >
+          <div class="detail-head">
+            <span class="eyebrow">What the evidence shows</span
+            ><span class="status" id="detail-status">Needs explanation</span>
+          </div>
+          <h2 id="detail-title">Net income includes a tax credit.</h2>
+          <p id="detail-observation">
+            Net income of CAD 12,000 includes a CAD 30,000 SR&amp;ED credit. Operations still lost
+            CAD 18,000.
+          </p>
+          <div class="proof">
+            <div>
+              <small id="left-label">REPORTED NET INCOME</small><b id="left-value">12,000</b>
+            </div>
+            <div>
+              <small id="right-label">OPERATING INCOME</small><b id="right-value">−18,000</b>
+            </div>
+          </div>
+          <div class="proof-unit" id="detail-unit">
+            CAD · September 2026 · fictional snapshot S-04
+          </div>
+          <button class="text-button" id="inspect-source">Income Statement · D8–D10 ↗</button>
+          <div class="next">
+            <span class="eyebrow">Prepare next</span>
+            <p id="detail-action">
+              Explain operations and the credit separately. Bring the cost drivers and documentation
+              of the credit.
+            </p>
+            <ul class="input-list" id="detail-inputs" hidden></ul>
+          </div>
+          <div class="lens-context">
+            <div class="row">
+              <strong id="lens-name">For Harbor Capital</strong
+              ><button class="text-button" id="framing-source">Why this emphasis?</button>
+            </div>
+            <p id="lens-framing"></p>
+            <p class="question" id="practice-question"></p>
+            <small>Suggested emphasis · preparation hypothesis</small>
+          </div>
+          <details class="answer">
+            <summary>Try a stronger answer</summary>
+            <blockquote id="framing-answer"></blockquote>
+            <small
+              >Use the source figures and confirm missing inputs before making additional
+              claims.</small
+            >
+          </details>
+        </article>
+      </div>
+      <details class="comparison" id="investor-comparison">
+        <summary>Compare the two investor lenses</summary>
+        <p class="comparison-intro">
+          Same pitch and financial facts. Only the preparation emphasis changes. Both investors and
+          thesis statements below are fictional.
+        </p>
+        <div class="investor-table">
+          <section class="investor-column">
+            <h3>Harbor Capital</h3>
+            <dl>
+              <dt>Lead with</dt>
+              <dd>Operating performance and the margin decline.</dd>
+              <dt>Bring next</dt>
+              <dd>Cost drivers, credit documentation and a dated cash plan.</dd>
+            </dl>
+            <blockquote>
+              “We look for capital-efficient businesses with durable gross margins and a credible
+              path to operating profitability.”<br /><small>Authored fictional thesis H-01</small>
+            </blockquote>
+          </section>
+          <section class="investor-column">
+            <h3>Summit Ventures</h3>
+            <dl>
+              <dt>Lead with</dt>
+              <dd>Revenue growth and evidence that it persists.</dd>
+              <dt>Bring next</dt>
+              <dd>Retention cohorts, revenue mix and acquisition attribution.</dd>
+            </dl>
+            <blockquote>
+              “We look for repeatable revenue growth and strong customer retention before scaling
+              acquisition.”<br /><small>Authored fictional thesis S-01</small>
+            </blockquote>
+          </section>
+        </div>
+      </details>
+      <footer class="footer">
+        <span>Snapshot S-04 · evidence stays fixed when you switch investors</span
+        ><span>Read-only design preview · nothing is saved</span>
+      </footer>
+    </main>
+    <dialog id="evidence-dialog" aria-labelledby="evidence-title">
+      <div class="dialog-head">
+        <h2 id="evidence-title">Financial evidence</h2>
+        <button class="close" id="close-evidence">Close</button>
+      </div>
+      <div class="workbook-title">
+        <strong>FictionalFinancials.xlsx</strong><small>Authored fictional workbook · CAD</small>
+      </div>
+      <div class="formula"><b id="cell-pointer">D10</b><span id="cell-formula">=D8+D9</span></div>
+      <div class="grid-scroll">
+        <table aria-label="Fictional workbook Income Statement">
+          <thead>
+            <tr>
+              <th scope="col" aria-label="Row number"></th>
+              <th scope="col">A</th>
+              <th scope="col">B</th>
+              <th scope="col">C</th>
+              <th scope="col">D</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>3</td>
+              <td>Account</td>
+              <td>Jul 2026</td>
+              <td>Aug 2026</td>
+              <td>Sep 2026</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>Total revenue</td>
+              <td>76,000</td>
+              <td><button data-cell="C4" data-value="80000">80,000</button></td>
+              <td><button data-cell="D4" data-value="92000">92,000</button></td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td>Cost of goods sold</td>
+              <td>24,000</td>
+              <td><button data-cell="C5" data-value="28000">28,000</button></td>
+              <td><button data-cell="D5" data-value="36800">36,800</button></td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td>Gross profit</td>
+              <td>52,000</td>
+              <td><button data-cell="C6" data-value="=C4-C5">52,000</button></td>
+              <td><button data-cell="D6" data-value="=D4-D5">55,200</button></td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td>Operating expenses</td>
+              <td>76,000</td>
+              <td>74,000</td>
+              <td><button data-cell="D7" data-value="73200">73,200</button></td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td>Operating income</td>
+              <td>−24,000</td>
+              <td>−22,000</td>
+              <td><button data-cell="D8" data-value="=D6-D7">−18,000</button></td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td>SR&amp;ED credit</td>
+              <td>0</td>
+              <td>0</td>
+              <td><button data-cell="D9" data-value="30000">30,000</button></td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td>Net income</td>
+              <td>−24,000</td>
+              <td>−22,000</td>
+              <td><button data-cell="D10" data-value="=D8+D9">12,000</button></td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td>Gross margin</td>
+              <td>68.42%</td>
+              <td><button data-cell="C11" data-value="=C6/C4">65%</button></td>
+              <td><button data-cell="D11" data-value="=D6/D4">60%</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sheet-footer">Income Statement · frozen fictional snapshot S-04</div>
+      <p class="sheet-note" id="sheet-note"></p>
+    </dialog>
+    <dialog id="thesis-dialog" aria-labelledby="thesis-title">
+      <div class="dialog-head">
+        <h2 id="thesis-title">Why this emphasis?</h2>
+        <button class="close" id="close-thesis">Close</button>
+      </div>
+      <div class="thesis-body">
+        <span class="demo">Authored fictional source</span>
+        <blockquote id="thesis-quote"></blockquote>
+        <p id="thesis-explanation"></p>
+        <p class="muted" style="font-size: 11px; margin-top: 12px">
+          A thesis helps choose preparation questions. It does not predict personality, investment
+          decisions or exact future questions.
+        </p>
+      </div>
+    </dialog>
+    <script>
+      const findings = {
+        profit: {
+          status: 'Needs explanation',
+          title: 'Separate profit from operations.',
+          observation:
+            'Net income of CAD 12,000 includes a CAD 30,000 SR&ED credit. Operations still lost CAD 18,000.',
+          leftLabel: 'REPORTED NET INCOME',
+          left: '12,000',
+          rightLabel: 'OPERATING INCOME',
+          right: '−18,000',
+          unit: 'CAD · September 2026 · fictional snapshot S-04',
+          source: 'Income Statement!D10 = D8 + D9. −18,000 + 30,000 = 12,000 CAD.',
+          action:
+            'Explain the operating result and the credit separately. The credit does not establish recurring operating profitability or cash receipt.',
+          inputs: [
+            'Drivers of revenue and operating costs',
+            'Documentation and timing of the credit',
+          ],
+          cells: ['D8', 'D9', 'D10'],
+          pointer: 'D10',
+          formula: '=D8+D9',
+        },
+        margin: {
+          status: 'Trend to explain',
+          title: 'Defend the economics behind growth.',
+          observation:
+            'Revenue rose from CAD 80,000 to CAD 92,000, while gross margin fell from 65% to 60%. Direct costs rose from CAD 28,000 to CAD 36,800.',
+          leftLabel: 'REVENUE GROWTH',
+          left: '+15%',
+          rightLabel: 'GROSS MARGIN CHANGE',
+          right: '−5 pp',
+          unit: 'August → September 2026 · adjacent months · same CAD unit',
+          source: 'C11 = C6/C4 = 52,000/80,000 = 65%. D11 = D6/D4 = 55,200/92,000 = 60%.',
+          action:
+            'Explain the direct-cost increase, whether it is temporary, and what evidence supports a margin recovery. Revenue growth alone does not answer that question.',
+          inputs: [
+            'Cost-of-goods breakdown and changes in unit costs',
+            'Evidence for any planned pricing or cost improvements',
+          ],
+          cells: ['C4', 'D4', 'C5', 'D5', 'C6', 'D6', 'C11', 'D11'],
+          pointer: 'D11',
+          formula: '=D6/D4',
+        },
+        cash: {
+          status: 'Missing evidence',
+          title: 'Build the cash picture before quoting runway.',
+          observation:
+            'The eighteen-month runway claim cannot be checked from this income statement. An operating loss is not the same as net cash burn.',
+          leftLabel: 'FOUNDER CLAIM',
+          left: '18 months',
+          rightLabel: 'SOURCE SUPPORT',
+          right: 'Unknown',
+          unit: 'No validated cash balance or cash-flow data in this snapshot',
+          source:
+            'No workbook cell supports this claim. Needed: dated unrestricted cash balance, net cash burn and forward cash assumptions.',
+          action:
+            'Ask for the missing inputs and reconcile them before calculating runway. Keep the estimate explicitly unconfirmed until then.',
+          inputs: [
+            'Dated unrestricted cash balance',
+            'Cash inflows, cash outflows and planned cash commitments',
+          ],
+          cells: [],
+          pointer: 'No source',
+          formula: 'Runway unavailable — cash inputs missing',
+        },
+        roas: {
+          status: 'Metric needs context',
+          title: 'Keep ROAS. Add the missing bridge.',
+          observation:
+            'The fictional founder’s 4.2× ROAS claim is not verified by the uploaded income statement. Even a supported ROAS figure describes advertising performance, not overall profitability or retention.',
+          leftLabel: 'FOUNDER CLAIM',
+          left: '4.2× ROAS',
+          rightLabel: 'INCOME STATEMENT',
+          right: 'Not enough',
+          unit: 'No advertising spend or attributed revenue supplied',
+          source:
+            'ROAS requires attributed advertising revenue and advertising spend. CAC and retention require their own customer-level inputs.',
+          action:
+            'Understand why the founder uses ROAS, then connect it to gross margin, acquisition costs and customer retention. The selected investor lens changes which follow-up to prepare first.',
+          inputs: [
+            'Advertising spend and revenue attribution window',
+            'Acquired customer counts and retention cohorts',
+          ],
+          cells: [],
+          pointer: 'No source',
+          formula: 'ROAS, CAC and retention unavailable — attribution/cohort inputs missing',
+        },
+      };
+      const lenses = {
+        efficiency: {
+          name: 'Harbor Capital',
+          title: 'Prepare for a capital-efficiency discussion.',
+          heading: 'Lead with the economics.',
+          quote:
+            'We look for capital-efficient businesses with durable gross margins and a credible path to operating profitability.',
+          source: 'H-01 · authored fictional thesis note · Oct 17, 2026',
+          answer:
+            '“September revenue was CAD 92,000 and gross margin was 60%. Operations lost CAD 18,000. Net income was CAD 12,000, including a CAD 30,000 credit. I would confirm our cash balance and forward cash plan before quoting runway.”',
+          question:
+            'What explains the margin decline, and which changes could improve operating performance?',
+          emphasis: 'gross margin, operating performance and the missing cash picture',
+          order: ['margin', 'operations', 'cash', 'revenue', 'retention', 'roas'],
+        },
+        growth: {
+          name: 'Summit Ventures',
+          title: 'Prepare for a durable-growth discussion.',
+          heading: 'Lead with growth. Show what makes it durable.',
+          quote:
+            'We look for repeatable revenue growth and strong customer retention before scaling acquisition.',
+          source: 'S-01 · authored fictional thesis note · Oct 17, 2026',
+          answer:
+            '“Revenue grew 15% from CAD 80,000 to CAD 92,000. Gross margin fell from 65% to 60%, so I need to explain the cost of that growth. I would bring retention cohorts and a revenue-quality breakdown before describing it as durable.”',
+          question:
+            'Which customers stay after acquisition, and how much of the revenue increase is repeatable?',
+          emphasis: 'revenue growth, retention and the missing revenue-quality evidence',
+          order: ['revenue', 'retention', 'margin', 'roas', 'operations', 'cash'],
+        },
+      };
+      const byId = (id) => document.getElementById(id);
+      const concise = {
+        profit: {
+          title: 'Net income includes a tax credit.',
+          action:
+            'Explain operations and the credit separately. Bring the cost drivers and documentation of the credit.',
+          citation: 'Income Statement · D8–D10 ↗',
+          framing: {
+            efficiency: 'Lead with the operating loss and explain the path to better margins.',
+            growth:
+              'State the operating loss clearly, then explain what the growth investment is producing.',
+          },
+          question: {
+            efficiency: '“What would improve the operating result?”',
+            growth: '“What evidence shows that the investment in growth is paying off?”',
+          },
+        },
+        margin: {
+          title: 'Growth is coming with lower margins.',
+          action:
+            'Explain why direct costs rose faster than revenue. Confirm whether the pressure is temporary before describing a recovery.',
+          citation: 'Income Statement · C4–D6, C11–D11 ↗',
+          framing: {
+            efficiency: 'Start with the margin decline and the cost changes behind it.',
+            growth:
+              'Show the revenue increase, then explain the economics and repeatability of that growth.',
+          },
+          question: {
+            efficiency: '“Which cost drivers can you change?”',
+            growth: '“Can this growth persist without further margin pressure?”',
+          },
+        },
+        cash: {
+          title: 'The runway claim needs cash evidence.',
+          action:
+            'Bring a dated cash balance, cash inflows and outflows, and planned commitments before confirming eighteen months.',
+          citation: 'See the missing inputs ↓',
+          framing: {
+            efficiency: 'Prepare a cash plan alongside the path to operating profitability.',
+            growth: 'Establish the cash required to sustain the growth plan.',
+          },
+          question: {
+            efficiency: '“How will you fund the path to operating profitability?”',
+            growth: '“What cash assumptions support the growth plan?”',
+          },
+        },
+        roas: {
+          title: 'ROAS needs a connection to company performance.',
+          action:
+            'Confirm advertising spend and attributed revenue. Add customer acquisition counts and retention cohorts to explain the wider growth story.',
+          citation: 'See the missing inputs ↓',
+          framing: {
+            efficiency:
+              'Use ROAS as marketing context; connect it to margins and acquisition economics.',
+            growth: 'Connect acquisition returns to customer retention and repeatable revenue.',
+          },
+          question: {
+            efficiency: '“Do the acquired customers contribute enough margin?”',
+            growth: '“Which acquired customers stay, and for how long?”',
+          },
+        },
+      };
+      let selectedFinding = 'profit',
+        selectedLens = 'efficiency';
+      function render() {
+        const finding = findings[selectedFinding],
+          short = concise[selectedFinding],
+          lens = lenses[selectedLens];
+        const fields = {
+          'detail-status': finding.status,
+          'detail-title': short.title,
+          'detail-observation': finding.observation,
+          'left-label': finding.leftLabel,
+          'left-value': finding.left,
+          'right-label': finding.rightLabel,
+          'right-value': finding.right,
+          'detail-unit': finding.unit,
+          'detail-action': short.action,
+          'inspect-source': short.citation,
+          'lens-name': 'For ' + lens.name,
+          'lens-framing': short.framing[selectedLens],
+          'practice-question': short.question[selectedLens],
+          'framing-answer': lens.answer,
+        };
+        Object.entries(fields).forEach(([id, text]) => (byId(id).textContent = text));
+        byId('detail-status').className = 'status' + (finding.cells.length ? '' : ' gap');
+        byId('detail-inputs').replaceChildren(
+          ...finding.inputs.map((text) => {
+            const li = document.createElement('li');
+            li.textContent = text;
+            return li;
+          }),
+        );
+        byId('detail-inputs').hidden = true;
+        document
+          .querySelectorAll('.issue')
+          .forEach((button) =>
+            button.setAttribute('aria-pressed', String(button.dataset.finding === selectedFinding)),
+          );
+      }
+      document.querySelectorAll('[data-finding]').forEach((button) =>
+        button.addEventListener('click', () => {
+          selectedFinding = button.dataset.finding;
+          render();
+          byId('detail-panel').focus({ preventScroll: true });
+          if (innerWidth < 801) byId('detail-panel').scrollIntoView({ block: 'nearest' });
+        }),
+      );
+      byId('investor-select').addEventListener('change', (event) => {
+        selectedLens = event.target.value;
+        render();
+      });
+      byId('inspect-source').addEventListener('click', () => {
+        const finding = findings[selectedFinding];
+        if (!finding.cells.length) {
+          byId('detail-inputs').hidden = !byId('detail-inputs').hidden;
+          return;
+        }
+        byId('cell-pointer').textContent = finding.pointer;
+        byId('cell-formula').textContent = finding.formula;
+        byId('sheet-note').textContent = finding.source;
+        document
+          .querySelectorAll('[data-cell]')
+          .forEach((button) =>
+            button.classList.toggle('highlight', finding.cells.includes(button.dataset.cell)),
+          );
+        byId('evidence-dialog').showModal();
+      });
+      byId('framing-source').addEventListener('click', () => {
+        const lens = lenses[selectedLens];
+        byId('thesis-title').textContent = lens.name + ' · source';
+        byId('thesis-quote').textContent = '“' + lens.quote + '”';
+        byId('thesis-explanation').textContent =
+          lens.source +
+          '. This statement motivates preparing around ' +
+          lens.emphasis +
+          '. The suggested emphasis is a preparation hypothesis.';
+        byId('thesis-dialog').showModal();
+      });
+      byId('close-evidence').addEventListener('click', () => byId('evidence-dialog').close());
+      byId('close-thesis').addEventListener('click', () => byId('thesis-dialog').close());
+      document.querySelectorAll('[data-cell]').forEach((button) =>
+        button.addEventListener('click', () => {
+          byId('cell-pointer').textContent = button.dataset.cell;
+          byId('cell-formula').textContent = button.dataset.value;
+        }),
+      );
+      render();
+    </script>
+  </body>
+</html>
