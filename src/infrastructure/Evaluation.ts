@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  coachingSchema,
+  coachingGenerationSchema,
   extractionSchema,
   type EvidenceCheck,
   type Extraction,
@@ -72,7 +72,7 @@ export class LiveEvaluation implements EvaluationProvider {
       'coach_founder',
       COACHING_PROMPT,
       { ...input, extraction, checks },
-      coachingSchema,
+      coachingGenerationSchema,
     );
   }
 }

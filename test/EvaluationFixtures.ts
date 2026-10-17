@@ -68,6 +68,20 @@ export const fixtureEvaluationProvider: EvaluationProvider = {
   coach: (input, extraction, checks) =>
     Promise.resolve({
       summary: 'Fictional test response for the selected evidence.',
+      strengths: checks
+        .filter((check) => check.support === 'supported')
+        .slice(0, 3)
+        .map((check) => {
+          const claim = extraction.claims.find((item) => item.id === check.claimId);
+          if (!claim) throw new Error('Missing strength fixture claim');
+          return {
+            statement: 'You accurately stated the saved operating result.',
+            significance:
+              'This anchors the discussion in the operating result rather than treating net income as evidence of operating profitability. It demonstrates factual accuracy; the answer alone does not explain the drivers of the loss.',
+            claimIds: [claim.id],
+            turnIds: [claim.turnId],
+          };
+        }),
       items: checks
         .filter((c) => c.support === 'contradicted')
         .map((check) => {
@@ -80,6 +94,17 @@ export const fixtureEvaluationProvider: EvaluationProvider = {
             establishes: 'You identified a financial metric.',
             gap: check.explanation,
             suggestion: 'Explain operations separately from net income.',
+            analysis: {
+              financialInterpretation:
+                'The cited figure does not match the operating income line in the saved statement. Operating income and net income answer different questions: a credit can affect the net result without establishing that core operations are profitable. The income statement alone does not establish cash burn.',
+              investorImplication:
+                'This distinction matters when assessing whether reported earnings reflect sustainable operating performance. A diligence discussion may ask for a reconciliation and evidence about the nature of any credit; its recurrence and cash timing remain unverified.',
+              preparationSteps: [
+                'Prepare a reconciliation from the saved operating result through other income to net income, with the original source rows.',
+                'Obtain documentation for any credit, including recognition basis, recurrence and expected cash receipt; identify what remains unconfirmed.',
+                'If cash runway is discussed, bring the cash balance, cash-flow statement and timing of obligations; the income statement does not establish runway.',
+              ],
+            },
             sourceIds: fact.sourceIds,
             factIds: [fact.id],
             investorSourceIds: [],

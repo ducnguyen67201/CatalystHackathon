@@ -1,6 +1,6 @@
 import { Decimal } from 'decimal.js';
 import {
-  coachingSchema,
+  coachingGenerationSchema,
   extractionSchema,
   type Coaching,
   type EvidenceCheck,
@@ -90,7 +90,27 @@ export function validateCoaching(
   input: EvaluationInput,
   checks: EvidenceCheck[],
 ): Coaching {
-  const result = coachingSchema.parse(raw);
+  const result = coachingGenerationSchema.parse(raw);
+  for (const strength of result.strengths) {
+    const claims = strength.claimIds.map((id) => extraction.claims.find((c) => c.id === id));
+    if (
+      claims.some(
+        (claim) =>
+          !claim ||
+          claim.supersededByTurnId ||
+          !strength.turnIds.includes(claim.turnId) ||
+          checks.find((check) => check.claimId === claim.id)?.support === 'contradicted',
+      ) ||
+      strength.turnIds.some(
+        (id) =>
+          !input.turns.some((turn) => turn.id === id && turn.role === 'user') ||
+          !claims.some((claim) => claim?.turnId === id),
+      )
+    )
+      throw new Error('Invalid strength evidence.');
+    if (numbers(`${strength.statement} ${strength.significance}`).length)
+      throw new Error('Uncited strength value.');
+  }
   if (new Set(result.items.map((i) => i.id)).size !== result.items.length)
     throw new Error('Duplicate coaching identifiers.');
   for (const item of result.items) {
@@ -129,6 +149,9 @@ export function validateCoaching(
       item.practiceQuestion,
       ...item.successCriteria,
       ...item.missingInputs,
+      item.analysis.financialInterpretation,
+      item.analysis.investorImplication,
+      ...item.analysis.preparationSteps,
     ].join(' ');
     if (numbers(prose).some((value) => !allowed.has(value)))
       throw new Error('Unsupported numerical coaching claim.');

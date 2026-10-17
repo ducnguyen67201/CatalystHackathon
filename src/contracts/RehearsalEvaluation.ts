@@ -92,8 +92,25 @@ export const evidenceCheckSchema = z.strictObject({
   explanation: text,
 });
 export type EvidenceCheck = z.infer<typeof evidenceCheckSchema>;
+const analystAnalysisSchema = z.strictObject({
+  financialInterpretation: z.string().min(1).max(700),
+  investorImplication: z.string().min(1).max(700),
+  preparationSteps: z.array(z.string().min(1).max(400)).min(1).max(3),
+});
+const strengthsSchema = z
+  .array(
+    z.strictObject({
+      statement: z.string().min(1).max(500),
+      significance: z.string().min(1).max(500).optional(),
+      claimIds: z.array(id).min(1).max(10),
+      turnIds: z.array(id).min(1).max(10),
+    }),
+  )
+  .max(3);
 export const coachingSchema = z.strictObject({
   summary: text,
+  // Absent in historical reports; do not backfill or invent praise.
+  strengths: strengthsSchema.optional(),
   items: z
     .array(
       z.strictObject({
@@ -108,6 +125,7 @@ export const coachingSchema = z.strictObject({
         establishes: text,
         gap: text,
         suggestion: text,
+        analysis: analystAnalysisSchema.optional(),
         sourceIds: z.array(id).max(20),
         factIds: z.array(id).max(20),
         missingInputs: z.array(text).max(10),
@@ -128,6 +146,15 @@ export const coachingSchema = z.strictObject({
     .nullable(),
 });
 export type Coaching = z.infer<typeof coachingSchema>;
+/** New model responses must explicitly assess strengths, including an empty result. */
+export const coachingGenerationSchema = coachingSchema.extend({
+  strengths: z
+    .array(strengthsSchema.element.extend({ significance: z.string().min(1).max(500) }))
+    .max(3),
+  items: z
+    .array(coachingSchema.shape.items.element.extend({ analysis: analystAnalysisSchema }))
+    .max(3),
+});
 export const evaluationReportSchema = z.strictObject({
   extraction: extractionSchema,
   checks: z.array(evidenceCheckSchema).max(30),
