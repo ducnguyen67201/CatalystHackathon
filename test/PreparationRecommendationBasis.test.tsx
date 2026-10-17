@@ -33,6 +33,21 @@ function view() {
   return preparationViewSchema.parse(projectPreparationPlan(state, [], null));
 }
 describe('preparation recommendation evidence', () => {
+  it('uses the connected cycle gate when the investor was selected after goal setup', () => {
+    const data = view();
+    data.connectedActive = true;
+    for (const item of data.milestones)
+      item.status = item.id === 'rehearse' ? 'available' : 'complete';
+    const rehearsal = data.milestones.find((item) => item.id === 'rehearse');
+    if (!rehearsal) throw new Error('Missing rehearsal gate');
+    rehearsal.detail =
+      'Current preparation cycle: practise the approved story with the selected investor.';
+    const html = renderToStaticMarkup(
+      <PreparationRecommendationBasis data={data} onEvidence={() => undefined} />,
+    );
+    expect(html).toContain(rehearsal.detail);
+    expect(html).not.toContain('no investor is selected');
+  });
   it('connects recommendations to exact source facts and distinguishes estimates from evidence', () => {
     const html = renderToStaticMarkup(
       <PreparationRecommendationBasis data={view()} onEvidence={() => undefined} />,

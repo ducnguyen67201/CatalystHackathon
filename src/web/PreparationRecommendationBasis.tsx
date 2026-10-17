@@ -20,19 +20,22 @@ export function PreparationRecommendationBasis({
     : data.goal?.investorId && !reviewed('brief')
       ? investor
       : financial;
-  const reason = data.outdated
-    ? 'Saved inputs changed. The earlier recommendation needs a fresh plan before another review.'
-    : !reviewed('financial')
-      ? (financial?.why ?? 'No selected financial evidence is available yet.')
-      : !data.goal?.investorId
-        ? 'Your financial explanation is reviewed, but no investor is selected. Selecting one lets June tailor the brief to saved investor research.'
-        : !reviewed('brief')
-          ? (investor?.why ?? 'The selected investor has no prepared brief yet.')
-          : !reviewed('rehearse')
-            ? 'The explanation has been reviewed. A completed rehearsal assessment is still needed to check how you explain it and identify remaining gaps.'
-            : data.feedback.length
-              ? 'Saved assessment feedback still has unresolved preparation tasks.'
-              : 'All preparation gates have completion evidence. This does not establish an investor decision.';
+  const reason = data.connectedActive
+    ? (data.milestones.find((item) => item.status !== 'complete')?.detail ??
+      'All preparation gates have completion evidence. This does not establish an investor decision.')
+    : data.outdated
+      ? 'Saved inputs changed. The earlier recommendation needs a fresh plan before another review.'
+      : !reviewed('financial')
+        ? (financial?.why ?? 'No selected financial evidence is available yet.')
+        : !data.goal?.investorId
+          ? 'Your financial explanation is reviewed, but no investor is selected. Selecting one lets June tailor the brief to saved investor research.'
+          : !reviewed('brief')
+            ? (investor?.why ?? 'The selected investor has no prepared brief yet.')
+            : !reviewed('rehearse')
+              ? 'The explanation has been reviewed. A completed rehearsal assessment is still needed to check how you explain it and identify remaining gaps.'
+              : data.feedback.length
+                ? 'Saved assessment feedback still has unresolved preparation tasks.'
+                : 'All preparation gates have completion evidence. This does not establish an investor decision.';
   const projection = projectSchedule(data);
   const hours = projection.rows
     .filter((item) => item.status !== 'complete')
