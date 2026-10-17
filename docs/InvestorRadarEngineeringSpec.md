@@ -112,7 +112,7 @@ NotificationDelivery
 
 Consume a result, insert its radar event, create any eligible delivery, and mark its publication consumed in one transaction. A database uniqueness constraint is authoritative under concurrent workers. Replayed `resultId` with the same body is a no-op; a different body is a conflict, not an overwrite.
 
-Use an upstream canonical event key when available. Otherwise deduplicate the subject, category, and sorted immutable evidence IDs. The fallback prevents replay duplicates but cannot guarantee that two different pages about the same event are merged. Do not claim semantic cross-page deduplication unless the producer provides a stable event identity. A changed page alone does not justify an investor-news alert.
+Use an upstream canonical event key when available. Otherwise deduplicate the subject, category, source URL, and exact supporting quote. An explicit correction also includes its superseded evidence ID and its own immutable evidence ID in the key, so it can retain the original canonical event key without being suppressed. Replaying that correction still produces only one event. The fallback cannot guarantee that two different pages about the same event are merged. Do not claim semantic cross-page deduplication unless the producer provides a stable event identity. A changed page alone does not justify an investor-news alert.
 
 Corrections append a new event referencing the earlier event. Deleted, dismissed, superseded, or stale recommendations must not silently return as new leads. Tracking a candidate preserves its event history and links it to the new tracked investor; it does not resend the original candidate notification.
 

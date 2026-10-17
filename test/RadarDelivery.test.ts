@@ -261,6 +261,8 @@ describe('radar publication and founder delivery', () => {
   );
   it('preserves corrections and suppresses superseded pending alerts', async () => {
     const { service, investor, evidence, research, send } = await fixture();
+    if (!evidence.signal) throw new Error('Expected classified fixture evidence.');
+    evidence.signal.canonicalEventKey = 'same-external-event';
     await enable(service);
     await service.investors.check(investor.id, 'first');
     research.discover.mockResolvedValue([
@@ -273,6 +275,7 @@ describe('radar publication and founder delivery', () => {
       },
     ]);
     await service.investors.check(investor.id, 'correction');
+    await service.investors.check(investor.id, 'correction-replay');
     await service.radar.deliverOne();
     const state = await service.read();
     expect(state.radar.events).toHaveLength(2);

@@ -84,12 +84,14 @@ export function publishRadarResult(
         subjectKey,
         signal.category,
         signal.canonicalEventKey ?? [evidence.url, signal.supportingQuote],
+        ...(evidence.supersedesEvidenceId ? [evidence.supersedesEvidenceId, evidence.id] : []),
       ]),
     )
     .digest('hex');
   if (state.radar.events.some((item) => item.dedupeKey === dedupeKey)) return;
   if (
     investor &&
+    !evidence.supersedesEvidenceId &&
     state.radar.events.some(
       (item) =>
         item.investorId === investor.id &&
