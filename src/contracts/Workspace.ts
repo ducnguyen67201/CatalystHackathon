@@ -5,7 +5,11 @@ import {
   evaluationResponseRecordSchema,
 } from './RehearsalEvaluation.js';
 import { z } from 'zod';
-import { comparableDealSchema, discoveryStateSchema } from './InvestorDiscovery.js';
+import {
+  comparableDealSchema,
+  discoveryStateSchema,
+  investorPreferencesSchema,
+} from './InvestorDiscovery.js';
 import { onboardingSchema, meetingSchema } from './Onboarding.js';
 import { practiceContextSchema } from './PracticeContext.js';
 import { trackedInvestorSchema } from './InvestorTracking.js';
@@ -50,6 +54,7 @@ export const profileSchema = z.strictObject({
   goal: z.string().max(1000),
   version: z.int().positive(),
   watchlist: z.array(z.string().trim().min(2).max(100)).max(5),
+  investorPreferences: investorPreferencesSchema.optional(),
 });
 
 export type Profile = z.infer<typeof profileSchema>;

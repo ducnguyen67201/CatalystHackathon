@@ -5,6 +5,7 @@ import {
   DiscoveryFrequency,
   SuggestionStatus,
   suggestionLimit,
+  investorPreferencesSchema,
 } from '../contracts/InvestorDiscovery.js';
 import { JobStatus, jobSchema, type StateResponse } from '../contracts/Workspace.js';
 import {
@@ -12,6 +13,8 @@ import {
   listCurrentSuggestions,
 } from '../features/InvestorSuggestionRules.js';
 import { request } from './ApiClient.js';
+import { InvestorPreferencesForm } from './InvestorPreferencesForm.js';
+import { InvestorModal } from './InvestorModal.js';
 
 /** Candidate suggestions stay separate from the founder's monitored watchlist. */
 export function InvestorSuggestions({
@@ -24,6 +27,10 @@ export function InvestorSuggestions({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [editingPreferences, setEditingPreferences] = useState(false);
+  const preferences = investorPreferencesSchema.parse(
+    state.workspace.profile.investorPreferences ?? {},
+  );
   const schedule = state.workspace.discovery;
   const suggestions = listCurrentSuggestions(state.workspace);
   const job = state.jobs.find((item) => item.kind === 'discover-investors');
@@ -48,11 +55,12 @@ export function InvestorSuggestions({
     <section className="investor-suggestions" aria-label="Suggested investors">
       <div className="investor-discovery">
         <div>
-          <div className="eyebrow">Learn from similar companies</div>
-          <h2>A few more investors to consider.</h2>
+          <div className="eyebrow">Discover your next investors</div>
+          <h2>Find investors who fit your company.</h2>
           <p className="muted">
-            Up to three sourced suggestions. Only investors you choose to track receive individual
-            monitoring.
+            Explore angels, accelerators and venture firms using your company context and saved
+            preferences. Previous conversations are background, not the person to keep searching
+            for.
           </p>
         </div>
         <button
@@ -68,51 +76,103 @@ export function InvestorSuggestions({
           }}
         >
           <Search size={16} />
-          {pending ? 'Researching similar rounds…' : 'Find more'}
+          {pending ? 'Finding investors…' : 'Find investors'}
         </button>
       </div>
-      <div className="investor-schedule">
-        <label>
-          Discover alternatives{' '}
-          <select
-            value={schedule.frequency}
-            disabled={busy}
-            onChange={(event) => {
-              const frequency = event.target.value;
-              void act(async () => {
-                await request(
-                  '/investors/discovery/schedule',
-                  z.object({ ok: z.boolean() }),
-                  { frequency },
-                  'PUT',
-                );
-              });
-            }}
-          >
-            <option value={DiscoveryFrequency.WEEKLY}>
-              Weekly and when company context changes
-            </option>
-            <option value={DiscoveryFrequency.PAUSED}>Paused</option>
-          </select>
-        </label>
-        <span>
-          Last completed: {schedule.lastAt ? new Date(schedule.lastAt).toLocaleString() : 'Not yet'}
-        </span>
-        <span>
-          Next check:{' '}
-          {schedule.nextAt
-            ? new Date(schedule.nextAt).toLocaleString()
-            : schedule.frequency === DiscoveryFrequency.PAUSED
-              ? 'Paused'
-              : 'After company profile setup'}
-        </span>
+      <div className="investor-search-summary">
+        <div>
+          <strong>
+            {preferences.types.length ? preferences.types.join(' · ') : 'All investor types'} ·{' '}
+            {preferences.firmSize}
+          </strong>
+          <p>
+            {state.workspace.profile.stage} · {state.workspace.profile.sector || 'Sector unknown'} ·{' '}
+            {state.workspace.profile.geography || 'Geography unknown'}
+          </p>
+          {preferences.referenceFirms.length > 0 && (
+            <small>Examples: {preferences.referenceFirms.join(', ')}</small>
+          )}
+          {preferences.priorities && <small>{preferences.priorities}</small>}
+        </div>
+        <button
+          className="button secondary"
+          onClick={(event) => {
+            event.currentTarget.focus();
+            setEditingPreferences(true);
+          }}
+        >
+          Search preferences
+        </button>
       </div>
+      {editingPreferences && (
+        <InvestorModal
+          title="Search preferences"
+          description="Choose the investors and support you’re looking for."
+          onClose={() => setEditingPreferences(false)}
+        >
+          <InvestorPreferencesForm
+            preferences={preferences}
+            onRefresh={onRefresh}
+            onSaved={() => {
+              setEditingPreferences(false);
+              setMessage('Search preferences saved. Choose Find investors to search.');
+            }}
+          />
+        </InvestorModal>
+      )}
+      <details className="investor-discovery-settings">
+        <summary>
+          Discovery schedule ·{' '}
+          {schedule.frequency === DiscoveryFrequency.PAUSED ? 'Paused' : 'Weekly'}
+        </summary>
+        <div className="investor-schedule">
+          <label>
+            Discover investors{' '}
+            <select
+              value={schedule.frequency}
+              disabled={busy}
+              onChange={(event) => {
+                const frequency = event.target.value;
+                void act(async () => {
+                  await request(
+                    '/investors/discovery/schedule',
+                    z.object({ ok: z.boolean() }),
+                    { frequency },
+                    'PUT',
+                  );
+                });
+              }}
+            >
+              <option value={DiscoveryFrequency.WEEKLY}>
+                Weekly and when company context or preferences change
+              </option>
+              <option value={DiscoveryFrequency.PAUSED}>Paused</option>
+            </select>
+          </label>
+          <span>
+            Last completed:{' '}
+            {schedule.lastAt ? new Date(schedule.lastAt).toLocaleString() : 'Not yet'}
+          </span>
+          <span>
+            Next check:{' '}
+            {schedule.nextAt
+              ? new Date(schedule.nextAt).toLocaleString()
+              : schedule.frequency === DiscoveryFrequency.PAUSED
+                ? 'Paused'
+                : 'After company profile setup'}
+          </span>
+        </div>
+        <p className="muted">{schedule.note}</p>
+        <p className="muted">
+          Discovery runs while the worker is running. Pausing stops new scheduled jobs; queued jobs
+          may finish.
+        </p>
+      </details>
       {!ready && (
         <p className="investor-demo">
           Add your company stage, sector and geography before discovering comparable companies.
         </p>
       )}
-      <p className="muted">{schedule.note}</p>
       {suggestions.length >= suggestionLimit && (
         <p className="muted">
           Track or dismiss a suggestion to make room for another. We remember your decisions.
@@ -223,10 +283,6 @@ export function InvestorSuggestions({
           );
         })}
       </div>
-      <p className="muted">
-        Discovery runs while the worker is running. Pausing stops new scheduled jobs; queued jobs
-        may finish. A similar funding round is a reason to investigate, not a promise of investment.
-      </p>
     </section>
   );
 }

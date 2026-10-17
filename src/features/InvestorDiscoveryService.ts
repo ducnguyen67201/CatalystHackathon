@@ -6,6 +6,7 @@ import {
   SuggestionStatus,
   suggestionLimit,
   type DiscoveryState,
+  type InvestorPreferences,
 } from '../contracts/InvestorDiscovery.js';
 import { CheckFrequency, InvestorOrigin } from '../contracts/InvestorTracking.js';
 import {
@@ -25,6 +26,16 @@ export class InvestorDiscoveryService {
     private readonly workspace: WorkspaceService,
     private readonly research: ResearchProvider,
   ) {}
+
+  async setPreferences(preferences: InvestorPreferences): Promise<void> {
+    await this.workspace.change((state) => {
+      if (JSON.stringify(state.profile.investorPreferences) === JSON.stringify(preferences)) return;
+      state.profile.investorPreferences = preferences;
+      state.profile.version++;
+      state.discovery.note =
+        'Preferences saved. Find investors using your updated company context.';
+    });
+  }
 
   async setFrequency(frequency: DiscoveryState['frequency']): Promise<void> {
     await this.workspace.change((state) => {
@@ -82,7 +93,12 @@ export class InvestorDiscoveryService {
       { ...initial.profile, watchlist: [] },
       undefined,
       {
-        knownInvestors: initial.investors.map((investor) => investor.name).slice(0, 20),
+        knownInvestors: [
+          ...new Set([
+            ...initial.investors.map((investor) => investor.name),
+            ...initial.profile.watchlist,
+          ]),
+        ].slice(0, 20),
         excludedInvestors: initial.discovery.suggestions
           .filter(
             (suggestion) =>
@@ -103,6 +119,7 @@ export class InvestorDiscoveryService {
         return state.discovery.note;
       }
       const excluded = new Set([
+        ...state.profile.watchlist.map(investorNameKey),
         ...state.investors.map((investor) => investorNameKey(investor.name)),
         ...state.discovery.suggestions
           .filter(

@@ -16,7 +16,12 @@ interface DiscoveryProfile {
 }
 
 export function hasDiscoveryProfile(profile: DiscoveryProfile): boolean {
-  return Boolean(profile.stage && profile.sector.trim() && profile.geography.trim());
+  return Boolean(
+    profile.stage &&
+    profile.stage !== 'Not confirmed' &&
+    profile.sector.trim() &&
+    profile.geography.trim(),
+  );
 }
 
 /** Stale suggestions stay in history, but never appear as current recommendations. */

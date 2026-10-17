@@ -1598,7 +1598,9 @@ describe('automatic research archiving', () => {
       if (!id) {
         throw new Error('Archive missing');
       }
-      expect((await store.findResearchRun(id))?.searches).toHaveLength(2);
+      const archive = await store.findResearchRun(id);
+      expect(archive?.searches).toHaveLength(1);
+      expect(archive?.searches[0]?.query).not.toContain('Archive Test');
       await recording.investors.check(target.id, 'archive-check', 2);
       expect(
         (await store.listResearchRuns({ jobId: 'archive-check', limit: 20, offset: 0 })).items,
@@ -1943,4 +1945,36 @@ describe('guided question and Why workflow', () => {
     expect(session?.evaluations[0]?.status).toBe('completed');
     expect(session?.evaluations[0]?.reason).toBeNull();
   });
+});
+
+it('persists validated discovery preferences without modifying meeting context or starting research', async () => {
+  const before = await service.read();
+  const jobsBefore = await store.listJobs();
+  const preferences = {
+    types: ['Angel', 'Accelerator'],
+    firmSize: 'Medium',
+    referenceFirms: ['YC', 'a16z'],
+    priorities: 'Hands-on B2B experience',
+  };
+  const response = await app.inject({
+    method: 'PUT',
+    url: '/api/investors/discovery/preferences',
+    headers: { cookie: sessionCookie },
+    payload: preferences,
+  });
+  expect(response.statusCode).toBe(200);
+  const current = (await state()).workspace;
+  expect(current.profile.investorPreferences).toEqual(preferences);
+  expect(current.profile.version).toBe(before.profile.version + 1);
+  expect(current.onboarding.meeting).toEqual(before.onboarding.meeting);
+  expect(current.investors).toEqual(before.investors);
+  expect(await store.listJobs()).toEqual(jobsBefore);
+  const invalid = await app.inject({
+    method: 'PUT',
+    url: '/api/investors/discovery/preferences',
+    headers: { cookie: sessionCookie },
+    payload: { types: ['unknown'] },
+  });
+  expect(invalid.statusCode).toBe(400);
+  expect((await service.read()).profile.investorPreferences).toEqual(preferences);
 });
