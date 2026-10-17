@@ -209,6 +209,23 @@ The current single-workspace aggregate is reused for event/outbox transactions; 
 
 ## Post-practice evaluator
 
+Completed reviews begin with a compact Pitch Preparation Report: strengths, financial blind
+spots and recommended preparation. `PitchPreparationReport.tsx` renders the saved output;
+the detailed evidence and practice review sits in a disclosure below it. The
+`claims-coaching-v4-analyst-report` prompt assesses up to three strengths in the existing
+coaching call, with claim and founder-turn references. Validation rejects unknown,
+contradicted or superseded claim citations, mismatched turns and numerical praise.
+Citation validation does not certify the semantic accuracy of model judgments. Blind spots
+and preparation reuse the validated coaching gaps, suggestions and missing inputs. No extra
+provider call or migration is needed. Earlier reports retain their original data and explicitly
+say strengths were not assessed; empty new results do not imply financial correctness.
+New coaching responses require an analyst interpretation, a conditional diligence implication
+and concrete preparation steps per finding, plus significance for each demonstrated strength.
+These fields render directly in the compact report and share the existing numerical provenance
+checks. Older reports without analysis remain readable without synthetic backfill. The prompt
+sets a professional analytical standard without claiming a CFA credential, certification or audit
+opinion; credit recurrence and cash timing remain unknown unless the frozen evidence establishes them.
+
 `RehearsalEvaluation.ts` defines versioned evidence, claim, coaching and report contracts. `EvaluationContextAssembler.ts` freezes a bounded recent-year metric catalog and attributed company/meeting/investor sources. For a selected scenario it uses the company, investor and current financial snapshot saved in that scenario, even if workspace data has since changed; open conversations use the current selected workspace evidence. `EvaluationProvider.ts` owns the two prompts and provider port; `Evaluation.ts` supplies the live structured-output adapter. `EvaluationChecks.ts` checks quotations, references, numerical provenance and exact decimal comparisons.
 
 `RehearsalEvaluationService.ts` queues reviews when authoritative transcripts are saved, orchestrates extraction/checking/coaching, and preserves clarifications and written retries as new records. These records live in existing rehearsal JSON; old records receive empty defaults without a migration. `PrismaStore.save` atomically saves transcripts and queue jobs, and its optional completion claim fences result publication against the current unexpired lease. A queued record plus its latest job determines pending/failure status; no transcript is erased on evaluation failure.

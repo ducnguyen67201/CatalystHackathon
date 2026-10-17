@@ -1357,6 +1357,14 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
     const result = (await coached.read()).rehearsals.find((s) => s.id === retry.id)?.evaluations[0];
     expect(result?.report?.checks[0]?.support).toBe('supported');
     expect(result?.report?.coaching.items).toHaveLength(0);
+    expect(completed.report?.coaching.items[0]?.analysis?.preparationSteps).toHaveLength(3);
+    expect(result?.report?.coaching.strengths?.[0]?.significance).toContain('factual accuracy');
+    expect(result?.report?.coaching.strengths?.[0]?.statement).toBe(
+      'You accurately stated the saved operating result.',
+    );
+    expect(result?.report?.coaching.strengths?.[0]?.turnIds).toEqual([
+      result?.turns.find((turn) => turn.role === 'user')?.id,
+    ]);
     expect(result?.report?.coaching.comparison?.outcome).toBe('not_comparable');
     expect(
       (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0],

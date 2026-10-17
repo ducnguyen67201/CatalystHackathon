@@ -88,6 +88,62 @@ describe('post-practice evaluator', () => {
     const checks = checkClaims(extraction, data);
     expect(checks[0]?.support).toBe('supported');
     expect((await provider.coach(data, extraction, checks)).items).toEqual([]);
+    const coaching = validateCoaching(
+      await provider.coach(data, extraction, checks),
+      extraction,
+      data,
+      checks,
+    );
+    expect(coaching.strengths?.[0]?.turnIds).toEqual(['answer']);
+  });
+  it('requires an explicit strengths assessment and rejects fabricated, contradicted or superseded praise', async () => {
+    const data = input('Our operating income is -59797 unspecified for 2026-07.');
+    const extraction = await provider.extract(data);
+    const checks = checkClaims(extraction, data);
+    const coaching = await provider.coach(data, extraction, checks);
+    const strength = coaching.strengths?.[0];
+    if (!strength) throw new Error('Missing strength fixture');
+    const legacy = { ...coaching };
+    delete legacy.strengths;
+    expect(() => validateCoaching(legacy, extraction, data, checks)).toThrow();
+    for (const invalid of [
+      { ...strength, claimIds: ['invented'] },
+      { ...strength, turnIds: ['question'] },
+      { ...strength, statement: 'You achieved 999 percent growth.' },
+    ])
+      expect(() =>
+        validateCoaching({ ...coaching, strengths: [invalid] }, extraction, data, checks),
+      ).toThrow();
+    expect(() =>
+      validateCoaching(
+        coaching,
+        extraction,
+        data,
+        checks.map((check) => ({ ...check, support: 'contradicted' })),
+      ),
+    ).toThrow('strength evidence');
+    expect(() =>
+      validateCoaching(
+        coaching,
+        {
+          ...extraction,
+          claims: extraction.claims.map((claim) => ({ ...claim, supersededByTurnId: 'later' })),
+        },
+        data,
+        checks,
+      ),
+    ).toThrow('strength evidence');
+    const wrong = input();
+    const wrongExtraction = await provider.extract(wrong);
+    const wrongChecks = checkClaims(wrongExtraction, wrong);
+    expect(
+      validateCoaching(
+        await provider.coach(wrong, wrongExtraction, wrongChecks),
+        wrongExtraction,
+        wrong,
+        wrongChecks,
+      ).strengths,
+    ).toEqual([]);
   });
   it('leaves unsupported metrics and unclear periods unknown', async () => {
     const data = input('Our ROAS is 4.2 unspecified for 2026-07.');
@@ -96,6 +152,45 @@ describe('post-practice evaluator', () => {
     );
     const unclear = input('Our operating income is 122503.');
     expect(checkClaims(await provider.extract(unclear), unclear)[0]?.support).toBe('ambiguous');
+  });
+  it('requires analyst reasoning for new advice and validates figures in every new explanation field', async () => {
+    const data = input();
+    const extraction = await provider.extract(data);
+    const checks = checkClaims(extraction, data);
+    const coaching = await provider.coach(data, extraction, checks);
+    const item = coaching.items[0];
+    if (!item?.analysis) throw new Error('Missing analyst fixture');
+    const legacyItem = { ...item };
+    delete legacyItem.analysis;
+    expect(() =>
+      validateCoaching({ ...coaching, items: [legacyItem] }, extraction, data, checks),
+    ).toThrow();
+    for (const analysis of [
+      { ...item.analysis, financialInterpretation: 'Your cash runway is 999 months.' },
+      { ...item.analysis, investorImplication: 'The investor requires 999 percent growth.' },
+      { ...item.analysis, preparationSteps: ['Raise 999 dollars.'] },
+    ])
+      expect(() =>
+        validateCoaching({ ...coaching, items: [{ ...item, analysis }] }, extraction, data, checks),
+      ).toThrow('Unsupported numerical');
+    const supported = input('Our operating income is -59797 unspecified for 2026-07.');
+    const supportedExtraction = await provider.extract(supported);
+    const supportedChecks = checkClaims(supportedExtraction, supported);
+    const praise = await provider.coach(supported, supportedExtraction, supportedChecks);
+    expect(() =>
+      validateCoaching(
+        {
+          ...praise,
+          strengths: praise.strengths?.map((strength) => ({
+            ...strength,
+            significance: 'This proves 999 percent growth.',
+          })),
+        },
+        supportedExtraction,
+        supported,
+        supportedChecks,
+      ),
+    ).toThrow('Uncited strength value');
   });
   it('does not compare forecasts or superseded claims to historical actuals', async () => {
     const data = input('We forecast operating income of 122503 unspecified for 2026-07.');

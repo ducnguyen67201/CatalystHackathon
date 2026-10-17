@@ -7,6 +7,7 @@ import {
 } from '../contracts/RehearsalEvaluation.js';
 import { command, request } from './ApiClient.js';
 import { EvidenceReview } from './EvidenceReview.js';
+import { PitchPreparationReport } from './PitchPreparationReport.js';
 import type { EvidenceReview as EvidenceReviewData } from '../contracts/EvidenceReview.js';
 
 /** Shared voice/video review. Child written attempts reuse this panel and the same evaluator. */
@@ -213,7 +214,7 @@ function SelectedEvaluationPanel({
       });
   return (
     <section className="panel evaluation-panel" aria-label="Post-practice coaching">
-      <h3>Post-practice coaching</h3>
+      {!evaluation?.report && <h3>Post-practice coaching</h3>}
       {data && data.evaluations.length > 1 && (
         <label>
           Review version
@@ -282,7 +283,13 @@ function SelectedEvaluationPanel({
           {evaluation.reason && <p>{evaluation.reason}</p>}
           {evaluation.report && (
             <>
-              <p>{evaluation.report.coaching.summary}</p>
+              <PitchPreparationReport
+                evaluation={evaluation}
+                fictional={
+                  evaluation.legacyDemo ||
+                  (data?.context?.sources.some((source) => source.origin === 'fictional') ?? false)
+                }
+              />
               {evaluation.report.coaching.comparison && (
                 <p>
                   <strong>
@@ -294,17 +301,17 @@ function SelectedEvaluationPanel({
                   {evaluation.report.coaching.comparison.explanation}
                 </p>
               )}
-              {!evaluation.report.coaching.items.length && (
-                <p>No additional pivot was identified within this review's coverage.</p>
-              )}
-              <EvidenceReview
-                key={`${sessionId}:${evaluation.id}`}
-                sessionId={sessionId}
-                evaluation={evaluation}
-                context={data?.context ?? null}
-                cache={evidenceCache.current}
-                renderCoaching={renderCoaching}
-              />
+              <details className="report-detailed-review">
+                <summary>Explore answers, evidence and practice suggestions</summary>
+                <EvidenceReview
+                  key={`${sessionId}:${evaluation.id}`}
+                  sessionId={sessionId}
+                  evaluation={evaluation}
+                  context={data?.context ?? null}
+                  cache={evidenceCache.current}
+                  renderCoaching={renderCoaching}
+                />
+              </details>
             </>
           )}
         </>

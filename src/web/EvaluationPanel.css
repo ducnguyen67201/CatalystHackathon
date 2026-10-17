@@ -1,5 +1,5 @@
 .evaluation-panel {
-  padding: clamp(20px, 3vw, 32px);
+  padding: clamp(16px, 2vw, 24px);
   margin-block: 24px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -75,4 +75,77 @@
   color: var(--ink);
   font: inherit;
   font-weight: 400;
+}
+
+.evaluation-panel .preparation-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.evaluation-panel .preparation-report-header h3 {
+  margin-bottom: 3px;
+}
+.evaluation-panel .preparation-report-header p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.evaluation-panel .preparation-report-section {
+  padding-block: 14px;
+  border-top: 1px solid #deded5;
+}
+.evaluation-panel .preparation-report-section:first-of-type {
+  border-top: 0;
+}
+.evaluation-panel .preparation-report-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.preparation-report-section h4 svg {
+  flex-shrink: 0;
+}
+.report-strength-icon {
+  color: #277449;
+}
+.report-gap-icon {
+  color: #a33d34;
+}
+.evaluation-panel .preparation-report-section p {
+  margin: 4px 0;
+}
+.preparation-report-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.preparation-report-section li + li {
+  margin-top: 10px;
+}
+.evaluation-panel .report-citations {
+  margin: 5px 0 0;
+  font-size: 0.85rem;
+}
+.evaluation-panel .report-citations summary {
+  color: #55634b;
+  font-weight: 500;
+}
+.evaluation-panel .report-detailed-review {
+  margin: 4px 0 12px;
+  border-top: 1px solid #deded5;
+  padding-top: 12px;
+}
+
+.evaluation-panel .report-implication {
+  margin-top: 7px;
+  color: #50594b;
+}
+.preparation-report-section .report-preparation-steps {
+  margin: 7px 0 0;
+  padding-left: 22px;
+}
+.preparation-report-section .report-preparation-steps li + li {
+  margin-top: 5px;
 }
