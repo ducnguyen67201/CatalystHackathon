@@ -465,3 +465,69 @@ carry the feedback into an editable objective. Choose an investor and review com
 financial, investor and practice sources before generating. Use **Check now** in Investor
 research first when fresh research is needed. Opening these views never starts research
 or a provider session automatically.
+
+## Continuous fundraising preparation
+
+The dashboard now begins with **June · Your preparation plan**. Confirm the intended round,
+prior financing rounds (or leave them unknown), amount/currency, desired preparation date
+and optional saved investor. June prepares a sourced financial explanation and comparison
+chart, plus an investor brief when an investor is selected. Exact source figures and CSV
+rows remain inspectable; Tidewell evidence remains labeled fictional.
+
+Review a prepared explanation, record your decision and optional founder note, then submit
+an original written answer. Submission sends the frozen evidence and answer to the existing
+AI evaluator through the durable worker. The dashboard shows pending/failure states, saved
+assessments and outstanding follow-ups. Review panels support the existing retry flow.
+Accepting preparation or submitting an answer does not establish improved business results
+or investment eligibility. Founder notes remain unverified and do not rewrite financials.
+
+Automatic internal drafting is offered when confirming the goal and can be paused under
+**How June keeps this plan current**. The existing worker checks saved company, financial,
+selected-investor and completed-review inputs every tick. Meaningful changes append a new
+plan; unchanged inputs do not generate drafts or model calls. Prior plans, review decisions
+and source evidence are preserved. Current drafts reject acceptance/rehearsal if their
+inputs changed. **Check saved inputs now** also refreshes manually while automation is paused.
+The worker must be running; the dashboard discloses a missing/stale heartbeat.
+
+Drafting uses deterministic local templates, so automatic drafting adds no provider cost.
+It starts no research, messages or voice/video sessions. Existing investor research keeps
+its own independently configured schedules. Written assessment uses the configured OpenAI
+evaluator only after explicit submission. The displayed date is a founder's preparation
+target; conditional completion estimates use saved planning assumptions, not a funding prediction.
+
+Restart local development to apply the additive preparation-storage migration. Existing
+financial snapshots, profile versions, practices and briefs remain intact. See the
+[engineering spec](docs/FundraisingPreparationEngineeringSpec.md) for proposed later work.
+
+### Financial statement comparison
+
+The preparation dashboard's **Financial review** opens **Operating performance**, a statement-style
+comparison with current/prior period bridges and amount/percentage variances. Choose a
+saved current month and an earlier comparison month. The default comparison is the previous
+calendar month; missing months are never replaced silently. Operating expenses and cost of
+revenue reduce their cumulative bridge, while credits are shown separately from operating
+results. Exact values, period labels and CSV row references remain visible. Select a line
+item to inspect its calculation and source columns.
+
+Current-period bars are charcoal, comparison bars grey; variance colors distinguish
+favorable and unfavorable accounting movement. Green is not a verified business improvement.
+Percentages use the absolute comparison value and remain unavailable for a zero base. The
+preparation actions remain in the compact timeline. This replaces the earlier
+workflow graph; it does not create an unsupported financial forecast.
+
+### Dashboard preparation timeline and pace
+
+The main dashboard opens with a compact preparation schedule: current operating result,
+preparation target, conditional completion, active work and the next review. Completed steps,
+financial review, supporting materials and the rest of the workspace open on demand.
+**Assumptions & expected outcome** saves founder-estimated hours per remaining milestone,
+daily availability and expected cash-evidence delivery. No dates or hours are preconfirmed.
+Slower/faster pace controls compare temporary scenarios; **Restore planned pace** returns
+to saved assumptions. These estimates concern reviewed preparation, not fundraising outcomes.
+
+The forecast models founder work sequentially on calendar days, waits for assumed cash
+delivery before the investor brief, and rounds fractional completion days up. Unconfirmed,
+overdue or stale planning inputs suppress the estimate. A missing target suppresses the
+on-track judgment. Accepted current artifact reviews in seven days show recorded activity
+separately; review counts are not used as a measured productivity forecast. New saved plans
+require reconfirmation of effort. Schedule history is preserved with the preparation plan.

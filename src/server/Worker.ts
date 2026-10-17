@@ -9,6 +9,7 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
   await service.investors.discovery.tick(new Date());
   await service.tickSchedule(new Date());
   await service.reviewDueMilestones(new Date());
+  await service.preparation.reconcile();
   const job = await service.store.claimJob(new Date());
   if (!job) {
     return false;

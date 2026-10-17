@@ -526,7 +526,8 @@ describe('PostgreSQL-backed application workflow', () => {
         headers: { cookie: renewedCookie },
       });
       expect(restored.statusCode).toBe(200);
-      const publicBefore = (({ radar: _privateRadar, ...value }) => value)(before);
+      const publicBefore = (({ radar: _privateRadar, preparation: _preparation, ...value }) =>
+        value)(before);
       expect(stateResponseSchema.parse(restored.json()).workspace).toEqual({
         ...publicBefore,
         rehearsals: before.rehearsals.map((s) => ({
@@ -2644,3 +2645,243 @@ it('protects recording reads, resolves provider IDs from stored sessions and kee
     await playbackApp.close();
   }
 });
+describe('Continuous preparation plan', () => {
+  it('serves read-only financial comparisons under the existing access and origin controls', async () => {
+    const { financialPerformanceSchema } = await import('../src/contracts/FinancialPerformance.js');
+    const state = await service.read();
+    const snapshot = state.snapshots[0];
+    if (!snapshot) throw new Error('Missing fixture');
+    await service.change((current) => {
+      current.onboarding.snapshotId = snapshot.id;
+    });
+    const before = await service.read();
+    const response = await app.inject({
+      url: '/api/financial-performance?current=2026-07&comparison=2026-06',
+      headers: { cookie: sessionCookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(
+      financialPerformanceSchema.parse(response.json()).rows.find((row) => row.id === 'credit')
+        ?.current?.value,
+    ).toBe('182300');
+    expect(await service.read()).toEqual(before);
+    expect((await app.inject('/api/financial-performance')).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          url: '/api/financial-performance?current=2030-01',
+          headers: { cookie: sessionCookie },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: '/api/financial-performance',
+          headers: { cookie: sessionCookie, origin: 'https://untrusted.example' },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+
+  it('persists goal, drafts, review and queued written assessment without changing source history', async () => {
+    const before = await service.read();
+    const selected = before.snapshots[0];
+    if (!selected) throw new Error('Missing financial fixture');
+    await service.change((state) => {
+      state.onboarding.snapshotId = selected.id;
+    });
+    const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+    const read = await app.inject({ url: '/api/preparation-plan', headers });
+    expect(read.statusCode).toBe(200);
+    expect(read.headers['cache-control']).toBe('private, no-store');
+    const { preparationViewSchema } = await import('../src/contracts/FundraisingPreparation.js');
+    const initial = preparationViewSchema.parse(read.json());
+    const goal = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-plan/goal',
+      headers,
+      payload: {
+        version: initial.version,
+        automatic: true,
+        goal: {
+          round: 'Series A',
+          previousRounds: 2,
+          amount: '2000000',
+          currency: 'CAD',
+          targetDate: '2026-11-01',
+          timezone: 'America/Toronto',
+          investorId: null,
+        },
+      },
+    });
+    expect(goal.statusCode).toBe(200);
+    const saved = preparationViewSchema.parse(
+      (await app.inject({ url: '/api/preparation-plan', headers })).json(),
+    );
+    const artifact = saved.plan?.artifacts[0];
+    if (!saved.plan || !artifact) throw new Error('Missing prepared artifact');
+    const scheduleRequest = {
+      version: saved.version,
+      planId: saved.plan.id,
+      assumptions: {
+        dailyHours: 2,
+        cashExpectedDate: '2026-10-19',
+        hours: { financial: 2, investor: 2, brief: 2, rehearse: 4 },
+      },
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/schedule',
+          headers,
+          payload: scheduleRequest,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const scheduleView = preparationViewSchema.parse(
+      (await app.inject({ url: '/api/preparation-plan', headers })).json(),
+    );
+    expect(scheduleView.schedule).toMatchObject(scheduleRequest.assumptions);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/schedule',
+          headers,
+          payload: scheduleRequest,
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/schedule',
+          headers,
+          payload: {
+            ...scheduleRequest,
+            assumptions: { ...scheduleRequest.assumptions, dailyHours: -1 },
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/schedule',
+          payload: scheduleRequest,
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/schedule',
+          headers: { ...headers, origin: 'https://untrusted.example' },
+          payload: scheduleRequest,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const decision = {
+      planId: saved.plan.id,
+      artifactId: artifact.id,
+      kind: 'accepted',
+      note: '',
+      requestKey: randomUUID(),
+    };
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/decisions',
+          headers,
+          payload: decision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/decisions',
+          headers,
+          payload: decision,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const answer = {
+      planId: saved.plan.id,
+      artifactId: artifact.id,
+      answer: 'Our operating income is -59797 unspecified for 2026-07.',
+      requestKey: randomUUID(),
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-plan/rehearsals',
+      headers,
+      payload: answer,
+    });
+    expect(first.statusCode).toBe(202);
+    const repeated = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-plan/rehearsals',
+      headers,
+      payload: answer,
+    });
+    expect(repeated.json()).toEqual(first.json());
+    const persisted = await store.load();
+    const id = zTestId(first.json());
+    const session = persisted?.rehearsals.find((item) => item.id === id);
+    const evaluation = session?.evaluations[0];
+    expect(session?.evaluationContext?.snapshotId).toBe(selected.id);
+    expect(session?.evaluationContext?.investorId).toBeNull();
+    expect(session?.evaluationContext?.sources.some((source) => source.kind === 'meeting')).toBe(
+      false,
+    );
+    expect(evaluation?.status).toBe('queued');
+    expect(
+      (await store.listJobs()).some((job) => job.kind === `evaluate:${id}:${evaluation?.id}`),
+    ).toBe(true);
+    expect(persisted?.snapshots).toEqual(before.snapshots);
+    expect(persisted?.preparation?.decisions).toHaveLength(1);
+    const publicState = stateResponseSchema.parse(
+      (await app.inject({ url: '/api/state', headers })).json<unknown>(),
+    );
+    expect(publicState.workspace).not.toHaveProperty('preparation');
+    await service.preparation.reconcile();
+    expect((await service.read()).preparation?.plans).toHaveLength(1);
+    await service.change((state) => {
+      state.profile.version++;
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-plan/decisions',
+          headers,
+          payload: { ...decision, requestKey: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await service.preparation.reconcile();
+    expect((await service.read()).preparation?.plans).toHaveLength(2);
+    const historical = await store.load();
+    expect(historical?.preparation?.plans[0]).toEqual(saved.plan);
+  });
+});
+
+function zTestId(value: unknown): string {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('id' in value) ||
+    typeof value.id !== 'string'
+  )
+    throw new Error('Missing response ID');
+  return value.id;
+}
