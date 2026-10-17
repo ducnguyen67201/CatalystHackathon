@@ -36,6 +36,7 @@ export function readEnvironment(values: EnvironmentValues) {
       DATABASE_URL: databaseUrlSchema,
       API_PORT: apiPortSchema,
       WEB_ORIGIN: webOriginSchema,
+      EVALUATION_MODEL: z.string().min(1).default('gpt-6.1-sol'),
       LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('debug'),
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),

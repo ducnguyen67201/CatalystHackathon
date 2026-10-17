@@ -1,3 +1,6 @@
+import { LiveEvaluation } from '../infrastructure/Evaluation.js';
+import { LiveAvatarProvider } from '../infrastructure/LiveAvatar.js';
+import { retrieveFinalAvatarTranscript } from '../features/AvatarTranscript.js';
 import { LogEvent, LogReason } from '../features/WorkflowLog.js';
 import { WorkflowLogger } from '../infrastructure/WorkflowLogger.js';
 import { PrismaStore } from '../infrastructure/PrismaStore.js';
@@ -29,5 +32,21 @@ export function createRuntime(env: Environment) {
     env.SCENARIO_MODE === 'live' && env.OPENAI_API_KEY
       ? new LiveScenarioGenerator(env.OPENAI_API_KEY, env.SCENARIO_MODEL)
       : new DemoScenarioGenerator();
-  return new WorkspaceService(store, research, logger, store, { store, generator });
+  const evaluator = new LiveEvaluation(env.OPENAI_API_KEY, env.EVALUATION_MODEL);
+  const service = new WorkspaceService(store, research, evaluator, logger, store, {
+    store,
+    generator,
+  });
+  service.retrieveAvatarTranscript = async (id) => {
+    if (
+      !(await retrieveFinalAvatarTranscript(
+        service,
+        new LiveAvatarProvider(),
+        env.LIVEAVATAR_API_KEY,
+        id,
+      ))
+    )
+      throw new Error('Transcript is still processing.');
+  };
+  return service;
 }

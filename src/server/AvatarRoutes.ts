@@ -1,3 +1,4 @@
+import { retrieveFinalAvatarTranscript } from '../features/AvatarTranscript.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { voiceSessionRequestSchema } from '../contracts/VoicePractice.js';
@@ -26,28 +27,11 @@ export function registerAvatarRoutes(
   provider: AvatarProvider,
 ): void {
   async function saveTranscript(id: string): Promise<boolean> {
-    const session = (await service.read()).rehearsals.find((item) => item.id === id);
-    if (
-      !session ||
-      session.mode !== RehearsalMode.LIVEAVATAR ||
-      !session.avatarSessionId ||
-      !env.LIVEAVATAR_API_KEY
-    ) {
-      throw new Error('LiveAvatar session unavailable.');
-    }
-    if (session.transcriptReceivedAt) {
-      return true;
-    }
-    if (session.status === 'active') {
-      return false;
-    }
-    const turns = await provider.fetchTranscript(env.LIVEAVATAR_API_KEY, session.avatarSessionId);
-    if (!turns) {
-      return false;
-    }
-    await service.finishRehearsal(id, turns, session.status === 'awaiting_transcript', true);
-    return true;
+    return retrieveFinalAvatarTranscript(service, provider, env.LIVEAVATAR_API_KEY, id);
   }
+  service.retrieveAvatarTranscript = async (id) => {
+    if (!(await saveTranscript(id))) throw new Error('Transcript is still processing.');
+  };
 
   app.post('/api/avatar/sessions', async (request, reply) => {
     const { selection } = voiceSessionRequestSchema.parse(request.body);

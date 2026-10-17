@@ -1,3 +1,4 @@
+import { registerEvaluationRoutes } from './EvaluationRoutes.js';
 import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
 import { RehearsalMode } from '../contracts/Workspace.js';
 import { readFile } from 'node:fs/promises';
@@ -158,7 +159,15 @@ export async function createApi(
   app.get('/api/health', () => ({ status: 'ready', localOnly: true }));
   app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
-      workspace: await service.read(),
+      workspace: await service.read().then((workspace) => ({
+        ...workspace,
+        rehearsals: workspace.rehearsals.map((session) => ({
+          ...session,
+          evaluationContext: null,
+          evaluations: [],
+          evaluationResponses: [],
+        })),
+      })),
       jobs: await service.store.listJobs(),
       capabilities: {
         avatarReady: isAvatarConfigured(env),
@@ -221,6 +230,7 @@ export async function createApi(
     const job = await service.store.enqueue(`manual:${body.key}`, 'radar');
     return reply.code(202).send(job);
   });
+  registerEvaluationRoutes(app, service);
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
   registerResearchRunRoutes(app, service);

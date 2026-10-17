@@ -9,7 +9,7 @@ export interface ClaimedJob {
 export interface WorkspaceStore {
   load(): Promise<Workspace | null>;
   initialize(workspace: Workspace): Promise<void>;
-  save(workspace: Workspace, expectedRevision: number): Promise<void>;
+  save(workspace: Workspace, expectedRevision: number, completedJob?: ClaimedJob): Promise<void>;
   enqueue(key: string, kind: string): Promise<Job>;
   listJobs(): Promise<Job[]>;
   claimJob(now: Date): Promise<ClaimedJob | null>;

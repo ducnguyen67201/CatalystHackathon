@@ -108,7 +108,7 @@ The API obtains a WebRTC token and conversation ID before creating the session. 
 
 Final transcripts are accepted only through signature-verified webhooks matching the configured agent and a recorded provider conversation. Browser end requests cannot supply authoritative turns. A transcript receipt makes both completed and partial delivery idempotent, including late browser-end requests. Empty and failed conversations are retained as partial records. A missing callback leaves the session awaiting provider evidence; the UI shows temporary live captions separately from the saved transcript and polls the existing state endpoint. After a browser refresh, users can reopen saved turns or close an abandoned active record. This does not remotely terminate audio still running in another tab.
 
-Standalone voice does not run the existing financial topic checker or append a reviewed brief. Evaluation, richer prompting, context assembly and feedback loops are subsequent consumers of the saved context/transcript. Legacy brief-based rehearsals keep their existing behavior. Older rehearsal JSON loads with null context and receipt fields; no historical facts or receipt timestamps are invented and no database migration is needed for these additions.
+Standalone voice does not run the existing financial topic checker or append a reviewed brief. Automatic evaluation consumes the saved transcript and separately frozen workspace evidence, as described below. Selected scenarios supply their frozen generation context to both the interviewer and evaluator. Legacy brief-based rehearsals keep their existing behavior. Older rehearsal JSON loads with null context and receipt fields; no historical facts or receipt timestamps are invented and no database migration is needed for these additions.
 
 No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. The main voice entrypoint requires API key, agent ID and webhook secret, but cannot prove callback reachability from their presence. Browser controls enforce a ten-minute limit while mounted; configure provider limits separately. Provider configuration and local startup instructions are in README.md.
 
@@ -117,10 +117,10 @@ No raw audio is saved by this application. ElevenLabs-side retention must be con
 The browser TypeScript project (`src/web/tsconfig.json`) uses Vite's bundler resolution, including the LiveAvatar SDK's extensionless type exports. Server, worker and scripts retain NodeNext resolution. Both projects inherit the same strict checks, and `pnpm typecheck` checks both.
 
 ```text
-No-op PracticeContextProvider
+PracticeContextProvider / saved scenario
         |
 POST /api/avatar/sessions
-        +--> reserve liveavatar rehearsal + frozen empty context
+        +--> reserve liveavatar rehearsal + frozen practice context
         +--> LiveAvatar FULL token (avatar + voice + context IDs)
         +--> pin provider session ID; return temporary token
                           |
@@ -135,9 +135,9 @@ Server GET stored session's transcript --> validate --> save turns
 History / bounded retry / reopen transcript
 ```
 
-`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. The adapter currently rejects provided company context rather than silently discarding it; only the no-op slice is connected.
+`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. Open conversations use the configured context; selected scenarios supply their saved context through `dynamic_variables.brief_context`.
 
-New video sessions use the `liveavatar` rehearsal mode. It shares the active-session exclusion with ElevenLabs voice, freezes its context and stores a provider session ID. Token creation failures leave a partial record. Browser end requests cannot supply authoritative turns. After stopping, the server fetches the transcript for its own stored session ID, validates speaker roles and text, and accepts it only when the provider reports the session inactive. Null, empty and still-active responses remain pending. A saved receipt makes repeated retrieval idempotent. Provider failures do not turn a successful stop into a failed stop. No financial review or brief update is generated for these standalone sessions.
+New video sessions use the `liveavatar` rehearsal mode. It shares the active-session exclusion with ElevenLabs voice, freezes its context and stores a provider session ID. Token creation failures leave a partial record. Browser end requests cannot supply authoritative turns. After stopping, the server fetches the transcript for its own stored session ID, validates speaker roles and text, and accepts it only when the provider reports the session inactive. Null, empty and still-active responses remain pending. A saved receipt makes repeated retrieval idempotent. Provider failures do not turn a successful stop into a failed stop. Automatic evaluation adds a separate coaching report; these sessions do not append a reviewed brief.
 
 `AvatarPractice.tsx` renders live provider video/audio with an AI simulation label, playback controls, speaking/listening state, mute/end controls and temporary captions. Startup is bounded to 45 seconds; provider and browser duration caps are two minutes. Switching modes requests shutdown. Selected ended sessions retry transcript retrieval five times with a delay and offer manual retry afterward. Unselected sessions do not poll the provider. Browser crashes retain a record that can be stopped from history. No webhook or ElevenLabs credentials are needed for FULL mode.
 
@@ -194,6 +194,18 @@ Completion atomically saves meeting notes and identity links, upserts one tracke
 `OnboardingPage.tsx` is the first-visit gate at `/`; it supports uploads, sample selection, unknown company details, an optional investor, validation errors, resume and editing. `DashboardPage.tsx` owns the returning overview, meeting context and profile links. Its numbers, activity and practice status come from saved state. The existing financial, investor research, brief, practice and follow-up screens remain reachable from the left sidebar, with page content on the right. Small screens use a horizontally scrollable navigation row. Standalone `/voice` remains independent; the brief-based practice section carries the selected financial brief and meeting notes. No new paid research or voice session starts merely by completing onboarding.
 
 `POST /api/onboarding/restart` reopens setup by setting its step to 1 and clearing its completion timestamp in the normal revision-checked transaction. It retains the selected snapshot, company profile, meeting notes, investor links and all history. Dashboard and setup-header controls invoke this same endpoint. Repeated restarts are safe and the pending setup persists after reload.
+
+## Post-practice evaluator
+
+`RehearsalEvaluation.ts` defines versioned evidence, claim, coaching and report contracts. `EvaluationContextAssembler.ts` freezes a bounded recent-year metric catalog and attributed company/meeting/investor sources. For a selected scenario it uses the company, investor and current financial snapshot saved in that scenario, even if workspace data has since changed; open conversations use the current selected workspace evidence. `EvaluationProvider.ts` owns the two prompts and provider port; `Evaluation.ts` supplies the live structured-output adapter. `EvaluationChecks.ts` checks quotations, references, numerical provenance and exact decimal comparisons.
+
+`RehearsalEvaluationService.ts` queues reviews when authoritative transcripts are saved, orchestrates extraction/checking/coaching, and preserves clarifications and written retries as new records. These records live in existing rehearsal JSON; old records receive empty defaults without a migration. `PrismaStore.save` atomically saves transcripts and queue jobs, and its optional completion claim fences result publication against the current unexpired lease. A queued record plus its latest job determines pending/failure status; no transcript is erased on evaluation failure.
+
+`EvaluationRoutes.ts` exposes local authenticated review, retry and response endpoints. `EvaluationPanel.tsx` is shared by voice and video history and polls only selected pending reviews while visible. The general state endpoint omits evaluation contexts/reports; selected-session reads retrieve them separately. Storage and history reads still follow the small single-workspace aggregate model; larger histories should move to dedicated tables and paginated queries.
+
+`AvatarTranscript.ts` shares authoritative intake between browser/manual fetches and the worker. Ended video sessions enqueue an idempotent transcript job with bounded retries. Abandoned active sessions still require explicit stopping.
+
+Every new session freezes evaluation context, and its final transcript automatically queues a model review. There is no mode toggle or demo execution path. Missing OpenAI credentials fail the review job without losing the transcript. Provider-delivered context, the legacy topic checker and brief mutation rules remain separate. See [Evaluator workflow](EvaluatorWorkflowPlan.md) for ASCII flow, prompt contracts, limitations and extension points.
 
 ## Scenario generation and investor preparation
 

@@ -1,3 +1,8 @@
+import {
+  evaluationContextSchema,
+  evaluationRecordSchema,
+  evaluationResponseRecordSchema,
+} from './RehearsalEvaluation.js';
 import { z } from 'zod';
 import { comparableDealSchema, discoveryStateSchema } from './InvestorDiscovery.js';
 import { onboardingSchema, meetingSchema } from './Onboarding.js';
@@ -171,6 +176,9 @@ export const rehearsalSchema = z.strictObject({
   context: practiceContextSchema.nullable().default(null),
   transcriptReceivedAt: dateSchema.nullable().default(null),
   avatarSessionId: z.uuid().nullable().default(null),
+  evaluationContext: evaluationContextSchema.nullable().default(null),
+  evaluations: z.array(evaluationRecordSchema).default([]),
+  evaluationResponses: z.array(evaluationResponseRecordSchema).default([]),
   avatarCorrelationHash: z
     .string()
     .regex(/^[a-f0-9]{64}$/)

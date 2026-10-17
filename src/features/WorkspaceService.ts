@@ -1,3 +1,7 @@
+import { assembleEvaluationContext } from './EvaluationContextAssembler.js';
+import { queueEvaluation, RehearsalEvaluationService } from './RehearsalEvaluationService.js';
+import type { EvaluationProvider } from './EvaluationProvider.js';
+import type { ClaimedJob } from './WorkspaceStore.js';
 import type { ResearchRunStore } from './ResearchRunStore.js';
 import { randomUUID } from 'node:crypto';
 import { silentWorkflowLog, type WorkflowLog } from './WorkflowLog.js';
@@ -28,16 +32,20 @@ import type { ScenarioStore } from './ScenarioStore.js';
 
 export class WorkspaceService {
   readonly investors: InvestorTrackingService;
+  readonly evaluations: RehearsalEvaluationService;
+  retrieveAvatarTranscript: ((sessionId: string) => Promise<void>) | null = null;
   readonly scenarios: ScenarioService | null;
 
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
+    evaluator: EvaluationProvider,
     readonly logger: WorkflowLog = silentWorkflowLog,
     readonly researchRuns?: ResearchRunStore,
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
   ) {
     this.investors = new InvestorTrackingService(this, research);
+    this.evaluations = new RehearsalEvaluationService(this, evaluator);
     this.scenarios = scenarioDependencies
       ? new ScenarioService(
           scenarioDependencies.store,
@@ -53,12 +61,12 @@ export class WorkspaceService {
     }
     return state;
   }
-  async change<T>(operation: (state: Workspace) => T): Promise<T> {
+  async change<T>(operation: (state: Workspace) => T, completedJob?: ClaimedJob): Promise<T> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const state = await this.read();
       const result = operation(state);
       try {
-        await this.store.save(state, state.revision);
+        await this.store.save(state, state.revision, completedJob);
         return result;
       } catch (error) {
         if (!(error instanceof ConflictError) || attempt === 3) {
@@ -360,6 +368,9 @@ export class WorkspaceService {
         transcriptReceivedAt: null,
         avatarSessionId: null,
         avatarCorrelationHash,
+        evaluationContext: assembleEvaluationContext(state, frozenContext, brief ?? null),
+        evaluations: [],
+        evaluationResponses: [],
       };
       if (mode !== 'elevenlabs' && mode !== RehearsalMode.LIVEAVATAR && brief) {
         session.turns.push({ role: 'agent', text: brief.finding.question });
@@ -460,7 +471,8 @@ export class WorkspaceService {
         session.transcriptReceivedAt = new Date().toISOString();
       }
       session.status = completed ? 'completed' : 'partial';
-      /* Standalone voice captures a transcript; context-based evaluation is a later consumer. */
+      queueEvaluation(session, this.evaluations.provider);
+      /* Legacy topic review remains separate from the evidence-backed evaluator. */
       if (session.briefId === null) {
         return;
       }

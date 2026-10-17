@@ -144,7 +144,7 @@ Use a browser that exposes WebRTC and AudioContext (Chrome is a useful fallback 
 3. Live captions are an unsaved preview. The signed post-call webhook supplies the saved transcript; the page refreshes automatically.
 4. Reload and select the session under **Saved sessions** to reopen it. If a tab closed abruptly and left an active record, use **Close interrupted session** after stopping the other tab's audio.
 
-No financial scoring, generated brief update, or automatic reuse of previous conversations runs for these standalone sessions. The contract in `src/contracts/PracticeContext.ts` reserves company details, sourced financial facts, meeting notes, investor sources and a scenario. `NoopPracticeContextProvider` returns null/empty values for open conversations. Scenario selection loads a saved v2 context through `ScenarioService`. Future source adapters add validated inputs to scenario generation; the voice transport continues to consume a frozen context. No new worker or schema migration is required for this voice slice; session context and transcript receipts live in the existing validated rehearsal JSON.
+Standalone sessions do not generate numerical scores or mutate briefs. Post-practice evaluation runs after the final transcript arrives; see Post-practice evaluation below. The contract in `src/contracts/PracticeContext.ts` reserves company details, sourced financial facts, meeting notes, investor sources and a scenario. `NoopPracticeContextProvider` returns null/empty values for open conversations. Scenario selection loads a saved v2 context through `ScenarioService`. Future source adapters add validated inputs to scenario generation; the voice transport continues to consume a frozen context. No new worker or schema migration is required for this voice slice; session context and transcript receipts live in the existing validated rehearsal JSON.
 
 Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/libraries/react), [dynamic variables](https://elevenlabs.io/docs/eleven-agents/customization/personalization/dynamic-variables), [transcription webhooks](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks).
 
@@ -159,6 +159,8 @@ Scenario generation defaults to `SCENARIO_MODE=demo`: deterministic template exe
 Run `pnpm db:generate` and `pnpm db:deploy` with your normal environment before restarting an existing checkout. The additive migration stores generations separately and preserves financial and rehearsal history. The voice prompt template above includes scenario instructions; an existing private agent must honor those instructions for live scenario behavior. No live paid generation or call is required for automated validation.
 
 The extensible inputs and output schemas live in `src/contracts/Scenario.ts`; source adapters in `src/features/ScenarioSources.ts`; the versioned generation and voice guidance in `src/prompts/ScenarioPrompt.ts`. Add a typed source, adapter, coverage handling, prompt rules and tests when connecting more data. Keep new data optional and retain original source snapshots.
+
+Scenario inputs include the selected financial snapshot (or latest when none is selected) and one earlier snapshot, with up to 24 recent months each. Exact decimal strings, file hashes and CSV row references are preserved. The bundled Tidewell fixture is labeled fictional by content hash. Up to two completed practices explicitly linked to the selected investor contribute their last six turns (800 characters per turn) and bounded feedback. Open conversations, unrelated investors, active sessions and unconnected pitch/forecast data are excluded. All limits and the exact input JSON are visible before generation. The latest 12 scenario summaries help avoid repeated exercises; template mode has a finite set of variations.
 
 ## Real-time AI interviewer video
 
@@ -217,7 +219,17 @@ For a built app, run `doppler run -- pnpm start` and `doppler run -- pnpm worker
 
 Read [Architecture](docs/Architecture.md) for component ownership, persistence, workflow semantics and current limits.
 
-Scenario inputs include the selected financial snapshot (or latest when none is selected) and one earlier snapshot, with up to 24 recent months each. Exact decimal strings, file hashes and CSV row references are preserved. The bundled Tidewell fixture is labeled fictional by content hash. Up to two completed practices explicitly linked to the selected investor contribute their last six turns (800 characters per turn) and bounded feedback. Open conversations, unrelated investors, active sessions and unconnected pitch/forecast data are excluded. All limits and the exact input JSON are visible before generation. The latest 12 scenario summaries help avoid repeated exercises; template mode has a finite set of variations.
+## Post-practice evaluation
+
+Evaluation runs automatically after the final transcript arrives, using `OPENAI_API_KEY` and `EVALUATION_MODEL`. There is no evaluator mode switch or demo implementation. **Evaluation sends the selected company evidence, meeting context and transcript to OpenAI.** If the key is missing or a request fails, the saved transcript remains intact and the review job reports a retryable failure. Restart API and worker after updating credentials.
+
+New sessions freeze evaluation evidence separately from the interviewer's context. After the final transcript arrives, the durable worker extracts cited claims, compares available financial facts and generates constructive coaching. The review appears below the saved voice/video transcript. It distinguishes supported figures from relevance, identifies missing evidence and may suggest no pivot. LiveAvatar transcript retrieval also has bounded background retries after an ended session, so the browser need not stay open.
+
+Use **Explain my reasoning** to add context and receive a new review version, or submit a written practice answer to test a specific learning objective without another paid call. Both preserve the original transcript and feedback. Saved response history reopens written retries after reload. A failed evaluation leaves the transcript intact and provides Retry review.
+
+The first release includes the latest twelve financial periods and explicitly reports missing/omitted data. Oversized inputs are skipped rather than silently truncated. Historical fictional reviews retain their label; new reviews use the model. Investor-specific statements require cited evidence. Older sessions without a frozen evaluation context are not automatically evaluated against current data. Open conversations use empty interviewer context. Selected scenarios supply their saved context to the interviewer and post-call evaluator.
+
+See [Evaluator workflow](docs/EvaluatorWorkflowPlan.md) for the ASCII diagram, actual input/output contracts, prompts, storage/recovery behavior and instructions for adding more data sources.
 
 ## Research terminal logs
 

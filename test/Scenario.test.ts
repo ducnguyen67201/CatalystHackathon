@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { assembleEvaluationContext } from '../src/features/EvaluationContextAssembler.js';
 import {
   createEmptyPracticeContext,
   practiceContextSchema,
@@ -220,6 +221,9 @@ describe('scenario source boundaries', () => {
         turns: [{ role: 'user', text: 'Do not include open conversation' }],
         review: null,
         context: null,
+        evaluationContext: null,
+        evaluations: [],
+        evaluationResponses: [],
         transcriptReceivedAt: null,
         avatarSessionId: null,
         avatarCorrelationHash: null,
@@ -264,6 +268,9 @@ describe('scenario source boundaries', () => {
       transcriptReceivedAt: null,
       avatarSessionId: null,
       avatarCorrelationHash: null,
+      evaluationContext: null,
+      evaluations: [],
+      evaluationResponses: [],
     }));
     const assembled = assembleScenarioInput(state, investorId, '');
     const sources = assembled.sources.filter((source) => source.kind === 'prior_calls');
@@ -289,6 +296,57 @@ describe('scenario source boundaries', () => {
 });
 
 describe('scenario generation', () => {
+  it('evaluates the frozen scenario investor and financials without leaking newer workspace context', async () => {
+    const state = fixture();
+    const snapshot = importFinancials(
+      readFileSync(new URL('../fixtures/Tidewell.csv', import.meta.url), 'utf8'),
+      'RenamedSample.csv',
+      'unspecified',
+    );
+    state.snapshots = [snapshot];
+    const input = assembleScenarioInput(state, investorId, 'Explain operating performance');
+    const output = await new DemoScenarioGenerator().generate(input);
+    const context = practiceContextSchema.parse({
+      ...createEmptyPracticeContext(),
+      version: 2,
+      mode: 'provided',
+      input,
+      selection: {
+        generationId: '84927a93-d8f7-4345-a2bc-64af56efbf0d',
+        scenarioId: output.scenarios[0]?.id,
+      },
+      scenario: output.scenarios[0],
+      investorProfile: output.investorProfile,
+      generationMode: 'demo',
+      instruction: 'Fictional scenario',
+    });
+    state.profile.name = 'New unrelated company';
+    state.profile.version++;
+    state.snapshots = [];
+    state.evidence = [];
+    const evaluation = assembleEvaluationContext(state, context);
+    expect(evaluation.companyName).toBe('Fictional founder');
+    expect(evaluation.profileVersion).toBe(1);
+    expect(evaluation.investorId).toBe(investorId);
+    expect(evaluation.snapshotId).toBe(snapshot.id);
+    expect(evaluation.facts.find((f) => f.id === '2026-07:operating_income')?.value).toBe('-59797');
+    expect(evaluation.sources.filter((s) => s.kind === 'investor').map((s) => s.id)).toEqual([
+      'investor:source-1',
+    ]);
+    expect(
+      evaluation.sources
+        .filter((s) => s.kind === 'financial')
+        .every((s) => s.origin === 'fictional'),
+    ).toBe(true);
+    expect(JSON.stringify(evaluation)).not.toMatch(
+      /New unrelated company|Private other-investor notes/,
+    );
+    if (context.version !== 2) throw new Error('Expected scenario context');
+    context.input.sources = context.input.sources.filter((s) => s.kind !== 'financials');
+    state.snapshots = [snapshot];
+    state.onboarding.snapshotId = snapshot.id;
+    expect(assembleEvaluationContext(state, context).facts).toEqual([]);
+  });
   it('produces limited-context discovery questions without invented company metrics', async () => {
     const state = fixture();
     const investor = state.investors[0];

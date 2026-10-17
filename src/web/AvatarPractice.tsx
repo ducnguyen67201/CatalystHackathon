@@ -1,3 +1,4 @@
+import { EvaluationPanel } from './EvaluationPanel.js';
 import { useEffect, useRef, useState } from 'react';
 import {
   AgentEventsEnum,
@@ -431,6 +432,13 @@ export function AvatarPractice({
           )}
         </article>
       </div>
+      {session && (
+        <EvaluationPanel
+          key={session.id}
+          sessionId={session.id}
+          receipt={session.transcriptReceivedAt}
+        />
+      )}
       {sessions.length > 0 && (
         <section className="panel avatar-history">
           <h3>Video interview history</h3>
