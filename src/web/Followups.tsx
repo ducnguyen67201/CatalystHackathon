@@ -2,12 +2,14 @@ import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown, Circle } from 'lucide-react';
 import { z } from 'zod';
 import {
+  followupQuerySchema,
   followupsResponseSchema,
   type FollowupSession,
   type FollowupTask,
   type FollowupsResponse,
 } from '../contracts/Followups.js';
 import { request } from './ApiClient.js';
+import { followupObjective, preparationScenarioHref } from '../contracts/PreparationNavigation.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import './Followups.css';
 
@@ -141,6 +143,12 @@ function PracticeTask({
               Open financials
             </button>
           )}
+          <a
+            className="button secondary"
+            href={preparationScenarioHref(followupObjective(task), session.investorId)}
+          >
+            Review next scenario
+          </a>
           <button
             className="button secondary"
             disabled={busy}
@@ -197,7 +205,10 @@ const needsAttention = (task: FollowupTask) =>
 
 function PracticeTaskRow(props: Parameters<typeof PracticeTask>[0]) {
   const { task } = props;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return query.get('session') === props.session.id && query.get('task') === task.id;
+  });
   const detailId = useId();
   return (
     <Fragment>
@@ -248,12 +259,27 @@ function PracticeTaskRow(props: Parameters<typeof PracticeTask>[0]) {
 
 export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }) {
   const [data, setData] = useState<FollowupsResponse | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useState(() => {
+    const parsed = followupQuerySchema.safeParse({
+      offset: new URLSearchParams(window.location.search).get('followupsOffset') ?? 0,
+    });
+    return parsed.success ? parsed.data.offset : 0;
+  });
   const [filter, setFilter] = useState<TaskFilter>('all');
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [openReviews, setOpenReviews] = useState<Record<string, boolean>>({});
   const refresh = () => setRevision((value) => value + 1);
+  const jumpedToSession = useRef(false);
+  useEffect(() => {
+    if (!data || jumpedToSession.current) return;
+    const sessionId = new URLSearchParams(window.location.search).get('session');
+    const section = sessionId ? document.getElementById(`practice-${sessionId}`) : null;
+    if (section) {
+      section.scrollIntoView({ block: 'start' });
+      jumpedToSession.current = true;
+    }
+  }, [data]);
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -369,7 +395,7 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
         </div>
       )}
       {visibleSessions?.map((session) => (
-        <section className="panel followup-session" key={session.id}>
+        <section className="panel followup-session" key={session.id} id={`practice-${session.id}`}>
           <div className="eyebrow">
             {session.investorName ?? 'Open practice'} · {when(session.createdAt)}
           </div>

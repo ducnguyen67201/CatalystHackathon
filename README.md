@@ -414,3 +414,20 @@ comparisons. Missing evidence is an explicit unavailable result; provider failur
 retryable failures. Final report and job completion commit together. Older reports retain
 their existing layout and do not acquire current research. Opening reports runs no research
 or inference. The child split introduces no extra provider calls or configuration changes.
+
+## Track financial preparation
+
+The dashboard connects saved practice feedback with six financial preparation topics:
+revenue, margins, expenses, operating performance, cash planning, and evidence-based
+explanations. Select a topic to see reviewed claims, written retries and improvement
+observed in saved comparisons. Unassessed topics remain unassessed; these are preparation
+observations, not a personal skill score. Counts cover all saved root practices, while
+recent history and feedback previews are bounded and disclose their scope.
+
+**Data to drill into** shows the current selected statement's figures and original CSV
+row. Historical feedback retains the evidence captured with that practice. Inspect a
+follow-up to retry against its original evidence, or choose **Review next scenario** to
+carry the feedback into an editable objective. Choose an investor and review company,
+financial, investor and practice sources before generating. Use **Check now** in Investor
+research first when fresh research is needed. Opening these views never starts research
+or a provider session automatically.

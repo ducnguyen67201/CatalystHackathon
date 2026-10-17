@@ -22,7 +22,9 @@ export function ScenarioPractice({ state }: { state: StateResponse }) {
       ''
     );
   });
-  const [objective, setObjective] = useState('');
+  const [objective, setObjective] = useState(() =>
+    (new URLSearchParams(window.location.search).get('objective') ?? '').slice(0, 1000),
+  );
   const [generations, setGenerations] = useState<ScenarioGenerationView[]>([]);
   const [selected, setSelected] = useState<{
     generation: ScenarioGenerationView;
