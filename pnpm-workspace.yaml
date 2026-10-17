@@ -1,0 +1,11 @@
+packages:
+  - '.'
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+overrides:
+  ws: '^8.21.0'
+minimumReleaseAgeExclude:
+  - eslint@10.13.0

@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+model Workspace {
+  id String @id
+  revision Int @default(0)
+  profile Json
+  schedule Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  snapshots FinancialSnapshot[]
+  evidence Evidence[]
+  briefs Brief[]
+  rehearsals Rehearsal[]
+  milestones Milestone[]
+  notices Notice[]
+  jobs WorkflowJob[]
+}
+model FinancialSnapshot {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  hash String
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, hash])
+  @@index([workspaceId, createdAt])
+}
+model Evidence {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  eventKey String
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, eventKey])
+  @@index([workspaceId, createdAt])
+}
+model Brief {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt])
+}
+model Rehearsal {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  conversationId String? @unique
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt])
+}
+model Milestone {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt])
+}
+model Notice {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt])
+}
+model WorkflowJob {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  key String @unique
+  kind String
+  status String @default("queued")
+  attempts Int @default(0)
+  runAt DateTime @default(now())
+  leaseUntil DateTime?
+  leaseToken String?
+  result String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([status, runAt])
+  @@index([workspaceId, createdAt])
+}

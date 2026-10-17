@@ -1,0 +1,246 @@
+import { randomUUID } from 'node:crypto';
+import { PrismaClient, type Prisma } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { z } from 'zod';
+import {
+  JobStatus,
+  jobSchema,
+  workspaceSchema,
+  type Job,
+  type Workspace,
+} from '../contracts/Workspace.js';
+import { ConflictError, type ClaimedJob, type WorkspaceStore } from '../features/WorkspaceStore.js';
+const workspaceId = 'tidewell';
+const json = (value: unknown): Prisma.InputJsonObject =>
+  z.record(z.string(), z.json()).parse(value);
+export class PrismaStore implements WorkspaceStore {
+  private readonly client: PrismaClient;
+  constructor(databaseUrl: string) {
+    this.client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+  }
+  async load(): Promise<Workspace | null> {
+    const record = await this.client.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        snapshots: { orderBy: { createdAt: 'asc' } },
+        evidence: { orderBy: { createdAt: 'asc' } },
+        briefs: { orderBy: { createdAt: 'asc' } },
+        rehearsals: { orderBy: { createdAt: 'asc' } },
+        milestones: { orderBy: { createdAt: 'asc' } },
+        notices: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!record) {
+      return null;
+    }
+    return workspaceSchema.parse({
+      id: record.id,
+      revision: record.revision,
+      profile: record.profile,
+      schedule: record.schedule,
+      snapshots: record.snapshots.map((item) => item.payload),
+      evidence: record.evidence.map((item) => item.payload),
+      briefs: record.briefs.map((item) => item.payload),
+      rehearsals: record.rehearsals.map((item) => item.payload),
+      milestones: record.milestones.map((item) => item.payload),
+      notices: record.notices.map((item) => item.payload),
+    });
+  }
+  async initialize(workspace: Workspace): Promise<void> {
+    await this.client.workspace.upsert({
+      where: { id: workspaceId },
+      update: {},
+      create: {
+        id: workspaceId,
+        profile: json(workspace.profile),
+        schedule: json(workspace.schedule),
+      },
+    });
+    const existing = await this.load();
+    if (existing && existing.snapshots.length === 0) {
+      await this.save({ ...workspace, revision: existing.revision }, existing.revision);
+    }
+  }
+  async save(workspace: Workspace, expectedRevision: number): Promise<void> {
+    await this.client.$transaction(
+      async (tx) => {
+        const lock = await tx.workspace.updateMany({
+          where: { id: workspaceId, revision: expectedRevision },
+          data: {
+            revision: { increment: 1 },
+            profile: json(workspace.profile),
+            schedule: json(workspace.schedule),
+            updatedAt: new Date(),
+          },
+        });
+        if (lock.count !== 1) {
+          throw new ConflictError('The workspace changed. Retry this operation.');
+        }
+        for (const payload of workspace.snapshots) {
+          await tx.financialSnapshot.upsert({
+            where: { id: payload.id },
+            update: {},
+            create: { id: payload.id, workspaceId, hash: payload.hash, payload: json(payload) },
+          });
+        }
+        for (const payload of workspace.evidence) {
+          await tx.evidence.upsert({
+            where: { id: payload.id },
+            update: {},
+            create: {
+              id: payload.id,
+              workspaceId,
+              eventKey: payload.eventKey,
+              payload: json(payload),
+            },
+          });
+        }
+        for (const payload of workspace.briefs) {
+          await tx.brief.upsert({
+            where: { id: payload.id },
+            update: {},
+            create: { id: payload.id, workspaceId, payload: json(payload) },
+          });
+        }
+        for (const payload of workspace.rehearsals) {
+          await tx.rehearsal.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload), conversationId: payload.conversationId },
+            create: {
+              id: payload.id,
+              workspaceId,
+              conversationId: payload.conversationId,
+              payload: json(payload),
+            },
+          });
+        }
+        for (const payload of workspace.milestones) {
+          await tx.milestone.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload) },
+            create: { id: payload.id, workspaceId, payload: json(payload) },
+          });
+        }
+        for (const payload of workspace.notices) {
+          await tx.notice.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload) },
+            create: { id: payload.id, workspaceId, payload: json(payload) },
+          });
+        }
+      },
+      { timeout: 15000 },
+    );
+  }
+  async enqueue(key: string, kind: string): Promise<Job> {
+    const row = await this.client.workflowJob.upsert({
+      where: { key },
+      update: {},
+      create: { id: randomUUID(), workspaceId, key, kind },
+    });
+    return jobSchema.parse({
+      id: row.id,
+      kind: row.kind,
+      status: row.status,
+      attempts: row.attempts,
+      createdAt: row.createdAt.toISOString(),
+      result: row.result,
+      error: row.error,
+    });
+  }
+  async listJobs(): Promise<Job[]> {
+    const rows = await this.client.workflowJob.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    return rows.map((row) =>
+      jobSchema.parse({
+        id: row.id,
+        kind: row.kind,
+        status: row.status,
+        attempts: row.attempts,
+        createdAt: row.createdAt.toISOString(),
+        result: row.result,
+        error: row.error,
+      }),
+    );
+  }
+  async countResearchAttemptsSince(since: Date): Promise<number> {
+    const result = await this.client.workflowJob.aggregate({
+      where: { workspaceId, kind: 'radar', createdAt: { gte: since } },
+      _sum: { attempts: true },
+    });
+    return result._sum.attempts ?? 0;
+  }
+  async claimJob(now: Date): Promise<ClaimedJob | null> {
+    const row = await this.client.workflowJob.findFirst({
+      where: {
+        workspaceId,
+        OR: [
+          { status: JobStatus.QUEUED, runAt: { lte: now } },
+          { status: JobStatus.RUNNING, leaseUntil: { lt: now } },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!row) {
+      return null;
+    }
+    if (row.attempts >= 3) {
+      await this.client.workflowJob.updateMany({
+        where: { id: row.id, attempts: row.attempts },
+        data: {
+          status: JobStatus.FAILED,
+          error: 'Run exceeded its retry limit.',
+          leaseUntil: null,
+          leaseToken: null,
+        },
+      });
+      return null;
+    }
+    const token = randomUUID();
+    const result = await this.client.workflowJob.updateMany({
+      where: { id: row.id, attempts: row.attempts, status: row.status, leaseToken: row.leaseToken },
+      data: {
+        status: JobStatus.RUNNING,
+        attempts: { increment: 1 },
+        leaseUntil: new Date(now.getTime() + 360000),
+        leaseToken: token,
+        error: null,
+        updatedAt: new Date(),
+      },
+    });
+    return result.count === 1
+      ? { id: row.id, kind: row.kind, leaseToken: token, attempts: row.attempts + 1 }
+      : null;
+  }
+  async finishJob(job: ClaimedJob, result: string): Promise<void> {
+    await this.client.workflowJob.updateMany({
+      where: { id: job.id, leaseToken: job.leaseToken },
+      data: {
+        status: JobStatus.SUCCEEDED,
+        result,
+        leaseUntil: null,
+        leaseToken: null,
+        updatedAt: new Date(),
+      },
+    });
+  }
+  async failJob(job: ClaimedJob, error: string): Promise<void> {
+    await this.client.workflowJob.updateMany({
+      where: { id: job.id, leaseToken: job.leaseToken },
+      data: {
+        status: job.attempts >= 3 ? JobStatus.FAILED : JobStatus.QUEUED,
+        error,
+        runAt: new Date(Date.now() + job.attempts * 10000),
+        leaseUntil: null,
+        leaseToken: null,
+        updatedAt: new Date(),
+      },
+    });
+  }
+  async close(): Promise<void> {
+    await this.client.$disconnect();
+  }
+}
