@@ -32,6 +32,12 @@ import { voiceSessionResponseSchema } from '../src/contracts/VoicePractice.js';
 import type { createVoiceToken } from '../src/infrastructure/Voice.js';
 import type { AvatarProvider } from '../src/features/AvatarProvider.js';
 import { avatarSessionResponseSchema } from '../src/contracts/AvatarPractice.js';
+import { DemoScenarioGenerator } from '../src/infrastructure/ScenarioGeneration.js';
+import {
+  generationSchema,
+  generationViewSchema,
+  scenarioPreviewSchema,
+} from '../src/contracts/Scenario.js';
 let app: FastifyInstance;
 let store: PrismaStore;
 let service: WorkspaceService;
@@ -59,6 +65,10 @@ beforeAll(async () => {
     fixtureEvaluationProvider,
     undefined,
     store,
+    {
+      store,
+      generator: new DemoScenarioGenerator(),
+    },
   );
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
@@ -862,6 +872,312 @@ describe('onboarding restart', () => {
       });
     } finally {
       await reopened.close();
+    }
+  });
+});
+
+describe('saved scenario workflow', () => {
+  async function prepare() {
+    const investor = await service.investors.add({
+      name: 'Scenario test investor',
+      url: 'https://example.com/scenario-investor',
+      frequency: 'paused',
+    });
+    for (let index = 0; index < 30 && (await runWorkerTick(service)); index++) {
+      /* Drain pre-existing jobs. */
+    }
+    return investor;
+  }
+
+  it('atomically deduplicates generation requests, saves output, and preserves snapshots across updates', async () => {
+    const investor = await prepare();
+    const headers = { cookie: sessionCookie };
+    const payload = {
+      investorId: investor.id,
+      objective: 'Explain the company clearly',
+      key: randomUUID(),
+    };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/scenario-generations', payload })).statusCode,
+    ).toBe(401);
+    const responses = await Promise.all(
+      [1, 2].map(() =>
+        app.inject({ method: 'POST', url: '/api/scenario-generations', headers, payload }),
+      ),
+    );
+    const first = generationSchema.parse(responses[0]?.json());
+    const second = generationSchema.parse(responses[1]?.json());
+    expect(first.id).toBe(second.id);
+    expect(first.jobId).toBe(second.jobId);
+    expect(first.output).toBeNull();
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: { ...payload, objective: 'Different request' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await runWorkerTick(service);
+    const finished = generationViewSchema.parse(
+      (await app.inject({ url: '/api/scenario-generations/' + first.id, headers })).json(),
+    );
+    expect(finished.status).toBe('succeeded');
+    expect(finished.output?.scenarios.length).toBeGreaterThan(0);
+    expect(finished.outdated).toBe(false);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.getGeneration(first.id))?.output).toEqual(finished.output);
+    } finally {
+      await reopened.close();
+    }
+    await service.change((workspace) => {
+      workspace.profile.goal = 'A new preparation goal';
+      workspace.profile.version++;
+    });
+    const stale = generationViewSchema.parse(
+      (await app.inject({ url: '/api/scenario-generations/' + first.id, headers })).json(),
+    );
+    expect(stale.outdated).toBe(true);
+    expect(stale.input).toEqual(first.input);
+    expect(stale.output).toEqual(finished.output);
+  });
+
+  it('reviews server-selected input, rejects changed data and replays a confirmed request safely', async () => {
+    const investor = await prepare();
+    const headers = { cookie: sessionCookie };
+    const payload = {
+      investorId: investor.id,
+      objective: 'Practise using the current financial evidence',
+    };
+    const beforeJobs = await store.listJobs();
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/scenario-generations/preview', payload }))
+        .statusCode,
+    ).toBe(401);
+    const preview = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    expect(preview.input.sources.some((source) => source.kind === 'financials')).toBe(true);
+    expect(await store.listJobs()).toEqual(beforeJobs);
+    await service.change((workspace) => {
+      workspace.profile.goal = 'Updated after review';
+      workspace.profile.version++;
+    });
+    const stale = await app.inject({
+      method: 'POST',
+      url: '/api/scenario-generations',
+      headers,
+      payload: { ...payload, key: randomUUID(), expectedInputHash: preview.inputHash },
+    });
+    expect(stale.statusCode).toBe(409);
+    const fresh = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    const confirmed = { ...payload, key: randomUUID(), expectedInputHash: fresh.inputHash };
+    const created = generationSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: confirmed,
+        })
+      ).json(),
+    );
+    expect(created.input.sources.map(({ capturedAt: _capturedAt, ...source }) => source)).toEqual(
+      fresh.input.sources.map(({ capturedAt: _capturedAt, ...source }) => source),
+    );
+    await runWorkerTick(service);
+    await service.change((workspace) => {
+      workspace.profile.goal = 'Changed again';
+      workspace.profile.version++;
+    });
+    const replay = generationSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: confirmed,
+        })
+      ).json(),
+    );
+    expect(replay.id).toBe(created.id);
+    const next = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    expect(next.input.previousScenarios.length).toBeGreaterThan(0);
+  });
+
+  it('rejects stale worker completion and recovers a leased job without overwriting the saved result', async () => {
+    const investor = await prepare();
+    if (!service.scenarios) throw new Error('Scenario runtime missing.');
+    const generation = await service.scenarios.create(investor.id, '', randomUUID());
+    const firstClaim = await store.claimJob(new Date());
+    if (!firstClaim || firstClaim.id !== generation.jobId)
+      throw new Error('Expected scenario job.');
+    const connection = new Client({ connectionString: databaseUrl.href });
+    await connection.connect();
+    try {
+      await connection.query('UPDATE "WorkflowJob" SET "leaseUntil" = $1 WHERE id = $2', [
+        new Date(0),
+        firstClaim.id,
+      ]);
+    } finally {
+      await connection.end();
+    }
+    const nextClaim = await store.claimJob(new Date());
+    if (!nextClaim) throw new Error('Expected recovered scenario job.');
+    const output = await new DemoScenarioGenerator().generate(generation.input);
+    await expect(store.completeGeneration(firstClaim, output)).rejects.toThrow('lease');
+    expect((await store.getGeneration(generation.id))?.output).toBeNull();
+    await service.scenarios.run(nextClaim);
+    expect((await store.getGeneration(generation.id))?.status).toBe('succeeded');
+    await expect(store.completeGeneration(nextClaim, output)).rejects.toThrow('lease');
+    expect((await store.getGeneration(generation.id))?.output).toEqual(output);
+  });
+
+  it('passes the selected full scenario to voice and avatar and preserves empty-context practice', async () => {
+    const investor = await prepare();
+    if (!service.scenarios) throw new Error('Scenario runtime missing.');
+    const generation = await service.scenarios.create(investor.id, '', randomUUID());
+    await runWorkerTick(service);
+    const ready = await service.scenarios.get(generation.id);
+    const scenario = ready.output?.scenarios[0];
+    if (!scenario) throw new Error('Expected scenario output.');
+    const selection = { generationId: ready.id, scenarioId: scenario.id };
+    const createToken = vi
+      .fn<typeof createVoiceToken>()
+      .mockResolvedValue({ token: 'scenario-test-token', conversationId: randomUUID() });
+    const avatarToken = vi
+      .fn<AvatarProvider['createToken']>()
+      .mockResolvedValue({ token: 'scenario-avatar-token', avatarSessionId: randomUUID() });
+    const localApi = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        ELEVENLABS_API_KEY: 'test-key',
+        ELEVENLABS_AGENT_ID: 'test-agent',
+        ELEVENLABS_WEBHOOK_SECRET: 'test-secret',
+        LIVEAVATAR_API_KEY: 'test-avatar-key',
+        LIVEAVATAR_AVATAR_ID: randomUUID(),
+        LIVEAVATAR_VOICE_ID: randomUUID(),
+        LIVEAVATAR_CONTEXT_ID: randomUUID(),
+      }),
+      {
+        contextProvider: new NoopPracticeContextProvider(),
+        createToken,
+        avatarProvider: {
+          createToken: avatarToken,
+          fetchTranscript: vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null),
+          stopSession: vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined),
+        },
+      },
+    );
+    try {
+      const login = await localApi.inject({ method: 'POST', url: '/api/session' });
+      const headers = {
+        cookie: login.cookies.map((item) => item.name + '=' + item.value).join('; '),
+      };
+      expect(
+        (
+          await localApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: { selection: { ...selection, prompt: 'override' } },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const response = await localApi.inject({
+        method: 'POST',
+        url: '/api/voice/sessions',
+        headers,
+        payload: { selection },
+      });
+      expect(response.statusCode).toBe(200);
+      const voice = voiceSessionResponseSchema.parse(response.json());
+      expect(voice.session.context?.version).toBe(2);
+      expect(voice.session.context?.scenario).toEqual(scenario);
+      expect(voice.session.evaluationContext?.investorId).toBe(investor.id);
+      expect(voice.session.evaluationContext?.scenario).toBe(scenario.objective);
+      expect(voice.dynamicVariables.brief_context).toContain(scenario.openingQuestion);
+      const frozen = voice.session.context;
+      await service.change((workspace) => {
+        workspace.profile.goal = 'Changed after voice start';
+        workspace.profile.version++;
+      });
+      expect(
+        (await service.read()).rehearsals.find((item) => item.id === voice.session.id)?.context,
+      ).toEqual(frozen);
+      await service.finishRehearsal(voice.session.id, [], true);
+      expect((await service.evaluations.get(voice.session.id)).evaluations).toHaveLength(0);
+      await service.finishRehearsal(
+        voice.session.id,
+        [
+          { role: 'agent', text: scenario.openingQuestion },
+          { role: 'user', text: 'Our operating income is -59797 unspecified for 2026-07.' },
+        ],
+        true,
+        true,
+      );
+      expect((await service.evaluations.get(voice.session.id)).evaluations[0]?.status).toBe(
+        'queued',
+      );
+      await drainWorker(service);
+      expect((await service.evaluations.get(voice.session.id)).evaluations[0]?.status).toBe(
+        'completed',
+      );
+      const videoResponse = await localApi.inject({
+        method: 'POST',
+        url: '/api/avatar/sessions',
+        headers,
+        payload: { selection },
+      });
+      expect(videoResponse.statusCode).toBe(200);
+      const video = avatarSessionResponseSchema.parse(videoResponse.json());
+      expect(video.session.context?.scenario).toEqual(scenario);
+      expect(avatarToken.mock.calls[0]?.[1]).toEqual(video.session.context);
+      await service.finishRehearsal(video.session.id, [], false);
+      createToken.mockResolvedValue({ token: 'empty-test-token', conversationId: randomUUID() });
+      const empty = voiceSessionResponseSchema.parse(
+        (
+          await localApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: {},
+          })
+        ).json(),
+      );
+      expect(empty.session.context?.mode).toBe('empty');
+      await service.finishRehearsal(empty.session.id, [], false);
+    } finally {
+      await localApi.close();
     }
   });
 });

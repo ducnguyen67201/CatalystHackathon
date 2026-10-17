@@ -1,6 +1,7 @@
 import { retrieveFinalAvatarTranscript } from '../features/AvatarTranscript.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { voiceSessionRequestSchema } from '../contracts/VoicePractice.js';
 import { avatarSessionResponseSchema } from '../contracts/AvatarPractice.js';
 import { practiceContextSchema } from '../contracts/PracticeContext.js';
 import { idSchema, RehearsalMode } from '../contracts/Workspace.js';
@@ -33,7 +34,7 @@ export function registerAvatarRoutes(
   };
 
   app.post('/api/avatar/sessions', async (request, reply) => {
-    z.strictObject({}).parse(request.body);
+    const { selection } = voiceSessionRequestSchema.parse(request.body);
     if (
       !env.LIVEAVATAR_API_KEY ||
       !env.LIVEAVATAR_AVATAR_ID ||
@@ -45,7 +46,7 @@ export function registerAvatarRoutes(
           'Configure the LiveAvatar API key, avatar, voice and context to enable the live interviewer.',
       });
     }
-    const context = practiceContextSchema.parse(await contextProvider.loadContext());
+    const context = practiceContextSchema.parse(await contextProvider.loadContext(selection));
     const session = await service.createRehearsal(null, RehearsalMode.LIVEAVATAR, null, context);
     let avatarSessionId: string | null = null;
     try {

@@ -12,20 +12,33 @@ export function assembleEvaluationContext(
   practice: PracticeContext | null,
   brief: Brief | null = null,
 ): EvaluationContext {
+  const scenarioInput = practice?.version === 2 ? practice.input : null;
+  const founder = scenarioInput?.sources.find((s) => s.kind === 'founder_initial');
+  const scenarioFinancials = scenarioInput?.sources.find((s) => s.kind === 'financials');
+  const scenarioSnapshot = scenarioFinancials?.snapshots.find((s) => s.role === 'current');
   const selectedSnapshotId =
     brief?.snapshotId ?? practice?.financials?.snapshotId ?? state.onboarding.snapshotId;
-  const snapshot = state.snapshots.find((s) => s.id === selectedSnapshotId);
-  const meeting = brief ? brief.meeting : state.onboarding.meeting;
+  // A saved scenario must not silently acquire newer company data or another investor's notes.
+  const snapshot = scenarioInput
+    ? scenarioSnapshot && {
+        id: scenarioSnapshot.snapshotId,
+        fileName: scenarioSnapshot.fileName,
+        currency: scenarioSnapshot.currency ?? 'unspecified',
+        createdAt: scenarioSnapshot.createdAt,
+        rows: scenarioSnapshot.periods,
+      }
+    : state.snapshots.find((s) => s.id === selectedSnapshotId);
+  const meeting = scenarioInput ? null : brief ? brief.meeting : state.onboarding.meeting;
   const investor = state.investors.find((i) => i.id === meeting?.investorId);
   const context: EvaluationContext = {
     version: 1,
     capturedAt: new Date().toISOString(),
     workspaceRevision: state.revision,
-    companyName: state.profile.name,
-    profileVersion: state.profile.version,
+    companyName: scenarioInput ? (founder?.company.name ?? 'Unknown company') : state.profile.name,
+    profileVersion: scenarioInput ? (founder?.profileVersion ?? 1) : state.profile.version,
     snapshotId: snapshot?.id ?? null,
-    investorId: investor?.id ?? null,
-    investorName: investor?.name ?? meeting?.name ?? null,
+    investorId: scenarioInput?.investor.id ?? investor?.id ?? null,
+    investorName: scenarioInput?.investor.name ?? investor?.name ?? meeting?.name ?? null,
     scenario:
       practice?.scenario?.objective ??
       brief?.finding.question ??
@@ -35,8 +48,8 @@ export function assembleEvaluationContext(
       {
         id: 'company',
         kind: 'company',
-        title: 'Saved company profile',
-        text: JSON.stringify(state.profile),
+        title: scenarioInput ? 'Company profile saved with scenario' : 'Saved company profile',
+        text: JSON.stringify(scenarioInput ? (founder?.company ?? null) : state.profile),
         url: null,
         recordedAt: null,
         origin: 'founder',
@@ -45,6 +58,35 @@ export function assembleEvaluationContext(
     facts: [],
     limitations: [],
   };
+  if (scenarioInput) {
+    context.limitations.push(
+      'Scenario evidence is frozen at generation time. Only its selected current financial snapshot is checked; previous snapshots and prior practice are not treated as current facts.',
+    );
+    if (!founder) context.limitations.push('The scenario has no saved company profile.');
+    if (founder?.meetingNotes)
+      context.sources.push({
+        id: 'meeting',
+        kind: 'meeting',
+        title: 'Meeting notes saved with scenario',
+        text: founder.meetingNotes,
+        url: null,
+        recordedAt: founder.capturedAt,
+        origin: 'founder',
+      });
+    for (const source of scenarioInput.sources)
+      if (source.kind === 'investor_research')
+        context.sources.push({
+          id: `investor:${source.evidenceId}`,
+          kind: 'investor',
+          title: source.title || 'Saved investor research',
+          text: source.excerpt,
+          url: source.url,
+          recordedAt: source.retrievedAt,
+          origin: source.provenance === 'fictional_demo' ? 'fictional' : 'public_unverified',
+        });
+    if (scenarioInput.omittedEvidenceIds.length)
+      context.limitations.push('Some investor sources were omitted from the saved scenario.');
+  }
   if (brief && brief.profileVersion !== state.profile.version)
     context.limitations.push(
       'The company profile has changed since the selected brief; current profile context is labeled separately from the pinned financial evidence.',
@@ -62,7 +104,7 @@ export function assembleEvaluationContext(
   if (snapshot) {
     // Use a bounded recent year. Explicitly disclose omitted history; never truncate silently.
     const rows = snapshot.rows.slice(-12);
-    if (rows.length < snapshot.rows.length)
+    if (rows.length < (scenarioSnapshot?.totalRows ?? snapshot.rows.length))
       context.limitations.push(
         'Only the latest twelve reporting periods are included; older periods cannot be checked.',
       );
@@ -75,7 +117,11 @@ export function assembleEvaluationContext(
         text: JSON.stringify(row),
         url: null,
         recordedAt: snapshot.createdAt,
-        origin: snapshot.fileName === 'Tidewell.csv' ? 'fictional' : 'uploaded',
+        origin: (
+          scenarioSnapshot ? scenarioSnapshot.fictional : snapshot.fileName === 'Tidewell.csv'
+        )
+          ? 'fictional'
+          : 'uploaded',
       });
       const fields = {
         revenue: row.revenue,
@@ -116,16 +162,18 @@ export function assembleEvaluationContext(
     }
   } else context.limitations.push('No financial snapshot was selected when this session started.');
   const evidenceIds = new Set(
-    brief
-      ? brief.evidenceId
-        ? [brief.evidenceId]
-        : []
-      : investor
-        ? [
-            ...investor.checks.flatMap((c) => c.evidenceIds),
-            ...(investor.discoveryEvidenceId ? [investor.discoveryEvidenceId] : []),
-          ]
-        : [],
+    scenarioInput
+      ? []
+      : brief
+        ? brief.evidenceId
+          ? [brief.evidenceId]
+          : []
+        : investor
+          ? [
+              ...investor.checks.flatMap((c) => c.evidenceIds),
+              ...(investor.discoveryEvidenceId ? [investor.discoveryEvidenceId] : []),
+            ]
+          : [],
   );
   for (const evidence of state.evidence.filter((e) => evidenceIds.has(e.id)).slice(-10))
     context.sources.push({

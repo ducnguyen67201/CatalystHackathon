@@ -15,11 +15,16 @@ import {
 import { RehearsalMode, type StateResponse, type TranscriptTurn } from '../contracts/Workspace.js';
 import { command, request } from './ApiClient.js';
 import './AvatarPractice.css';
+import type { ScenarioSelection } from '../contracts/Scenario.js';
 
 interface Props {
   state: StateResponse;
   onRefresh: () => Promise<void>;
   onError: (message: string) => void;
+  selection?: ScenarioSelection | undefined;
+  onSelection?: ((selection: ScenarioSelection | undefined) => void) | undefined;
+  onLockChange?: (locked: boolean) => void;
+  startDisabled?: boolean;
 }
 
 const captionSchema = z.object({ text: z.string().min(1).max(10000) });
@@ -29,7 +34,15 @@ async function endAvatarSession(id: string, completed: boolean): Promise<void> {
 }
 
 /** Live provider video and audio share one stream; no second ElevenLabs microphone connection. */
-export function AvatarPractice({ state, onRefresh, onError }: Props) {
+export function AvatarPractice({
+  state,
+  onRefresh,
+  onError,
+  selection,
+  onSelection,
+  onLockChange,
+  startDisabled = false,
+}: Props) {
   const video = useRef<HTMLVideoElement | null>(null);
   const client = useRef<LiveAvatarSession | null>(null);
   const activeId = useRef<string | null>(null);
@@ -75,6 +88,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
       await client.current?.stop().catch(() => undefined);
       await endAvatarSession(id, completed);
       activeId.current = null;
+      onLockChange?.(false);
       client.current = null;
       if (mounted.current) {
         setRunning(false);
@@ -96,10 +110,12 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
   }
 
   async function start(): Promise<void> {
+    if (startDisabled) return;
     if (starting.current || activeId.current) {
       return;
     }
     starting.current = true;
+    onLockChange?.(true);
     setBusy(true);
     onError('');
     setPreview([]);
@@ -115,7 +131,11 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
         return;
       }
       stage = 'create_session';
-      const response = await request('/avatar/sessions', avatarSessionResponseSchema, {});
+      const response = await request(
+        '/avatar/sessions',
+        avatarSessionResponseSchema,
+        selection ? { selection } : {},
+      );
       if (!isMounted()) {
         await endAvatarSession(response.session.id, false);
         return;
@@ -186,6 +206,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
       }
     } finally {
       starting.current = false;
+      if (!activeId.current) onLockChange?.(false);
       if (mounted.current) {
         setBusy(false);
       }
@@ -279,7 +300,11 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
               <div className="avatar-placeholder">
                 <Video size={42} />
                 <h2>{running ? 'Connecting your interviewer…' : 'Meet your AI interviewer'}</h2>
-                <p>A live face, a spoken conversation, and a transcript to revisit.</p>
+                <p>
+                  {selection
+                    ? 'Practise the selected scenario with its saved company and investor context.'
+                    : 'A live face, an open conversation, and a transcript to revisit.'}
+                </p>
               </div>
             )}
             <div className="avatar-badge">AI SIMULATION</div>
@@ -332,7 +357,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
             ) : (
               <button
                 className="button"
-                disabled={busy || !state.capabilities.avatarReady}
+                disabled={startDisabled || busy || !state.capabilities.avatarReady}
                 onClick={() => {
                   void start();
                 }}
@@ -343,8 +368,11 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
             )}
           </div>
           <p className="avatar-disclosure">
-            AI interviewer · synthetic voice and video. Your camera stays off. Company context is
-            empty for now. Demo interviews last up to two minutes and use your LiveAvatar credits.
+            AI interviewer · synthetic voice and video. Your camera stays off.{' '}
+            {selection
+              ? 'Uses your selected saved scenario.'
+              : 'Open conversation with no supplied company context.'}
+            Demo interviews last up to two minutes and use your LiveAvatar credits.
           </p>
           {!state.capabilities.avatarReady && (
             <p className="notice">
@@ -421,6 +449,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
                 disabled={running || busy}
                 onClick={() => {
                   setSessionId(item.id);
+                  onSelection?.(item.context?.version === 2 ? item.context.selection : undefined);
                   setPreview([]);
                 }}
               >

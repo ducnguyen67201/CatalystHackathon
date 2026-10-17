@@ -18,6 +18,12 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
       const started = Date.now();
       service.logger.write(LogEvent.WORKFLOW_STARTED);
       try {
+        if (job.kind === 'scenario') {
+          if (!service.scenarios) throw new Error('Scenario runtime unavailable.');
+          await service.scenarios.run(job);
+          service.logger.write(LogEvent.WORKFLOW_SUCCEEDED, { durationMs: Date.now() - started });
+          return true;
+        }
         let result: string;
         if (job.kind.startsWith('evaluate:')) {
           const [, sessionId, evaluationId] = job.kind.split(':');

@@ -73,7 +73,7 @@ Tracked investors are company-scoped Prisma records with schema-validated payloa
 
 Schedules enqueue before advancing the due timestamp, with the due time as the idempotency key. Daily/weekly frequencies mean 24-hour/7-day intervals. Pausing stops future scheduling, while already queued or manual work can finish. Checks compare their starting investor identity before saving and pin the company profile version; stale-profile results retry rather than being saved. Job IDs prevent duplicate history and notices after a committed check is replayed. Provider failures leave the last successful check unchanged and use the existing delayed retry/terminal failure rules. Empty results are recorded explicitly and do not claim that no real-world changes exist. The state endpoint includes the latest job for each investor even beyond its general recent-job window.
 
-Investor source intake does not automatically build a new meeting brief or mutate a voice session. Evidence IDs and profile versions provide the handoff for that separate feature. This keeps parallel voice and onboarding work independent.
+Investor source intake does not automatically build a new meeting brief or mutate a voice session. Explicit scenario generation consumes a frozen selection of that evidence. Evidence IDs and profile versions provide the handoff for that separate feature. This keeps parallel voice and onboarding work independent.
 
 ## Voice and continuity
 
@@ -102,13 +102,13 @@ Browser VoicePractice <--+--- token + context dynamic variables
                                          session history / reopen transcript
 ```
 
-`POST /api/voice/sessions` accepts an empty object, not browser-provided facts or prompts. `createApi` injects the context provider and token issuer; the default context provider supplies no company data, CSV facts, notes, investor information, scenario or previous-session summary. The context schema distinguishes empty and provided modes; its future provided shape retains decimal strings, financial source rows, snapshot IDs, note IDs and investor source URLs. The voice path does not run research or financial calculations. Context is validated and saved with each session, so later data changes cannot silently alter its record.
+`POST /api/voice/sessions` accepts an empty object for open conversation or an optional server-resolved scenario selection, never browser-provided facts or prompts. `createApi` injects the context provider and token issuer; the default context provider supplies no company data, CSV facts, notes, investor information, scenario or previous-session summary. The context schema distinguishes empty and provided modes; its future provided shape retains decimal strings, financial source rows, snapshot IDs, note IDs and investor source URLs. The voice path does not run research or financial calculations. Context is validated and saved with each session, so later data changes cannot silently alter its record.
 
 The API obtains a WebRTC token and conversation ID before creating the session. A transactional application check prevents concurrent active voice records. The token goes only to the requesting browser; it is not persisted. `VoicePracticePage.tsx` exposes `/voice` independently of the onboarding gate and uses the same authenticated state API. `VoicePractice.tsx` has its own conversation provider to isolate SDK callbacks from the legacy practice component. It requests microphone permission on Start, offers mute/end, bounds connection startup and duration, stops audio when unmounted, and exposes saved session history. Existing written practice remains independent in the expandable legacy section.
 
 Final transcripts are accepted only through signature-verified webhooks matching the configured agent and a recorded provider conversation. Browser end requests cannot supply authoritative turns. A transcript receipt makes both completed and partial delivery idempotent, including late browser-end requests. Empty and failed conversations are retained as partial records. A missing callback leaves the session awaiting provider evidence; the UI shows temporary live captions separately from the saved transcript and polls the existing state endpoint. After a browser refresh, users can reopen saved turns or close an abandoned active record. This does not remotely terminate audio still running in another tab.
 
-Standalone voice does not run the existing financial topic checker or append a reviewed brief. Automatic evaluation consumes the saved transcript and separately frozen workspace evidence, as described below. Richer live prompting remains a future integration. Legacy brief-based rehearsals keep their existing behavior. Older rehearsal JSON loads with null context and receipt fields; no historical facts or receipt timestamps are invented and no database migration is needed for these additions.
+Standalone voice does not run the existing financial topic checker or append a reviewed brief. Automatic evaluation consumes the saved transcript and separately frozen workspace evidence, as described below. Selected scenarios supply their frozen generation context to both the interviewer and evaluator. Legacy brief-based rehearsals keep their existing behavior. Older rehearsal JSON loads with null context and receipt fields; no historical facts or receipt timestamps are invented and no database migration is needed for these additions.
 
 No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. The main voice entrypoint requires API key, agent ID and webhook secret, but cannot prove callback reachability from their presence. Browser controls enforce a ten-minute limit while mounted; configure provider limits separately. Provider configuration and local startup instructions are in README.md.
 
@@ -117,10 +117,10 @@ No raw audio is saved by this application. ElevenLabs-side retention must be con
 The browser TypeScript project (`src/web/tsconfig.json`) uses Vite's bundler resolution, including the LiveAvatar SDK's extensionless type exports. Server, worker and scripts retain NodeNext resolution. Both projects inherit the same strict checks, and `pnpm typecheck` checks both.
 
 ```text
-No-op PracticeContextProvider
+PracticeContextProvider / saved scenario
         |
 POST /api/avatar/sessions
-        +--> reserve liveavatar rehearsal + frozen empty context
+        +--> reserve liveavatar rehearsal + frozen practice context
         +--> LiveAvatar FULL token (avatar + voice + context IDs)
         +--> pin provider session ID; return temporary token
                           |
@@ -135,7 +135,7 @@ Server GET stored session's transcript --> validate --> save turns
 History / bounded retry / reopen transcript
 ```
 
-`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. The adapter currently rejects provided company context rather than silently discarding it; only the no-op slice is connected.
+`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. Open conversations use the configured context; selected scenarios supply their saved context through `dynamic_variables.brief_context`.
 
 New video sessions use the `liveavatar` rehearsal mode. It shares the active-session exclusion with ElevenLabs voice, freezes its context and stores a provider session ID. Token creation failures leave a partial record. Browser end requests cannot supply authoritative turns. After stopping, the server fetches the transcript for its own stored session ID, validates speaker roles and text, and accepts it only when the provider reports the session inactive. Null, empty and still-active responses remain pending. A saved receipt makes repeated retrieval idempotent. Provider failures do not turn a successful stop into a failed stop. Automatic evaluation adds a separate coaching report; these sessions do not append a reviewed brief.
 
@@ -197,7 +197,7 @@ Completion atomically saves meeting notes and identity links, upserts one tracke
 
 ## Post-practice evaluator
 
-`RehearsalEvaluation.ts` defines versioned evidence, claim, coaching and report contracts. `EvaluationContextAssembler.ts` freezes a bounded recent-year metric catalog and attributed company/meeting/investor sources separately from the actual interviewer context. `EvaluationProvider.ts` owns the two prompts and provider port; `Evaluation.ts` supplies the live structured-output adapter. `EvaluationChecks.ts` checks quotations, references, numerical provenance and exact decimal comparisons.
+`RehearsalEvaluation.ts` defines versioned evidence, claim, coaching and report contracts. `EvaluationContextAssembler.ts` freezes a bounded recent-year metric catalog and attributed company/meeting/investor sources. For a selected scenario it uses the company, investor and current financial snapshot saved in that scenario, even if workspace data has since changed; open conversations use the current selected workspace evidence. `EvaluationProvider.ts` owns the two prompts and provider port; `Evaluation.ts` supplies the live structured-output adapter. `EvaluationChecks.ts` checks quotations, references, numerical provenance and exact decimal comparisons.
 
 `RehearsalEvaluationService.ts` queues reviews when authoritative transcripts are saved, orchestrates extraction/checking/coaching, and preserves clarifications and written retries as new records. These records live in existing rehearsal JSON; old records receive empty defaults without a migration. `PrismaStore.save` atomically saves transcripts and queue jobs, and its optional completion claim fences result publication against the current unexpired lease. A queued record plus its latest job determines pending/failure status; no transcript is erased on evaluation failure.
 
@@ -206,3 +206,32 @@ Completion atomically saves meeting notes and identity links, upserts one tracke
 `AvatarTranscript.ts` shares authoritative intake between browser/manual fetches and the worker. Ended video sessions enqueue an idempotent transcript job with bounded retries. Abandoned active sessions still require explicit stopping.
 
 Every new session freezes evaluation context, and its final transcript automatically queues a model review. There is no mode toggle or demo execution path. Missing OpenAI credentials fail the review job without losing the transcript. Provider-delivered context, the legacy topic checker and brief mutation rules remain separate. See [Evaluator workflow](EvaluatorWorkflowPlan.md) for ASCII flow, prompt contracts, limitations and extension points.
+
+## Scenario generation and investor preparation
+
+`ScenarioService` assembles initial company information, selected-investor research, bounded CSV history and linked completed practices through `ScenarioSourceProvider` adapters. `Scenario.ts` owns strict Zod inputs, source provenance, coverage, investor-profile hypotheses and scenario branches. Pitch documents and forecasts are explicitly not connected; unrelated or incomplete practice sessions are excluded. `ScenarioPrompt.ts` owns the versioned instructions; new data kinds require a typed adapter and explicit prompt rules.
+
+`ScenarioGeneration` is a separate workspace-scoped Prisma table. `PrismaStore` atomically creates its input snapshot and a workflow job with kind `scenario`. Request keys are scoped to workspace and operation; changed parameters cannot reuse a key. The worker passes frozen inputs to an injected demo or live generator, validates references, and atomically commits output and job success under the current, unexpired lease. The job owns status. Concurrent or recovered workers cannot overwrite a completed result. A provider retry can incur another provider charge even though local output commits once.
+
+The generation API provides bounded history and source-change detection. Current company fields and matching meeting notes are copied into each input because their original records are mutable. Research IDs and selected excerpts, dates, labels, omitted IDs and input hashes are retained. New source data marks an old view outdated but never rewrites it. Structural and source-reference checks do not certify the semantic truth of generated claims.
+
+`ScenarioPractice.tsx` renders full scenarios and the research-based investor profile together in both the main Practice scenario and standalone `/voice`. Source inspection, missing-data coverage, demo labels, generation history and failure states remain visible. Both voice and avatar creation accept an optional saved generation/scenario selection. `PracticeContext` v2 freezes the entire selected scenario, investor profile and source snapshot into the rehearsal. Version 1 sessions and empty-object starts retain their existing behavior. Tokens and provider webhook verification are unchanged. Provider-side prompt configuration must honor the selected scenario; no remote configuration is edited automatically.
+
+The Practice scenario library (`/scenarios`, also in the workspace navigation) lists each
+saved scenario as a table row. Selecting a row opens an accessible modal drawer with the
+full scenario, inferred investor profile, coverage and frozen source snapshot. Start
+Practicing navigates to `/practice?generationId=…&scenarioId=…`. The room reloads and
+validates that saved selection before enabling a session; invalid or unavailable selections
+never fall back to an open conversation. `/practice` and the legacy `/voice` URL support
+open conversations. Navigation itself does not create a provider session. Both voice
+transports send the saved IDs to the server, which resolves the immutable practice context.
+
+Scenario generation now has a read-only `POST /api/scenario-generations/preview` step.
+It uses the same server-side assembly as creation, returning input plus a review hash.
+The UI submits that hash with its idempotency key; changed sources or prior-scenario
+summaries cause a conflict instead of silently sending different data. Replays of an
+already-created key return its saved generation even after workspace changes.
+Source freshness excludes prior generated scenarios to avoid immediately marking a
+new generation outdated. The prompt version is scenario-v2. Sources include bounded
+financial history and investor-linked completed practice; source snapshots remain immutable.
+CSV amounts are copied as exact decimal strings and no LLM financial arithmetic is requested.
