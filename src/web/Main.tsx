@@ -1,12 +1,14 @@
 import { createRoot } from 'react-dom/client';
 import { ConversationProvider } from '@elevenlabs/react';
 import { App } from './App.js';
+import { VoicePracticePage } from './VoicePracticePage.js';
 import './Styles.css';
+import './Dashboard.css';
 const root = document.getElementById('root');
 if (root) {
   createRoot(root).render(
     <ConversationProvider>
-      <App />
+      {window.location.pathname === '/voice' ? <VoicePracticePage /> : <App />}
     </ConversationProvider>,
   );
 }

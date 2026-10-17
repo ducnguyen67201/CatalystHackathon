@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { onboardingSchema, type MeetingInput } from '../contracts/Onboarding.js';
+import { saveMeetingContext } from './Onboarding.js';
+import { InvestorTrackingService } from './InvestorTrackingService.js';
 import { Decimal } from 'decimal.js';
 import {
   briefSchema,
@@ -15,12 +18,17 @@ import { evaluateInvestorFit } from './InvestorFit.js';
 import { nextPracticeQuestion, reviewAnswer } from './RehearsalReview.js';
 import { nextScheduledCheck } from './Schedules.js';
 import { ConflictError, type WorkspaceStore } from './WorkspaceStore.js';
+import { practiceContextSchema, type PracticeContext } from '../contracts/PracticeContext.js';
 
 export class WorkspaceService {
+  readonly investors: InvestorTrackingService;
+
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
-  ) {}
+  ) {
+    this.investors = new InvestorTrackingService(this, research);
+  }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
     if (!state) {
@@ -51,6 +59,7 @@ export class WorkspaceService {
     await this.store.initialize({
       id: 'tidewell',
       revision: 0,
+      onboarding: onboardingSchema.parse({}),
       profile: {
         name: 'Tidewell',
         stage: 'Seed',
@@ -69,8 +78,65 @@ export class WorkspaceService {
       rehearsals: [],
       milestones: [],
       notices: [],
+      investors: [],
     });
   }
+  /** Reopens setup without deleting financials, company context, or research history. */
+  async restartOnboarding(): Promise<void> {
+    await this.change((state) => {
+      state.onboarding.step = 1;
+      state.onboarding.completedAt = null;
+    });
+  }
+
+  async selectOnboardingFinancials(snapshotId: string): Promise<void> {
+    await this.change((state) => {
+      if (!state.snapshots.some((item) => item.id === snapshotId)) {
+        throw new Error('Onboarding: choose a saved financial snapshot.');
+      }
+      state.onboarding.snapshotId = snapshotId;
+      state.onboarding.step = 2;
+    });
+  }
+
+  async saveOnboardingCompany(profile: Omit<Profile, 'version'>): Promise<void> {
+    await this.change((state) => {
+      if (!state.onboarding.snapshotId) {
+        throw new Error('Onboarding: choose financial data first.');
+      }
+      state.profile = { ...profile, version: state.profile.version + 1 };
+      state.onboarding.step = 3;
+    });
+  }
+
+  async completeOnboarding(meeting: MeetingInput | null): Promise<void> {
+    await this.change((state) => {
+      if (!state.onboarding.snapshotId || state.onboarding.step !== 3) {
+        throw new Error('Onboarding: finish financial and company setup first.');
+      }
+      saveMeetingContext(state, meeting);
+      state.onboarding.completedAt ??= new Date().toISOString();
+      state.briefs.push(
+        this.buildBrief(state, this.chooseEvidenceId(state), state.briefs.at(-1) ?? null),
+      );
+    });
+  }
+
+  /** A named meeting may use only evidence attached to that investor's checks. */
+  private chooseEvidenceId(state: Workspace): string | null {
+    const meeting = state.onboarding.meeting;
+    if (meeting) {
+      const investor = state.investors.find((item) => item.id === meeting.investorId);
+      return investor?.checks.at(-1)?.evidenceIds.at(-1) ?? investor?.discoveryEvidenceId ?? null;
+    }
+    return (
+      (
+        state.evidence.filter((item) => evaluateInvestorFit(state.profile, item).suitable).at(-1) ??
+        state.evidence.at(-1)
+      )?.id ?? null
+    );
+  }
+
   async updateProfile(profile: Omit<Profile, 'version'>): Promise<void> {
     await this.change((state) => {
       state.profile = { ...profile, version: state.profile.version + 1 };
@@ -85,6 +151,9 @@ export class WorkspaceService {
         return existing.id;
       }
       state.snapshots.push(snapshot);
+      if (state.onboarding.snapshotId) {
+        state.onboarding.snapshotId = snapshot.id;
+      }
       for (const milestone of state.milestones) {
         if (milestone.status === 'open') {
           milestone.observation =
@@ -108,7 +177,9 @@ export class WorkspaceService {
     evidenceId: string | null,
     previous: Brief | null = null,
   ): Brief {
-    const snapshot = state.snapshots.at(-1);
+    const snapshot =
+      state.snapshots.find((item) => item.id === state.onboarding.snapshotId) ??
+      state.snapshots.at(-1);
     if (!snapshot) {
       throw new Error('Upload financial data first.');
     }
@@ -119,7 +190,12 @@ export class WorkspaceService {
       snapshotId: snapshot.id,
       profileVersion: state.profile.version,
       evidenceId: evidence?.id ?? null,
-      investor: evidence?.investor ?? 'Financial preparation',
+      investor:
+        state.onboarding.meeting?.name ||
+        state.onboarding.meeting?.firm ||
+        evidence?.investor ||
+        'Financial preparation',
+      meeting: state.onboarding.meeting,
       fit: evidence
         ? evaluateInvestorFit(state.profile, evidence)
         : {
@@ -141,20 +217,21 @@ export class WorkspaceService {
   }
   async rebuild(): Promise<string> {
     return this.change((state) => {
-      const evidence =
-        state.evidence.filter((item) => evaluateInvestorFit(state.profile, item).suitable).at(-1) ??
-        state.evidence.at(-1);
+      const evidenceId = this.chooseEvidenceId(state);
       const latest = state.briefs.at(-1);
-      const snapshot = state.snapshots.at(-1);
+      const snapshot =
+        state.snapshots.find((item) => item.id === state.onboarding.snapshotId) ??
+        state.snapshots.at(-1);
       if (
         latest &&
         latest.profileVersion === state.profile.version &&
         latest.snapshotId === snapshot?.id &&
-        latest.evidenceId === (evidence?.id ?? null)
+        latest.evidenceId === evidenceId &&
+        JSON.stringify(latest.meeting) === JSON.stringify(state.onboarding.meeting)
       ) {
         return 'The existing brief already uses the latest inputs.';
       }
-      state.briefs.push(this.buildBrief(state, evidence?.id ?? null, latest ?? null));
+      state.briefs.push(this.buildBrief(state, evidenceId, latest ?? null));
       return 'Meeting brief updated from the current evidence and financials.';
     });
   }
@@ -175,7 +252,13 @@ export class WorkspaceService {
       if (suitable.length) {
         const evidence = suitable.at(-1);
         if (evidence) {
-          state.briefs.push(this.buildBrief(state, evidence.id, state.briefs.at(-1) ?? null));
+          state.briefs.push(
+            this.buildBrief(
+              state,
+              state.onboarding.meeting ? this.chooseEvidenceId(state) : evidence.id,
+              state.briefs.at(-1) ?? null,
+            ),
+          );
         }
         state.notices.push({
           id: randomUUID(),
@@ -210,14 +293,23 @@ export class WorkspaceService {
     });
   }
   async createRehearsal(
-    briefId: string,
+    briefId: string | null,
     mode: Rehearsal['mode'],
     conversationId: string | null = null,
+    context: PracticeContext | null = null,
+    avatarCorrelationHash: string | null = null,
   ): Promise<Rehearsal> {
+    const frozenContext = context === null ? null : practiceContextSchema.parse(context);
     return this.change((state) => {
       const brief = state.briefs.find((item) => item.id === briefId);
-      if (!brief) {
+      if (!brief && !(briefId === null && mode === 'elevenlabs' && frozenContext !== null)) {
         throw new Error('Choose an existing brief.');
+      }
+      if (
+        mode === 'elevenlabs' &&
+        state.rehearsals.some((item) => item.mode === 'elevenlabs' && item.status === 'active')
+      ) {
+        throw new Error('End an active rehearsal before starting another.');
       }
       const active = state.rehearsals.filter((item) => item.status === 'active').length;
       if (active >= 3) {
@@ -232,14 +324,52 @@ export class WorkspaceService {
         conversationId,
         turns: [],
         review: null,
+        context: frozenContext,
+        transcriptReceivedAt: null,
+        avatarSessionId: null,
+        avatarCorrelationHash,
       };
-      if (mode !== 'elevenlabs') {
+      if (mode !== 'elevenlabs' && brief) {
         session.turns.push({ role: 'agent', text: brief.finding.question });
       }
       state.rehearsals.push(session);
       return session;
     });
   }
+  async attachAvatarSession(sessionId: string, avatarSessionId: string): Promise<void> {
+    await this.change((state) => {
+      const session = state.rehearsals.find((item) => item.id === sessionId);
+      if (!session || !session.avatarCorrelationHash || session.avatarSessionId) {
+        throw new Error('Session unavailable.');
+      }
+      session.avatarSessionId = avatarSessionId;
+    });
+  }
+
+  /** Called only after a signed provider webhook. Never bind a browser-reported conversation ID. */
+  async bindAvatarConversation(
+    sessionId: string,
+    correlationHash: string,
+    conversationId: string,
+  ): Promise<string | null> {
+    return this.change((state) => {
+      const session = state.rehearsals.find((item) => item.id === sessionId);
+      if (
+        !session ||
+        session.avatarCorrelationHash !== correlationHash ||
+        !session.avatarSessionId ||
+        (session.conversationId !== null && session.conversationId !== conversationId) ||
+        state.rehearsals.some(
+          (item) => item.id !== sessionId && item.conversationId === conversationId,
+        )
+      ) {
+        return null;
+      }
+      session.conversationId = conversationId;
+      return session.id;
+    });
+  }
+
   async answer(sessionId: string, text: string): Promise<void> {
     await this.change((state) => {
       const session = state.rehearsals.find((item) => item.id === sessionId);
@@ -273,7 +403,7 @@ export class WorkspaceService {
       if (!session) {
         throw new Error('Session unavailable.');
       }
-      if (session.status === 'completed') {
+      if (session.status === 'completed' || session.transcriptReceivedAt !== null) {
         return;
       }
       if (session.mode === 'elevenlabs' && !fromWebhook) {
@@ -282,8 +412,13 @@ export class WorkspaceService {
       }
       if (fromWebhook) {
         session.turns = turns;
+        session.transcriptReceivedAt = new Date().toISOString();
       }
       session.status = completed ? 'completed' : 'partial';
+      /* Standalone voice captures a transcript; context-based evaluation is a later consumer. */
+      if (session.briefId === null) {
+        return;
+      }
       const brief = state.briefs.find((item) => item.id === session.briefId);
       if (!brief) {
         throw new Error('Brief unavailable.');

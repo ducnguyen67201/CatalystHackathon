@@ -1,4 +1,8 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { meetingInputSchema } from '../contracts/Onboarding.js';
+import { LocalSessionError } from '../contracts/LocalSession.js';
+import { registerInvestorRoutes } from './InvestorRoutes.js';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
@@ -24,9 +28,35 @@ import {
   voiceWebhookSchema,
 } from '../infrastructure/Voice.js';
 import type { Environment } from './Env.js';
+import { avatarCorrelationSchema } from '../contracts/AvatarPractice.js';
+import type { AvatarProvider } from '../features/AvatarProvider.js';
+import { LiveAvatarProvider } from '../infrastructure/LiveAvatar.js';
+import { isAvatarConfigured, registerAvatarRoutes } from './AvatarRoutes.js';
+import { practiceContextSchema } from '../contracts/PracticeContext.js';
+import {
+  voiceSessionRequestSchema,
+  voiceSessionResponseSchema,
+} from '../contracts/VoicePractice.js';
+import {
+  NoopPracticeContextProvider,
+  type PracticeContextProvider,
+} from '../features/PracticeContextProvider.js';
+
+interface VoiceDependencies {
+  contextProvider: PracticeContextProvider;
+  createToken: typeof createVoiceToken;
+  avatarProvider?: AvatarProvider;
+}
 
 /** Single-user localhost API. Remote hosting requires an account/membership auth adapter. */
-export async function createApi(service: WorkspaceService, env: Environment) {
+export async function createApi(
+  service: WorkspaceService,
+  env: Environment,
+  voice: VoiceDependencies = {
+    contextProvider: new NoopPracticeContextProvider(),
+    createToken: createVoiceToken,
+  },
+) {
   const app = Fastify({ logger: false, bodyLimit: 2200000 });
   await app.register(cookie);
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
@@ -59,7 +89,10 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       value.length !== localSession.length ||
       !timingSafeEqual(Buffer.from(value), Buffer.from(localSession))
     ) {
-      await reply.code(401).send({ error: 'Open the workspace to start a local session.' });
+      await reply.code(401).send({
+        code: LocalSessionError.REQUIRED,
+        error: 'Your local session ended. Please try again to reconnect.',
+      });
     }
   });
   app.setErrorHandler((error, request, reply) => {
@@ -76,7 +109,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Onboarding:)/.test(
         error.message,
       )
     ) {
@@ -117,14 +150,44 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       workspace: await service.read(),
       jobs: await service.store.listJobs(),
       capabilities: {
+        avatarReady: isAvatarConfigured(env),
         researchMode: env.RESEARCH_MODE,
-        voiceReady: Boolean(env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID),
+        voiceReady: Boolean(
+          env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID && env.ELEVENLABS_WEBHOOK_SECRET,
+        ),
         researchReady:
           env.RESEARCH_MODE === 'demo' || Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
         localOnly: true,
       },
     }),
   );
+  app.post('/api/onboarding/restart', async (request) => {
+    z.strictObject({}).parse(request.body);
+    await service.restartOnboarding();
+    return { ok: true };
+  });
+  app.put('/api/onboarding/financials', async (request) => {
+    const { snapshotId } = z.strictObject({ snapshotId: z.string().min(1) }).parse(request.body);
+    await service.selectOnboardingFinancials(snapshotId);
+    return { ok: true };
+  });
+  app.post('/api/onboarding/sample', async () => {
+    const csv = await readFile(new URL('../../fixtures/Tidewell.csv', import.meta.url), 'utf8');
+    const snapshotId = await service.upload(csv, 'Tidewell.csv', 'unspecified');
+    await service.selectOnboardingFinancials(snapshotId);
+    return { ok: true };
+  });
+  app.put('/api/onboarding/company', async (request) => {
+    await service.saveOnboardingCompany(profileSchema.omit({ version: true }).parse(request.body));
+    return { ok: true };
+  });
+  app.put('/api/onboarding/meeting', async (request) => {
+    const { meeting } = z
+      .strictObject({ meeting: meetingInputSchema.nullable() })
+      .parse(request.body);
+    await service.completeOnboarding(meeting);
+    return { ok: true };
+  });
   app.put('/api/profile', async (request) => {
     await service.updateProfile(profileSchema.omit({ version: true }).parse(request.body));
     return { ok: true };
@@ -146,9 +209,46 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     const job = await service.store.enqueue(`manual:${body.key}`, 'radar');
     return reply.code(202).send(job);
   });
+  registerInvestorRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };
+  });
+  registerAvatarRoutes(
+    app,
+    service,
+    env,
+    voice.contextProvider,
+    voice.avatarProvider ?? new LiveAvatarProvider(),
+  );
+  app.post('/api/voice/sessions', async (request, reply) => {
+    voiceSessionRequestSchema.parse(request.body);
+    if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_AGENT_ID || !env.ELEVENLABS_WEBHOOK_SECRET) {
+      return reply.code(503).send({
+        error: 'Configure the ElevenLabs API key, private agent and transcript webhook first.',
+      });
+    }
+    const state = await service.read();
+    if (state.rehearsals.some((item) => item.mode === 'elevenlabs' && item.status === 'active')) {
+      throw new Error('End an active rehearsal before starting another.');
+    }
+    const context = practiceContextSchema.parse(await voice.contextProvider.loadContext());
+    const credentials = await voice.createToken(env.ELEVENLABS_API_KEY, env.ELEVENLABS_AGENT_ID);
+    const session = await service.createRehearsal(
+      null,
+      'elevenlabs',
+      credentials.conversationId,
+      context,
+    );
+    return voiceSessionResponseSchema.parse({
+      session,
+      token: credentials.token,
+      dynamicVariables: {
+        company_name: context.company?.name ?? 'the founder',
+        brief_context: JSON.stringify(context),
+        previous_session_summary: 'No previous rehearsal supplied.',
+      },
+    });
   });
   app.post('/api/rehearsals', async (request, reply) => {
     const body = z
@@ -254,7 +354,20 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       const session = state.rehearsals.find(
         (item) => item.conversationId === event.data.data.conversation_id,
       );
-      if (!session) {
+      let sessionId = session?.id ?? null;
+      if (!sessionId) {
+        const correlation = avatarCorrelationSchema.safeParse(
+          event.data.data.conversation_initiation_client_data?.dynamic_variables,
+        );
+        if (correlation.success) {
+          sessionId = await service.bindAvatarConversation(
+            correlation.data.june_session_id,
+            createHash('sha256').update(correlation.data.june_session_nonce).digest('hex'),
+            event.data.data.conversation_id,
+          );
+        }
+      }
+      if (!sessionId) {
         return reply.code(202).send({ ignored: true });
       }
       const turns = event.data.data.transcript.flatMap((turn) =>
@@ -262,7 +375,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       );
       const complete =
         event.data.data.status !== 'failed' && turns.some((turn) => turn.role === 'user');
-      await service.finishRehearsal(session.id, turns, complete, true);
+      await service.finishRehearsal(sessionId, turns, complete, true);
       return { ok: true };
     });
     done();

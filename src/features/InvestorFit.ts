@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import type { Evidence, InvestorFit, Profile } from '../contracts/Workspace.js';
 export function evaluateInvestorFit(profile: Profile, evidence: Evidence): InvestorFit {
   const compare = (value: string | null, target: string): 'aligned' | 'mismatch' | 'unknown' =>
-    value === null
+    value === null || !target || target === 'Not confirmed'
       ? 'unknown'
       : value.toLowerCase() === target.toLowerCase()
         ? 'aligned'
@@ -12,7 +12,10 @@ export function evaluateInvestorFit(profile: Profile, evidence: Evidence): Inves
   const geography = compare(evidence.geography, profile.geography);
   const comparable = evidence.currency !== 'unspecified' && evidence.currency === profile.currency;
   const checkRange =
-    !comparable || evidence.checkMin === null || evidence.checkMax === null
+    profile.raiseTarget === null ||
+    !comparable ||
+    evidence.checkMin === null ||
+    evidence.checkMax === null
       ? 'unknown'
       : new Decimal(profile.raiseTarget).gte(evidence.checkMin) &&
           new Decimal(profile.raiseTarget).lte(evidence.checkMax)

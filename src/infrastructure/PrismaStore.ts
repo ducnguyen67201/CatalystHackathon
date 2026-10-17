@@ -28,6 +28,7 @@ export class PrismaStore implements WorkspaceStore {
         rehearsals: { orderBy: { createdAt: 'asc' } },
         milestones: { orderBy: { createdAt: 'asc' } },
         notices: { orderBy: { createdAt: 'asc' } },
+        investors: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!record) {
@@ -37,6 +38,7 @@ export class PrismaStore implements WorkspaceStore {
       id: record.id,
       revision: record.revision,
       profile: record.profile,
+      onboarding: record.onboarding,
       schedule: record.schedule,
       snapshots: record.snapshots.map((item) => item.payload),
       evidence: record.evidence.map((item) => item.payload),
@@ -44,6 +46,7 @@ export class PrismaStore implements WorkspaceStore {
       rehearsals: record.rehearsals.map((item) => item.payload),
       milestones: record.milestones.map((item) => item.payload),
       notices: record.notices.map((item) => item.payload),
+      investors: record.investors.map((item) => item.payload),
     });
   }
   async initialize(workspace: Workspace): Promise<void> {
@@ -53,6 +56,7 @@ export class PrismaStore implements WorkspaceStore {
       create: {
         id: workspaceId,
         profile: json(workspace.profile),
+        onboarding: json(workspace.onboarding),
         schedule: json(workspace.schedule),
       },
     });
@@ -69,6 +73,7 @@ export class PrismaStore implements WorkspaceStore {
           data: {
             revision: { increment: 1 },
             profile: json(workspace.profile),
+            onboarding: json(workspace.onboarding),
             schedule: json(workspace.schedule),
             updatedAt: new Date(),
           },
@@ -121,6 +126,13 @@ export class PrismaStore implements WorkspaceStore {
             create: { id: payload.id, workspaceId, payload: json(payload) },
           });
         }
+        for (const payload of workspace.investors) {
+          await tx.trackedInvestor.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload) },
+            create: { id: payload.id, workspaceId, key: payload.key, payload: json(payload) },
+          });
+        }
         for (const payload of workspace.notices) {
           await tx.notice.upsert({
             where: { id: payload.id },
@@ -133,11 +145,33 @@ export class PrismaStore implements WorkspaceStore {
     );
   }
   async enqueue(key: string, kind: string): Promise<Job> {
-    const row = await this.client.workflowJob.upsert({
-      where: { key },
-      update: {},
-      create: { id: randomUUID(), workspaceId, key, kind },
-    });
+    const activeWhere = {
+      workspaceId,
+      kind,
+      status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
+    };
+    const active = kind.startsWith('investor:')
+      ? await this.client.workflowJob.findFirst({ where: activeWhere })
+      : null;
+    const row =
+      active ??
+      (await this.client.workflowJob
+        .upsert({
+          where: { key },
+          update: {},
+          create: { id: randomUUID(), workspaceId, key, kind },
+        })
+        .catch(async (error: unknown) => {
+          // The partial unique index resolves simultaneous manual/scheduled checks.
+          const code = z.object({ code: z.string() }).safeParse(error);
+          if (kind.startsWith('investor:') && code.success && code.data.code === 'P2002') {
+            const pending = await this.client.workflowJob.findFirst({ where: activeWhere });
+            if (pending) {
+              return pending;
+            }
+          }
+          throw error;
+        }));
     return jobSchema.parse({
       id: row.id,
       kind: row.kind,
@@ -149,11 +183,24 @@ export class PrismaStore implements WorkspaceStore {
     });
   }
   async listJobs(): Promise<Job[]> {
-    const rows = await this.client.workflowJob.findMany({
-      where: { workspaceId },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    });
+    const [recent, investorJobs] = await Promise.all([
+      this.client.workflowJob.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      }),
+      this.client.workflowJob.findMany({
+        where: {
+          workspaceId,
+          OR: [{ kind: { startsWith: 'investor:' } }, { kind: 'discover-investors' }],
+        },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['kind'],
+      }),
+    ]);
+    const rows = [
+      ...new Map([...recent, ...investorJobs].map((row) => [row.id, row])).values(),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return rows.map((row) =>
       jobSchema.parse({
         id: row.id,

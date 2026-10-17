@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { onboardingSchema, meetingSchema } from './Onboarding.js';
+import { practiceContextSchema } from './PracticeContext.js';
+import { trackedInvestorSchema } from './InvestorTracking.js';
 
 export const ResearchMode = {
   DEMO: 'demo',
@@ -13,6 +16,7 @@ export const JobStatus = {
 } as const;
 
 export const Stage = {
+  UNKNOWN: 'Not confirmed',
   PRE_SEED: 'Pre-seed',
   SEED: 'Seed',
   SERIES_A: 'Series A',
@@ -31,9 +35,9 @@ const dateSchema = z.iso.datetime();
 export const profileSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
   stage: z.enum(Stage),
-  sector: z.string().trim().min(1).max(100),
-  geography: z.string().trim().min(1).max(100),
-  raiseTarget: moneySchema.refine((value) => Number(value) > 0),
+  sector: z.string().trim().max(100),
+  geography: z.string().trim().max(100),
+  raiseTarget: moneySchema.refine((value) => Number(value) > 0).nullable(),
   currency: z.enum(['unspecified', 'USD', 'CAD', 'EUR', 'GBP']),
   goal: z.string().max(1000),
   version: z.int().positive(),
@@ -128,6 +132,7 @@ export const briefSchema = z.strictObject({
   snapshotId: idSchema,
   profileVersion: z.int(),
   evidenceId: idSchema.nullable(),
+  meeting: meetingSchema.nullable().default(null),
   investor: z.string(),
   fit: fitSchema,
   finding: findingSchema,
@@ -147,13 +152,21 @@ export type TranscriptTurn = z.infer<typeof turnSchema>;
 
 export const rehearsalSchema = z.strictObject({
   id: idSchema,
-  briefId: idSchema,
+  briefId: idSchema.nullable(),
   mode: z.enum(['demo', 'elevenlabs', 'text']),
   status: z.enum(['active', 'awaiting_transcript', 'completed', 'partial']),
   createdAt: dateSchema,
   conversationId: z.string().nullable(),
   turns: z.array(turnSchema).max(200),
   review: reviewSchema.nullable(),
+  context: practiceContextSchema.nullable().default(null),
+  transcriptReceivedAt: dateSchema.nullable().default(null),
+  avatarSessionId: z.uuid().nullable().default(null),
+  avatarCorrelationHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable()
+    .default(null),
 });
 
 export type Rehearsal = z.infer<typeof rehearsalSchema>;
@@ -199,6 +212,7 @@ export const workspaceSchema = z.strictObject({
   id: idSchema,
   revision: z.int().nonnegative(),
   profile: profileSchema,
+  onboarding: onboardingSchema.default(() => onboardingSchema.parse({})),
   schedule: scheduleSchema,
   snapshots: z.array(snapshotSchema),
   evidence: z.array(evidenceSchema),
@@ -206,6 +220,7 @@ export const workspaceSchema = z.strictObject({
   rehearsals: z.array(rehearsalSchema),
   milestones: z.array(milestoneSchema),
   notices: z.array(noticeSchema),
+  investors: z.array(trackedInvestorSchema).default([]),
 });
 
 export type Workspace = z.infer<typeof workspaceSchema>;
@@ -225,6 +240,7 @@ export type Job = z.infer<typeof jobSchema>;
 export const capabilitiesSchema = z.strictObject({
   researchMode: z.enum(ResearchMode),
   voiceReady: z.boolean(),
+  avatarReady: z.boolean().default(false),
   researchReady: z.boolean(),
   localOnly: z.literal(true),
 });
