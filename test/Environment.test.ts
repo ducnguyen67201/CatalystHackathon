@@ -29,6 +29,47 @@ afterEach(() => {
 });
 
 describe('Injected environment boundaries', () => {
+  it('requires explicit workspace accounts and HTTPS in hosted mode', () => {
+    const hosted = {
+      DATABASE_URL: databaseUrl,
+      HOSTING_MODE: 'hosted',
+      WEB_ORIGIN: 'https://june.example.com',
+    };
+    expect(() => readEnvironment(hosted)).toThrow('Invalid environment settings');
+    const account = { username: 'guest', passwordSha256: 'a'.repeat(64), workspaceId: 'tidewell' };
+    const HOSTED_ACCOUNTS = JSON.stringify([account]);
+    expect(readEnvironment({ ...hosted, HOSTED_ACCOUNTS, PORT: '8080' }).PORT).toBe(8080);
+    for (const WEB_ORIGIN of ['http://june.example.com', 'https://june.example.com/path']) {
+      expect(() => readEnvironment({ ...hosted, HOSTED_ACCOUNTS, WEB_ORIGIN })).toThrow();
+    }
+    for (const accounts of [
+      'broken-json',
+      '[]',
+      JSON.stringify([{ ...account, workspaceId: 'other' }]),
+      JSON.stringify([account, account]),
+    ]) {
+      expect(() => readEnvironment({ ...hosted, HOSTED_ACCOUNTS: accounts })).toThrow(
+        'Invalid environment settings',
+      );
+    }
+    expect(() =>
+      readEnvironment({ DATABASE_URL: databaseUrl, WEB_ORIGIN: hosted.WEB_ORIGIN }),
+    ).toThrow();
+  });
+
+  it('requires explicit opt-in for public demo access and still enforces HTTPS', () => {
+    const settings = {
+      DATABASE_URL: databaseUrl,
+      HOSTING_MODE: 'hosted',
+      WEB_ORIGIN: 'https://june.example.com',
+      HOSTED_ACCESS_MODE: 'public-demo',
+    };
+    expect(readEnvironment(settings).HOSTED_ACCOUNTS).toBeUndefined();
+    expect(readEnvironment(settings).HOSTED_ACCESS_MODE).toBe('public-demo');
+    expect(() => readEnvironment({ ...settings, HOSTED_ACCESS_MODE: 'public' })).toThrow();
+    expect(() => readEnvironment({ ...settings, WEB_ORIGIN: 'http://june.example.com' })).toThrow();
+  });
+
   it('validates an injected object and applies defaults without process globals', () => {
     const settings = Object.freeze({ DATABASE_URL: databaseUrl, EXA_API_KEY: '', API_PORT: '' });
     const env = readEnvironment(settings);

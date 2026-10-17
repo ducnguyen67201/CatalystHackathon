@@ -25,6 +25,44 @@ const webOriginSchema = z
   )
   .default('http://127.0.0.1:4317');
 
+const hostedOriginSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  return (
+    url.protocol === 'https:' &&
+    url.pathname === '/' &&
+    !url.search &&
+    !url.hash &&
+    !url.username &&
+    !url.password
+  );
+});
+const hostedAccountsSchema = z
+  .string()
+  .transform((value, context) => {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed;
+    } catch {
+      context.addIssue({ code: 'custom', message: 'Invalid account configuration.' });
+      return z.NEVER;
+    }
+  })
+  .pipe(
+    z
+      .array(
+        z.strictObject({
+          username: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
+          passwordSha256: z.string().regex(/^[a-f0-9]{64}$/),
+          workspaceId: z.literal('tidewell'),
+        }),
+      )
+      .min(1)
+      .max(20),
+  )
+  .refine(
+    (accounts) => new Set(accounts.map((account) => account.username)).size === accounts.length,
+  );
+
 function rejectSettings(): never {
   throw new Error('Invalid environment settings. Check Doppler or .env against .env.example.');
 }
@@ -34,8 +72,12 @@ export function readEnvironment(values: EnvironmentValues) {
   const env = createEnv({
     server: {
       DATABASE_URL: databaseUrlSchema,
+      HOSTING_MODE: z.enum(['local', 'hosted']).default('local'),
+      HOSTED_ACCESS_MODE: z.enum(['accounts', 'public-demo']).default('accounts'),
+      PORT: z.coerce.number().int().min(1024).max(65535).optional(),
+      HOSTED_ACCOUNTS: hostedAccountsSchema.optional(),
       API_PORT: apiPortSchema,
-      WEB_ORIGIN: webOriginSchema,
+      WEB_ORIGIN: z.string().default('http://127.0.0.1:4317'),
       EVALUATION_MODEL: z.string().min(1).default('gpt-6.1-sol'),
       LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('debug'),
       RESEND_API_KEY: z.string().optional(),
@@ -58,6 +100,14 @@ export function readEnvironment(values: EnvironmentValues) {
     emptyStringAsUndefined: true,
     onValidationError: rejectSettings,
   });
+  const origin = env.HOSTING_MODE === 'hosted' ? hostedOriginSchema : webOriginSchema;
+  if (!origin.safeParse(env.WEB_ORIGIN).success) rejectSettings();
+  if (
+    env.HOSTING_MODE === 'hosted' &&
+    env.HOSTED_ACCESS_MODE === 'accounts' &&
+    !env.HOSTED_ACCOUNTS
+  )
+    rejectSettings();
   if (env.SCENARIO_MODE === 'live' && !env.OPENAI_API_KEY) rejectSettings();
   return env;
 }

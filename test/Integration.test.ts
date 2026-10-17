@@ -7,7 +7,7 @@ import { evidenceReviewSchema } from '../src/contracts/EvidenceReview.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
-import { randomUUID, createHmac } from 'node:crypto';
+import { randomUUID, createHmac, createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
@@ -92,6 +92,114 @@ afterAll(async () => {
   await store.close();
   await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
   await admin.end();
+});
+
+describe('Hosted API access', () => {
+  it('opens the public demo without credentials while retaining API origin and session checks', async () => {
+    const hosted = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        HOSTING_MODE: 'hosted',
+        HOSTED_ACCESS_MODE: 'public-demo',
+        WEB_ORIGIN: 'https://june.example.com',
+        ELEVENLABS_WEBHOOK_SECRET: 'public-demo-test-secret',
+      }),
+    );
+    try {
+      const page = await hosted.inject('/');
+      expect(page.statusCode).toBe(200);
+      expect(page.headers['www-authenticate']).toBeUndefined();
+      expect(page.headers.location).toBeUndefined();
+      expect(page.headers['cache-control']).toBe('private, no-store');
+      expect((await hosted.inject('/api/state')).statusCode).toBe(401);
+      const session = await hosted.inject({
+        method: 'POST',
+        url: '/api/session',
+        headers: { origin: 'https://june.example.com' },
+      });
+      expect(session.statusCode).toBe(200);
+      const cookie = session.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+      const state = await hosted.inject({ url: '/api/state', headers: { cookie } });
+      expect(state.statusCode).toBe(200);
+      expect(stateResponseSchema.parse(state.json()).workspace.id).toBe('tidewell');
+      expect(
+        (
+          await hosted.inject({
+            method: 'POST',
+            url: '/api/session',
+            headers: { origin: 'https://attacker.example.com' },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (await hosted.inject({ method: 'POST', url: '/api/webhooks/elevenlabs', payload: {} }))
+          .statusCode,
+      ).toBe(401);
+    } finally {
+      await hosted.close();
+    }
+  });
+
+  it('requires invited membership in addition to a secure session and preserves shared state', async () => {
+    const password = 'test-only-hosted-integration-password';
+    const hosted = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        HOSTING_MODE: 'hosted',
+        WEB_ORIGIN: 'https://june.example.com',
+        HOSTED_ACCOUNTS: JSON.stringify([
+          {
+            username: 'guest',
+            passwordSha256: createHash('sha256').update(password).digest('hex'),
+            workspaceId: 'tidewell',
+          },
+        ]),
+      }),
+    );
+    try {
+      expect((await hosted.inject({ method: 'POST', url: '/api/session' })).statusCode).toBe(401);
+      const login = await hosted.inject({
+        method: 'POST',
+        url: '/login',
+        headers: { origin: 'https://june.example.com' },
+        payload: { username: 'guest', password },
+      });
+      expect(login.statusCode).toBe(303);
+      const accessCookie = login.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+      const session = await hosted.inject({
+        method: 'POST',
+        url: '/api/session',
+        headers: { cookie: accessCookie, origin: 'https://june.example.com' },
+      });
+      expect(session.statusCode).toBe(200);
+      expect(session.cookies[0]?.secure).toBe(true);
+      const cookie = session.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+      expect((await hosted.inject({ url: '/api/state', headers: { cookie } })).statusCode).toBe(
+        401,
+      );
+      const state = await hosted.inject({
+        url: '/api/state',
+        headers: { cookie: `${accessCookie}; ${cookie}` },
+      });
+      expect(state.statusCode).toBe(200);
+      const parsed = stateResponseSchema.parse(state.json());
+      expect(parsed.workspace.id).toBe('tidewell');
+      expect(parsed.capabilities.localOnly).toBe(false);
+      expect(
+        (
+          await hosted.inject({
+            method: 'POST',
+            url: '/api/session',
+            headers: { cookie: accessCookie, origin: 'https://attacker.example.com' },
+          })
+        ).statusCode,
+      ).toBe(403);
+    } finally {
+      await hosted.close();
+    }
+  });
 });
 async function drainWorker(target: WorkspaceService): Promise<boolean> {
   let ran = false;
