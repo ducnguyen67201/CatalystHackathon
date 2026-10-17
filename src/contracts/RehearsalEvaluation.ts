@@ -8,6 +8,12 @@ const amount = z
   .max(40);
 
 /** Add new data through attributed sources; never arbitrary prompt instructions. */
+export const financialLocationSchema = z.strictObject({
+  kind: z.literal('csv'),
+  snapshotId: id,
+  fileName: z.string().min(1).max(200),
+  sourceRow: z.int().positive(),
+});
 export const evaluationSourceSchema = z.strictObject({
   id,
   kind: z.enum(['financial', 'investor', 'company', 'meeting', 'supplemental']),
@@ -16,6 +22,8 @@ export const evaluationSourceSchema = z.strictObject({
   url: z.url().nullable(),
   recordedAt: z.iso.datetime().nullable(),
   origin: z.enum(['uploaded', 'founder', 'public_unverified', 'fictional']),
+  // Optional with no default: historic context hashes must stay byte-for-byte reproducible.
+  financialLocation: financialLocationSchema.optional(),
 });
 export const metricFactSchema = z.strictObject({
   id,

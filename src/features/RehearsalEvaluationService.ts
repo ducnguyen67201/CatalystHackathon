@@ -13,6 +13,8 @@ import {
   type EvaluationProvider,
 } from './EvaluationProvider.js';
 import { checkClaims, validateCoaching, validateExtraction } from './EvaluationChecks.js';
+import { projectEvidenceReview } from './EvidenceReview.js';
+import type { EvidenceReview } from '../contracts/EvidenceReview.js';
 
 export const hashEvaluationInput = (input: unknown): string =>
   createHash('sha256').update(JSON.stringify(input)).digest('hex');
@@ -77,6 +79,22 @@ export class RehearsalEvaluationService {
     private readonly service: WorkspaceService,
     readonly provider: EvaluationProvider,
   ) {}
+  async getEvidence(sessionId: string, evaluationId: string): Promise<EvidenceReview | null> {
+    const state = await this.service.read();
+    const session = state.rehearsals.find((s) => s.id === sessionId);
+    const evaluation = session?.evaluations.find((e) => e.id === evaluationId);
+    if (!session || !evaluation) return null;
+    const jobs = await this.service.store.listJobs();
+    const failed =
+      jobs.find((j) => j.kind === `evaluate:${sessionId}:${evaluationId}`)?.status === 'failed';
+    return projectEvidenceReview(
+      sessionId,
+      evaluation,
+      session.evaluationContext,
+      failed,
+      state.onboarding.snapshotId,
+    );
+  }
   async get(sessionId: string): Promise<EvaluationResponse> {
     const session = (await this.service.read()).rehearsals.find((s) => s.id === sessionId);
     if (!session) throw new Error('Session unavailable.');

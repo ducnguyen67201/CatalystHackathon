@@ -1,6 +1,7 @@
 import { radarEvidence } from './fixtures/RadarFixture.js';
 import type { EmailSender } from '../src/features/EmailSender.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
+import { evidenceReviewSchema } from '../src/contracts/EvidenceReview.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
@@ -1284,11 +1285,41 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
   if (!item) throw new Error('Missing coaching item');
   const reviewApi = await createApi(coached, readEnvironment({ DATABASE_URL: databaseUrl.href }));
   try {
+    const evidencePath = `/api/rehearsals/${session.id}/evaluations/${evaluation.id}/evidence`;
+    expect((await reviewApi.inject({ url: evidencePath })).statusCode).toBe(401);
     expect(
       (await reviewApi.inject({ url: `/api/rehearsals/${session.id}/evaluations` })).statusCode,
     ).toBe(401);
     const login = await reviewApi.inject({ method: 'POST', url: '/api/session' });
     const headers = { cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join('; ') };
+    const evidenceResponse = await reviewApi.inject({ url: evidencePath, headers });
+    expect(evidenceResponse.statusCode).toBe(200);
+    expect(evidenceResponse.headers['cache-control']).toBe('private, no-store');
+    const evidenceView = evidenceReviewSchema.parse(evidenceResponse.json());
+    expect(evidenceView.state).toBe('completed');
+    expect(evidenceView.evaluationId).toBe(evaluation.id);
+    expect(evidenceView.claimLinks[0]?.support).toBe('contradicted');
+    expect(
+      evidenceView.grids[0]?.cells.some(
+        (cell) => cell.sourceLocator.columnKey === 'operating_income',
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await reviewApi.inject({
+          url: `/api/rehearsals/${randomUUID()}/evaluations/${evaluation.id}/evidence`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await reviewApi.inject({
+          url: `/api/rehearsals/${session.id}/evaluations/${randomUUID()}/evidence`,
+          headers,
+        })
+      ).statusCode,
+    ).toBe(404);
     const reviewed = await reviewApi.inject({
       url: `/api/rehearsals/${session.id}/evaluations`,
       headers,
