@@ -1,3 +1,7 @@
+import { PreparationPosition } from './PreparationPosition.js';
+import { FinancialSourceEvidence, InvestorSourceEvidence } from './PreparationSourceEvidence.js';
+import { PreparationRecommendationBasis } from './PreparationRecommendationBasis.js';
+import { PreparationIntentForm } from './PreparationIntentForm.js';
 import { FinancialPerformanceStatement } from './FinancialPerformanceStatement.js';
 import { PreparationSchedule } from './PreparationSchedule.js';
 import { useEffect, useRef, useState } from 'react';
@@ -221,6 +225,10 @@ export function PreparationPlan({
 }) {
   const [data, setData] = useState<PreparationView | null>(null);
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
+  const [receivedAt, setReceivedAt] = useState<string | null>(null);
+  const [updateNotice, setUpdateNotice] = useState('');
+  const previousView = useRef<PreparationView | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [financialView, setFinancialView] = useState(false);
@@ -232,37 +240,55 @@ export function PreparationPlan({
   const [draftKey, setDraftKey] = useState(() => crypto.randomUUID());
   const actionButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  // Serialize background reads and avoid replacing form drafts as the worker reconciles.
+  // Read saved state only; do not interrupt open drafts or trigger research from polling.
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
+    let running = false;
+    const isCancelled = () => cancelled;
     const load = async () => {
-      if (!document.hidden) {
-        try {
-          const result = await request(
-            '/preparation-plan',
-            preparationViewSchema,
-            undefined,
-            'GET',
-          );
-          if (!cancelled) {
-            setData(result);
-            setError('');
-          }
-        } catch (caught) {
-          if (!cancelled)
-            setError(caught instanceof Error ? caught.message : 'Cannot load preparation.');
+      if (isCancelled() || running || document.hidden) return;
+      running = true;
+      try {
+        const result = await request('/preparation-plan', preparationViewSchema, undefined, 'GET');
+        if (!isCancelled()) {
+          const previous = previousView.current;
+          if (previous && previous.plan?.id !== result.plan?.id && result.plan)
+            setUpdateNotice('Preparation updated: ' + result.plan.changes.join(' '));
+          else if (previous && !previous.outdated && result.outdated)
+            setUpdateNotice(
+              'New saved evidence: ' +
+                (result.position?.pendingChanges.join(' ') ?? 'Review the changed inputs.'),
+            );
+          else if (
+            previous &&
+            previous.milestones.map((item) => item.status).join() !==
+              result.milestones.map((item) => item.status).join()
+          )
+            setUpdateNotice('Preparation progress updated from saved reviews and assessments.');
+          previousView.current = result;
+          setData(result);
+          setReceivedAt(new Date().toISOString());
+          setConnectionError('');
         }
+      } catch {
+        if (!isCancelled())
+          setConnectionError('Unable to refresh saved evidence. Check the connection to June.');
+      } finally {
+        running = false;
       }
-      if (!cancelled)
-        timer = setTimeout(() => {
-          void load();
-        }, 5000);
     };
     void load();
+    const timer = setInterval(() => {
+      void load();
+    }, 5000);
+    const visible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener('visibilitychange', visible);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', visible);
     };
   }, [reload, state.workspace.revision]);
   useEffect(() => {
@@ -295,9 +321,10 @@ export function PreparationPlan({
   if (!data)
     return (
       <section className="prep-plan" aria-label="Fundraising preparation">
-        {error ? (
+        {connectionError || error ? (
           <p role="alert">
-            {error} <button onClick={() => setReload((value) => value + 1)}>Retry</button>
+            {connectionError || error}{' '}
+            <button onClick={() => setReload((value) => value + 1)}>Retry</button>
           </p>
         ) : (
           <p role="status">Loading your preparation plan…</p>
@@ -338,18 +365,35 @@ export function PreparationPlan({
       {!data.goal || editing ? (
         <div className="prep-goal-box">
           <h3>{data.goal ? 'Update your goal' : 'What are you preparing for?'}</h3>
-          <GoalForm
-            key={data.goal?.id ?? 'initial'}
-            data={data}
-            state={state}
+          <PreparationIntentForm
+            intent={data.intent}
             busy={busy}
-            save={async (body) => {
+            onSave={async (intent) => {
               await run(async () => {
-                await command('/preparation-plan/goal', body);
+                await command('/preparation-plan/intent', {
+                  intent,
+                  version: data.version,
+                  profileVersion: data.profileVersion,
+                });
                 setEditing(false);
               });
             }}
           />
+          <details>
+            <summary>Round, investor & automation settings · optional</summary>
+            <GoalForm
+              key={data.goal?.id ?? 'initial'}
+              data={data}
+              state={state}
+              busy={busy}
+              save={async (body) => {
+                await run(async () => {
+                  await command('/preparation-plan/goal', body);
+                  setEditing(false);
+                });
+              }}
+            />
+          </details>
           {data.goal && (
             <button className="text-button" onClick={() => setEditing(false)}>
               Cancel changes
@@ -358,15 +402,33 @@ export function PreparationPlan({
         </div>
       ) : (
         <>
-          <div className="prep-target prep-target-compact">
-            <span>
-              <strong>{data.goal.round}</strong> · {data.goal.amount ?? 'Raise amount unconfirmed'}{' '}
-              {data.goal.currency === 'unspecified' ? '· currency unconfirmed' : data.goal.currency}
-            </span>
-            <button className="text-button" onClick={() => setEditing(true)}>
-              Edit goal
+          <div className="prep-goal-summary">
+            <div>
+              <span className="eyebrow">Your goal</span>
+              <strong>{data.intent || 'Prepare for my next round'}</strong>
+            </div>
+            <button className="button secondary" onClick={() => setEditing(true)}>
+              Update goal
             </button>
           </div>
+          <PreparationPosition
+            data={data}
+            receivedAt={receivedAt}
+            connectionError={connectionError}
+            notice={updateNotice}
+            busy={busy}
+            researchReady={state.capabilities.researchReady}
+            onRefresh={() => void run(() => command('/preparation-plan/refresh', {}))}
+            onCheck={() => {
+              const id = data.position?.investor?.id;
+              if (id)
+                void run(() =>
+                  command(`/investors/${encodeURIComponent(id)}/check`, {
+                    key: crypto.randomUUID(),
+                  }),
+                );
+            }}
+          />
           {financialView && (
             <div className="prep-financial-view">
               <button className="text-button" onClick={() => setFinancialView(false)}>
@@ -384,12 +446,21 @@ export function PreparationPlan({
             </div>
           )}
           <PreparationSchedule
-            operatingResult={latestRow?.operatingIncome ?? null}
-            period={latestRow?.month ?? null}
+            operatingResult={
+              data.position
+                ? (data.position.financial?.operatingIncome ?? null)
+                : (latestRow?.operatingIncome ?? null)
+            }
+            period={
+              data.position ? (data.position.financial?.period ?? null) : (latestRow?.month ?? null)
+            }
             currency={
-              snapshot?.currency === 'unspecified'
+              (data.position ? data.position.financial?.currency : snapshot?.currency) ===
+              'unspecified'
                 ? 'Currency unconfirmed'
-                : (snapshot?.currency ?? 'Currency unconfirmed')
+                : data.position
+                  ? (data.position.financial?.currency ?? 'Currency unconfirmed')
+                  : (snapshot?.currency ?? 'Currency unconfirmed')
             }
             busy={busy}
             onFinancialReview={() => setFinancialView((value) => !value)}
@@ -470,6 +541,13 @@ export function PreparationPlan({
               </button>
             </div>
           </div>
+          <PreparationRecommendationBasis
+            data={data}
+            onEvidence={(id) => {
+              setArtifactId(id);
+              setSessionId(null);
+            }}
+          />
           <details className="prep-supporting">
             <summary>Prepared materials, feedback & history</summary>
             <div className="prep-artifacts">
@@ -622,25 +700,11 @@ export function PreparationPlan({
               <PreparationComparisonChart artifact={artifact} />
               <details>
                 <summary>Evidence and source passages ({artifact.sources.length})</summary>
-                {artifact.sources.length ? (
+                {artifact.kind === 'financial' && data.plan ? (
+                  <FinancialSourceEvidence planId={data.plan.id} artifact={artifact} />
+                ) : artifact.sources.length ? (
                   artifact.sources.map((source) => (
-                    <article key={source.id}>
-                      <strong>{source.title}</strong>
-                      <p>
-                        {source.fictional
-                          ? 'Fictional demo evidence'
-                          : artifact.kind === 'investor'
-                            ? 'Public source · unverified'
-                            : 'Uploaded statement'}{' '}
-                        · {source.recordedAt ?? 'Date unknown'}
-                      </p>
-                      <pre>{source.excerpt}</pre>
-                      {source.url && (
-                        <a href={source.url} target="_blank" rel="noreferrer">
-                          Open source
-                        </a>
-                      )}
-                    </article>
+                    <InvestorSourceEvidence key={source.id} source={source} />
                   ))
                 ) : (
                   <p>

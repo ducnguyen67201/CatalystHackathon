@@ -132,6 +132,7 @@ export function importFinancials(
     fileName,
     createdAt: new Date().toISOString(),
     currency,
+    sourceCsv: csv,
     rows,
   });
 }

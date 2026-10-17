@@ -33,6 +33,7 @@ export function PreparationSchedule({
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const projection = projectSchedule(data, pace);
+  const timing = projection.suggested ? null : data.schedule;
   const nodes = buildJourney(data);
   const next = nodes.find((node) => node.id === projection.next?.id);
   const act = (id: string) => {
@@ -74,12 +75,14 @@ export function PreparationSchedule({
         </div>
         <div>
           <span>Expected preparation</span>
-          <strong>{projection.finish ? dateLabel(projection.finish) : 'Needs confirmation'}</strong>
+          <strong>{projection.finish ? dateLabel(projection.finish) : 'Plan updating'}</strong>
           <small>
             {projection.tone === 'complete'
               ? 'Saved completion evidence'
               : pace === 1
-                ? 'Conditional on saved assumptions'
+                ? projection.suggested
+                  ? 'June’s suggested estimate · editable'
+                  : 'Your saved planning estimate'
                 : 'What-if scenario · not saved'}
           </small>
         </div>
@@ -109,7 +112,7 @@ export function PreparationSchedule({
         )}
         <div className="prep-schedule-tools">
           <button className="text-button" ref={trigger} onClick={() => dialog.current?.showModal()}>
-            Assumptions & expected outcome ↗
+            Review suggested plan ↗
           </button>
           <label>
             Pace · what if{' '}
@@ -134,7 +137,7 @@ export function PreparationSchedule({
           aria-label="Preparation timeline. Scroll horizontally on smaller screens."
         >
           <table className="prep-schedule-table">
-            <caption>Conditional schedule · founder work in sequence · calendar days</caption>
+            <caption>Suggested schedule · editable estimates · calendar days</caption>
             <thead>
               <tr>
                 <th scope="col">Workstream / current status</th>
@@ -164,7 +167,7 @@ export function PreparationSchedule({
                       <button onClick={() => act(row.id)}>{row.title}</button>
                       <small>
                         {row.status === 'complete' ? 'Reviewed' : row.status.replaceAll('_', ' ')} ·{' '}
-                        {row.hours === null ? 'Effort unconfirmed' : `${row.hours} h estimated`}
+                        {row.hours === null ? 'Estimate pending' : `${row.hours} h suggested`}
                       </small>
                     </th>
                     <td>
@@ -196,7 +199,7 @@ export function PreparationSchedule({
                             {row.status === 'blocked' ? 'Dependency' : 'Planned'}
                           </button>
                         ) : (
-                          <span className="prep-schedule-undated">Awaiting planning inputs</span>
+                          <span className="prep-schedule-undated">Preparing your next steps</span>
                         )}
                       </div>
                     </td>
@@ -212,12 +215,12 @@ export function PreparationSchedule({
               {projection.reason ??
                 (projection.tone === 'complete'
                   ? 'Reviewed work remains linked to saved evidence.'
-                  : `Now: ${next?.title ?? 'review remaining feedback'}.${projection.tone === 'behind' || pace < 1 ? ' Protect more review time or revise remaining effort in assumptions; keep evidence checks.' : ' Confirm evidence delivery to protect the buffer.'}`)}
+                  : `Now: ${next?.title ?? 'review remaining feedback'}.${projection.tone === 'behind' || pace < 1 ? ' Increase review time or adjust the suggested plan; keep evidence checks.' : ' Keep unresolved evidence visible as you prepare.'}`)}
             </p>
             <small>
               {projection.reviewed} current artifact review{projection.reviewed === 1 ? '' : 's'}{' '}
-              accepted in 7 days · scenario capacity {projection.capacity} h/day. Availability is
-              assumed; review count is not a speed forecast.
+              accepted in 7 days · {projection.capacity} h/day{' '}
+              {projection.suggested ? 'suggested' : 'planned'}. Cash evidence remains unverified.
             </small>
           </div>
           <div>
@@ -247,7 +250,7 @@ export function PreparationSchedule({
         }}
       >
         <div className="prep-heading">
-          <h2 id="prep-schedule-assumptions-title">Assumptions & expected outcome</h2>
+          <h2 id="prep-schedule-assumptions-title">Your suggested plan</h2>
           <button className="button secondary" onClick={close}>
             Close
           </button>
@@ -256,7 +259,7 @@ export function PreparationSchedule({
           You’re right here: {projection.next?.title ?? 'preparation reviewed'}.{' '}
           {projection.finish
             ? `At this availability, expected preparation is ${dateLabel(projection.finish)}.`
-            : 'Confirm the inputs to estimate completion.'}{' '}
+            : 'June suggests the next steps from your saved evidence.'}{' '}
           The target is {data.goal?.targetDate ?? 'not set'}.
         </p>
         <p>
@@ -264,8 +267,12 @@ export function PreparationSchedule({
           rehearse and resolve feedback. The outcome is reviewed preparation; funding and business
           results remain unknown.
         </p>
+        <p className="muted">
+          This estimate uses {projection.capacity} hours a day. June’s suggested effort is editable;
+          missing cash evidence stays an open question.
+        </p>
         <form
-          key={data.schedule?.id ?? 'new'}
+          key={timing?.id ?? 'new'}
           className="prep-goal-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -295,54 +302,60 @@ export function PreparationSchedule({
               );
           }}
         >
-          <label>
-            Available founder hours / calendar day
-            <input
-              required
-              type="number"
-              name="dailyHours"
-              min="0.25"
-              max="12"
-              step="0.25"
-              defaultValue={data.schedule?.dailyHours}
-            />
-          </label>
-          <label>
-            Expected cash-evidence delivery · assumed, not received
-            <input
-              name="cashExpectedDate"
-              type="date"
-              min={projection.today}
-              defaultValue={data.schedule?.cashExpectedDate ?? ''}
-            />
-          </label>
-          {(['financial', 'investor', 'brief', 'rehearse'] as const).map((id) => (
-            <label key={id}>
-              {data.milestones.find((row) => row.id === id)?.title} · estimated hours
-              <input
-                required
-                name={id}
-                type="number"
-                min="0.25"
-                max="80"
-                step="0.25"
-                defaultValue={data.schedule?.hours[id]}
-              />
-            </label>
-          ))}
-          <p className="muted prep-full">
-            Enter estimates for remaining work. Reviewed milestones consume no future time. Founder
-            work is modeled sequentially, every calendar day; the brief waits for the assumed cash
-            delivery. Total fractional days round up. Changing pace is a temporary scenario and does
-            not save availability or verify receipt. New plans require reconfirmation.
-          </p>
+          <details className="prep-full">
+            <summary>Adjust timing & effort · optional</summary>
+            <div className="prep-goal-form">
+              <label>
+                Available founder hours / calendar day
+                <input
+                  required
+                  type="number"
+                  name="dailyHours"
+                  min="0.25"
+                  max="12"
+                  step="0.25"
+                  defaultValue={timing?.dailyHours ?? 0.5}
+                />
+              </label>
+              <label>
+                Expected cash-evidence delivery · assumed, not received
+                <input
+                  name="cashExpectedDate"
+                  type="date"
+                  min={projection.today}
+                  defaultValue={timing?.cashExpectedDate ?? ''}
+                />
+              </label>
+              {(['financial', 'investor', 'brief', 'rehearse'] as const).map((id) => (
+                <label key={id}>
+                  {data.milestones.find((row) => row.id === id)?.title} · estimated hours
+                  <input
+                    required
+                    name={id}
+                    type="number"
+                    min="0.25"
+                    max="80"
+                    step="0.25"
+                    defaultValue={timing?.hours[id] ?? (id === 'rehearse' ? 1 : 0.5)}
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="muted prep-full">
+              Enter estimates for remaining work. Reviewed milestones consume no future time.
+              Founder work is modeled sequentially, every calendar day; the brief waits for the
+              assumed cash delivery. Total fractional days round up. Changing pace is a temporary
+              scenario and does not save availability or verify receipt. Changed plans use June’s
+              suggested estimates until you customize them.
+            </p>
+          </details>
           {error && (
             <p role="alert" className="prep-full">
               {error}
             </p>
           )}
           <button className="button prep-full" disabled={busy || data.outdated}>
-            Save planning assumptions
+            Use this preparation plan
           </button>
         </form>
       </dialog>

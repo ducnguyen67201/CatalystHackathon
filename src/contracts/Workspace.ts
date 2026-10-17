@@ -79,6 +79,7 @@ export const rowSchema = z.strictObject({
 export type FinancialRow = z.infer<typeof rowSchema>;
 
 export const snapshotSchema = z.strictObject({
+  sourceCsv: z.string().max(2000000).optional(),
   id: idSchema,
   hash: z.string(),
   fileName: z.string().max(200),

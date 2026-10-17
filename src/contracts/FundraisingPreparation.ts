@@ -1,7 +1,9 @@
+import { preparationManifestSchema, preparationPositionSchema } from './PreparationPosition.js';
 import { z } from 'zod';
 
 const id = z.string().min(1).max(100);
 const text = z.string().max(3000);
+export const preparationIntentSchema = z.string().trim().min(1).max(1000);
 export const preparationGoalInputSchema = z.strictObject({
   round: z.string().trim().min(1).max(100),
   previousRounds: z.int().min(0).max(30).nullable(),
@@ -47,6 +49,10 @@ export const preparationArtifactSchema = z.strictObject({
         excerpt: z.string().max(16000),
         url: z.url().nullable(),
         recordedAt: z.string().nullable(),
+        publishedAt: z.string().nullable().optional(),
+        researchRunId: z.uuid().optional(),
+        investorName: z.string().max(100).optional(),
+        interpretation: z.string().max(3000).optional(),
         fictional: z.boolean(),
       }),
     )
@@ -64,6 +70,7 @@ export const preparationArtifactSchema = z.strictObject({
     .nullable(),
 });
 export const preparationPlanSchema = z.strictObject({
+  manifest: preparationManifestSchema.optional(),
   id,
   goalId: z.uuid(),
   inputHash: id,
@@ -120,6 +127,9 @@ export const preparationStateSchema = z.strictObject({
     .default([]),
 });
 export const preparationViewSchema = z.strictObject({
+  position: preparationPositionSchema.nullable().default(null),
+  intent: z.string().max(1000).default(''),
+  profileVersion: z.int().positive().default(1),
   version: z.int(),
   automatic: z.boolean(),
   goal: preparationGoalSchema.nullable(),

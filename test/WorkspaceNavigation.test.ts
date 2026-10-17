@@ -19,7 +19,11 @@ describe('shared workspace navigation', () => {
 
   it.each(Object.values(Page))('restores the %s page from its navigation URL', (page) => {
     const url = new URL(workspacePageHref(page), 'http://127.0.0.1');
-    expect(readWorkspacePage(url)).toBe(page);
+    expect(readWorkspacePage(url)).toBe(page === Page.MEETINGS ? Page.RADAR : page);
+  });
+
+  it('redirects saved Meetings links to Investor Radar', () => {
+    expect(readWorkspacePage(new URL('http://127.0.0.1/?page=meetings'))).toBe(Page.RADAR);
   });
 
   it('preserves radar notification deep links', () => {

@@ -1,3 +1,4 @@
+import { synchronizePreparationIntent } from './PreparationIntent.js';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from 'decimal.js';
 import type { WorkspaceService } from './WorkspaceService.js';
@@ -5,6 +6,7 @@ import { ConflictError } from './WorkspaceStore.js';
 import { rehearsalSchema } from '../contracts/Workspace.js';
 import {
   preparationGoalInputSchema,
+  preparationIntentSchema,
   preparationScheduleInputSchema,
   type PreparationScheduleInput,
   preparationStateSchema,
@@ -30,6 +32,16 @@ export class PreparationPlanService {
       this.service.store.readHeartbeat?.(),
     ]);
     return projectPreparationPlan(state, jobs, heartbeat?.at ?? null);
+  }
+  async setIntent(intent: string, version: number, profileVersion: number) {
+    const objective = preparationIntentSchema.parse(intent);
+    await this.service.change((state) => {
+      const saved = preparationState(state);
+      if (saved.version !== version || state.profile.version !== profileVersion)
+        throw new ConflictError('Preparation changed. Refresh before editing your goal.');
+      state.profile = { ...state.profile, goal: objective, version: state.profile.version + 1 };
+      synchronizePreparationIntent(state);
+    });
   }
   async confirmGoal(input: PreparationGoalInput, version: number, automatic: boolean) {
     const goal = preparationGoalInputSchema.parse(input);

@@ -1,3 +1,4 @@
+import { preparationChangeLabels, projectPreparationPosition } from './PreparationPosition.js';
 import { createHash } from 'node:crypto';
 import { Decimal } from 'decimal.js';
 import type { Workspace, Job } from '../contracts/Workspace.js';
@@ -28,7 +29,7 @@ function selectedEvidence(state: Workspace, goal: PreparationGoal) {
 export function preparationInputs(state: Workspace, goal: PreparationGoal) {
   const snapshot = state.snapshots.find((item) => item.id === state.onboarding.snapshotId);
   return {
-    plannerVersion: 1,
+    plannerVersion: 3,
     goal,
     profile: state.profile,
     snapshot: snapshot ? { id: snapshot.id, hash: snapshot.hash } : null,
@@ -49,6 +50,14 @@ export function preparationInputs(state: Workspace, goal: PreparationGoal) {
           .filter((review) => review.status === 'completed')
           .map((review) => ({ sessionId: session.id, reviewId: review.id, report: review.report })),
       ),
+  };
+}
+export function preparationManifest(inputs: ReturnType<typeof preparationInputs>) {
+  return {
+    goal: preparationHash({ goal: inputs.goal, profile: inputs.profile }),
+    financial: preparationHash(inputs.snapshot),
+    investor: preparationHash({ investor: inputs.investor, evidence: inputs.evidence }),
+    practice: preparationHash(inputs.reviews),
   };
 }
 export function buildPreparationPlan(
@@ -117,6 +126,10 @@ export function buildPreparationPlan(
       excerpt: item.excerpt,
       url: item.url,
       recordedAt: item.discoveredAt,
+      publishedAt: item.publishedAt,
+      researchRunId: item.researchRunId,
+      investorName: item.investor,
+      interpretation: item.explanation.slice(0, 3000),
       fictional: item.mode === 'demo',
     }));
     const companyStage = state.profile.stage;
@@ -156,7 +169,10 @@ export function buildPreparationPlan(
     });
   }
   const inputHash = preparationHash(inputs);
+  const manifest = preparationManifest(inputs);
+  const changes = preparationChangeLabels(state.preparation?.plans.at(-1)?.manifest, manifest);
   return {
+    manifest,
     id: inputHash,
     goalId: goal.id,
     inputHash,
@@ -164,11 +180,9 @@ export function buildPreparationPlan(
     summary: snapshot
       ? `Selected evidence: ${snapshot.fileName}, latest period ${snapshot.rows.at(-1)?.month ?? 'unknown'}. ${goal.previousRounds === null ? 'Previous financing is not confirmed.' : `${goal.previousRounds} prior rounds confirmed by the founder.`}`
       : 'Select a saved financial statement to prepare an evidence-backed explanation.',
-    changes: [
-      'Prepared work uses the selected financial snapshot and confirmed goal.',
-      `${inputs.evidence.length} saved investor sources included; public research remains unverified.`,
-      `${inputs.reviews.length} relevant completed reviews inform the current plan.`,
-    ],
+    changes: changes.length
+      ? changes
+      : ['Saved evidence content is unchanged; preparation rules were updated.'],
     artifacts,
   };
 }
@@ -306,6 +320,16 @@ export function projectPreparationPlan(
     )
     .slice(0, 3);
   return {
+    position: projectPreparationPosition(
+      state,
+      jobs,
+      goal,
+      plan,
+      goal ? preparationManifest(preparationInputs(state, goal)) : null,
+      outdated,
+    ),
+    intent: state.profile.goal,
+    profileVersion: state.profile.version,
     version: saved.version,
     automatic: saved.automatic,
     goal,

@@ -521,13 +521,68 @@ The main dashboard opens with a compact preparation schedule: current operating 
 preparation target, conditional completion, active work and the next review. Completed steps,
 financial review, supporting materials and the rest of the workspace open on demand.
 **Assumptions & expected outcome** saves founder-estimated hours per remaining milestone,
-daily availability and expected cash-evidence delivery. No dates or hours are preconfirmed.
+daily availability and expected cash-evidence delivery. June supplies explicitly labeled suggested effort and availability; founders can customize them.
 Slower/faster pace controls compare temporary scenarios; **Restore planned pace** returns
 to saved assumptions. These estimates concern reviewed preparation, not fundraising outcomes.
 
 The forecast models founder work sequentially on calendar days, waits for assumed cash
-delivery before the investor brief, and rounds fractional completion days up. Unconfirmed,
-overdue or stale planning inputs suppress the estimate. A missing target suppresses the
+delivery before the investor brief, and rounds fractional completion days up. Overdue explicit delivery or stale source inputs suppress the estimate. Missing cash evidence
+remains a disclosed gap and does not block preparation of a brief that names that gap. A missing target suppresses the
 on-track judgment. Accepted current artifact reviews in seven days show recorded activity
 separately; review counts are not used as a measured productivity forecast. New saved plans
-require reconfirmation of effort. Schedule history is preserved with the preparation plan.
+use suggested estimates until customized. Schedule history is preserved with the preparation plan.
+
+### One goal, one preparation flow
+
+Onboarding now asks for financial evidence and one goal, such as **I want to raise my next
+round**. Company/stage/amount details remain optional. Completing the goal prepares local
+financial work automatically; there is no second goal setup or required timing questionnaire.
+**Update goal** on Overview edits the same company objective and prepares a new version in
+one transaction. Amount, financing history and investor mandate remain unknown unless supplied.
+
+The schedule uses labeled, editable suggestions (30 minutes per day; half-hour financial,
+investor and brief reviews; one hour for rehearsal). These are planning templates, not measured
+velocity. **Review suggested plan** opens the outcome and a single confirmation; timing fields
+are under **Adjust timing & effort · optional**. Financial evidence is never changed by timing.
+
+Investor Radar now includes **Your investor conversation** for names, notes, dates and profile
+links. The separate Meetings navigation entry is removed; existing `?page=meetings` links open
+Radar. Briefs, practice history and recordings remain available. Saving conversation context
+updates the selected preparation investor without starting research or outreach.
+
+**Why this recommendation?** beside the dashboard next action connects the current goal,
+review gate, exact financial figures, frozen source passages and source dates. It explains
+schedule arithmetic and identifies template effort separately from user assumptions. Raise
+amounts remain founder targets: the current plan does not calculate alternative amounts
+without cash balances, a cash-flow forecast, milestone and buffer inputs.
+
+**Show exact CSV & highlighted cells** opens the financial artifact’s original snapshot,
+not whichever statement is selected later. It highlights the evidence record and original
+cell text for month, operating income, credit and net income; all columns and records remain
+inspectable. New imports retain the uploaded CSV text unchanged for inspection on demand.
+Older snapshots disclose when original text was not retained and show saved parsed cells.
+CSV record numbers include the header and do not claim physical file-line positions.
+
+Investor evidence highlights the saved supporting passage with the original article/paper
+link, publication date when captured, retrieval date and unverified-attribution label.
+June’s interpretation is separate from the quote. **Show passage in saved source context**
+opens retained research text and highlights an exact matching substring; a missing match or
+missing surrounding text is disclosed. Author/speaker identity is not inferred from a tracked
+investor name. Source views reuse saved records and never run new research.
+
+### Live position and source freshness
+
+Overview now displays a **Position freshness and updates** rail. Financial reporting period,
+upload time, selected investor’s last successful check, monitoring schedule, queued/running or
+failed checks, and last dashboard synchronization are visible. Financial position and plan
+freshness come from the same read-only server projection. A source check against older company
+context is labeled; a failed check never replaces the last successful timestamp.
+
+Relevant saved-input changes produce explicit pending reasons and a versioned preparation
+update (financial baseline, company goal/context, selected investor evidence, or completed
+assessment). Unchanged research checks do not create new drafts. The dashboard polls every five
+seconds while visible and refreshes immediately on return; it preserves open notes/answers.
+Connection failure retains the previous view with a warning and automatic retry. Paused/offline
+workers are disclosed, and **Update from saved evidence** performs the existing local refresh.
+**Check investor now** starts real research only when clicked and live research is configured.
+This is near-real-time synchronization of saved evidence, not a continuous external data feed.
