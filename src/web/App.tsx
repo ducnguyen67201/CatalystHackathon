@@ -1,3 +1,4 @@
+import { FinancialSheet } from './FinancialSheet.js';
 import { RadarUpdates } from './RadarUpdates.js';
 import { OnboardingPage } from './OnboardingPage.js';
 import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
@@ -14,7 +15,6 @@ import {
   MessageSquare,
   Radar,
   RefreshCw,
-  Upload,
   X,
   Target,
   Clock3,
@@ -660,64 +660,14 @@ export function App() {
             </>
           )}
           {page === Page.FINANCIALS && (
-            <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">Your financial evidence</div>
-                  <h1>The numbers behind your story.</h1>
-                  <p className="muted">
-                    Immutable snapshots. Exact arithmetic. Every month traceable.
-                  </p>
-                </div>
-                <button
-                  className="button"
-                  onClick={() => {
-                    setUpload(null);
-                    setModal('upload');
-                  }}
-                >
-                  <Upload size={14} /> Upload income statement
-                </button>
-              </div>
-              <div className="notice financial-notice">
-                {snapshot?.fileName} · {snapshot?.rows.length} months · Currency:{' '}
-                {snapshot?.currency}. {workspace.snapshots.length} saved snapshot
-                {workspace.snapshots.length === 1 ? '' : 's'}. Cash runway cannot be calculated from
-                this file.
-              </div>
-              <article className="panel table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Month</th>
-                      <th>Revenue</th>
-                      <th>Operating result</th>
-                      <th>Other income credit</th>
-                      <th>Net income</th>
-                      <th>CSV row</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot?.rows.map((row) => (
-                      <tr key={row.month}>
-                        <td>{row.month}</td>
-                        <td>${amount(row.revenue)}</td>
-                        <td className={Number(row.operatingIncome) < 0 ? 'loss' : 'positive'}>
-                          ${amount(row.operatingIncome)}
-                        </td>
-                        <td>${amount(row.credit)}</td>
-                        <td>${amount(row.netIncome)}</td>
-                        <td>{row.sourceRow}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </article>
-              <p className="footnote">
-                Upload the same Tidewell monthly CSV structure. All revenue, COGS, expense and
-                net-income relationships must reconcile before the snapshot is accepted.
-              </p>
-            </>
+            <FinancialSheet
+              snapshot={snapshot}
+              snapshotCount={workspace.snapshots.length}
+              onUpload={() => {
+                setUpload(null);
+                setModal('upload');
+              }}
+            />
           )}
           {page === Page.BRIEF && (
             <>
