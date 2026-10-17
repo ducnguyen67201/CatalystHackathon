@@ -7,8 +7,11 @@ import {
 } from '@heygen/liveavatar-web-sdk';
 import { Mic, MicOff, Square, Video } from 'lucide-react';
 import { z } from 'zod';
-import { avatarSessionResponseSchema } from '../contracts/AvatarPractice.js';
-import type { StateResponse, TranscriptTurn } from '../contracts/Workspace.js';
+import {
+  AVATAR_SESSION_DURATION_SECONDS,
+  avatarSessionResponseSchema,
+} from '../contracts/AvatarPractice.js';
+import { RehearsalMode, type StateResponse, type TranscriptTurn } from '../contracts/Workspace.js';
 import { command, request } from './ApiClient.js';
 import './AvatarPractice.css';
 
@@ -40,7 +43,9 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
   const [muted, setMuted] = useState(false);
   const [streamReady, setStreamReady] = useState(false);
   const [preview, setPreview] = useState<TranscriptTurn[]>([]);
-  const sessions = state.workspace.rehearsals.filter((item) => item.avatarCorrelationHash !== null);
+  const sessions = state.workspace.rehearsals.filter(
+    (item) => item.mode === RehearsalMode.LIVEAVATAR || item.avatarCorrelationHash !== null,
+  );
   const session = sessions.find((item) => item.id === sessionId);
   const turns = session?.transcriptReceivedAt ? session.turns : preview;
 
@@ -95,9 +100,11 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
     }
     starting.current = true;
     setBusy(true);
+    onError('');
     setPreview([]);
     setStreamReady(false);
     setMuted(false);
+    let stage = 'microphone';
     try {
       const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
       microphone.getTracks().forEach((track) => {
@@ -106,6 +113,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
       if (!isMounted()) {
         return;
       }
+      stage = 'create_session';
       const response = await request('/avatar/sessions', avatarSessionResponseSchema, {});
       if (!isMounted()) {
         await endAvatarSession(response.session.id, false);
@@ -148,18 +156,31 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
           void finish(false);
         }
       });
+      stage = 'connect_stream';
       await avatar.start();
       if (!isMounted() || activeId.current !== response.session.id) {
         avatar.voiceChat.stop();
         await avatar.stop();
         return;
       }
-      await onRefresh();
-    } catch {
+      // A state refresh is independent of the connected media session.
+      await onRefresh().catch(() => {
+        console.warn(
+          JSON.stringify({ event: 'avatar_state_refresh_failed', stage: 'after_connect' }),
+        );
+      });
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: 'avatar_connection_failed',
+          stage,
+          category: error instanceof DOMException ? error.name : 'Error',
+        }),
+      );
       await finish(false);
       if (mounted.current) {
         onError(
-          'Could not start the live interviewer. Check microphone permission, LiveAvatar credits and connector settings.',
+          'Could not start the live interviewer. Check microphone permission, LiveAvatar credits and voice settings. Try Chrome if this browser cannot connect.',
         );
       }
     } finally {
@@ -179,12 +200,51 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
       () => {
         void finish(connected);
       },
-      connected ? 600000 : 45000,
+      connected ? AVATAR_SESSION_DURATION_SECONDS * 1000 : 45000,
     );
     return () => {
       clearTimeout(timer);
     };
   }, [running, status]);
+
+  useEffect(() => {
+    if (
+      !session ||
+      session.mode !== RehearsalMode.LIVEAVATAR ||
+      !session.avatarSessionId ||
+      session.status === 'active' ||
+      session.transcriptReceivedAt
+    ) {
+      return;
+    }
+    const id = session.id;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    async function retryTranscript(): Promise<void> {
+      attempts += 1;
+      try {
+        await command(`/avatar/sessions/${encodeURIComponent(id)}/transcript`, {});
+        if (!cancelled) {
+          await onRefresh();
+        }
+      } catch {
+        // The manual save action remains available after transient provider failures.
+      }
+      if (!cancelled && attempts < 5) {
+        timer = setTimeout(() => {
+          void retryTranscript();
+        }, 4000);
+      }
+    }
+    timer = setTimeout(() => {
+      void retryTranscript();
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [session?.id, session?.status, session?.transcriptReceivedAt]);
 
   useEffect(() => {
     mounted.current = true;
@@ -283,7 +343,7 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
           </div>
           <p className="avatar-disclosure">
             AI interviewer · synthetic voice and video. Your camera stays off. Company context is
-            empty for now.
+            empty for now. Demo interviews last up to two minutes and use your LiveAvatar credits.
           </p>
           {!state.capabilities.avatarReady && (
             <p className="notice">
@@ -298,8 +358,10 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
           </div>
           <p className="muted">
             {session?.transcriptReceivedAt
-              ? 'Saved from the verified ElevenLabs webhook.'
-              : 'Captions appear as you talk. The verified transcript is saved after the interview.'}
+              ? session.mode === RehearsalMode.LIVEAVATAR
+                ? 'Saved directly from LiveAvatar.'
+                : 'Saved from the verified ElevenLabs webhook.'
+              : 'Captions appear as you talk. The provider transcript is retrieved after the interview.'}
           </p>
           {turns.map((turn, index) => (
             <div className="turn" key={index}>
@@ -310,7 +372,33 @@ export function AvatarPractice({ state, onRefresh, onError }: Props) {
           {!turns.length && <p className="notice">Your conversation will appear here.</p>}
           {session && session.status !== 'active' && !session.transcriptReceivedAt && (
             <p className="notice">
-              Waiting for the verified transcript. Keep the webhook tunnel running.
+              {session.mode === RehearsalMode.LIVEAVATAR
+                ? 'Waiting for LiveAvatar to finish the transcript.'
+                : 'Waiting for the ElevenLabs webhook.'}
+              {session.mode === RehearsalMode.LIVEAVATAR && session.avatarSessionId && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    void command(
+                      `/avatar/sessions/${encodeURIComponent(session.id)}/transcript`,
+                      {},
+                    )
+                      .then(onRefresh)
+                      .catch(() => {
+                        onError('Transcript is not available yet. Retry shortly.');
+                      })
+                      .finally(() => {
+                        if (mounted.current) {
+                          setBusy(false);
+                        }
+                      });
+                  }}
+                >
+                  Retry saving transcript
+                </button>
+              )}
             </p>
           )}
         </article>

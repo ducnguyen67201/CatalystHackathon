@@ -29,7 +29,7 @@ export function VoicePracticePage() {
       });
 
     const timer = setInterval(() => {
-      if (polling) {
+      if (polling || document.visibilityState === 'hidden') {
         return;
       }
       polling = true;

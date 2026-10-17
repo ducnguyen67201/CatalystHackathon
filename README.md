@@ -120,6 +120,8 @@ Configure a transcription webhook to `POST /api/webhooks/elevenlabs` and its HMA
 
 Try the standalone voice slice:
 
+Use a browser that exposes WebRTC and AudioContext (Chrome is a useful fallback for embedded browsers), and allow its microphone prompt. An unavailable browser API disables voice start before a provider token is requested. SDK connection failures emit one `voice_connection_failed` console event with the session ID, stage and recognized category flags; raw provider messages, tokens and audio are excluded. Errors clear when switching interview modes or retrying, so a voice-only failure does not appear to be a video failure.
+
 1. Open http://127.0.0.1:4317/voice (works before onboarding), or **Practice room** in the dashboard, select **Voice only**, and click **Start voice practice**. Permit the microphone.
 2. June asks a general question. Speak, mute/unmute if needed, then choose **Finish & save transcript**.
 3. Live captions are an unsaved preview. The signed post-call webhook supplies the saved transcript; the page refreshes automatically.
@@ -131,21 +133,26 @@ Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/librarie
 
 ## Real-time AI interviewer video
 
-Practice room and `/voice` now offer **Live AI interviewer** and **Voice only**. Video uses the LiveAvatar ElevenLabs connector: one microphone connection feeds the agent, and LiveAvatar streams its face, lip movement and audio together. This is live provider video, not a portrait animation or a prerecorded loop. The UI labels the experience as an AI simulation. Your camera is never requested.
+Practice room and `/voice` offer **Live AI interviewer** and **Voice only**. Video uses LiveAvatar FULL mode: its built-in agent handles speech recognition, conversation, voice and the streamed face together. Your camera stays off. ElevenLabs remains available separately for voice-only practice; a paid ElevenLabs connector is not required for video.
 
-Video remains disabled until these backend values are configured in Doppler:
+Configure these backend values in Doppler:
 
 ```text
 LIVEAVATAR_API_KEY=
 LIVEAVATAR_AVATAR_ID=
-LIVEAVATAR_ELEVENLABS_SECRET_ID=
+LIVEAVATAR_VOICE_ID=
+LIVEAVATAR_CONTEXT_ID=
 ```
 
-Keep the existing `ELEVENLABS_AGENT_ID` and `ELEVENLABS_WEBHOOK_SECRET` configured as well. The secret ID is the identifier returned after registering an ElevenLabs API key with LiveAvatar, not the key itself. Registration shares that credential with LiveAvatar; this app does not perform it automatically. The connector requires an eligible paid ElevenLabs plan and a registered key with `convai_read`, `user_read`, and `voices_read`. Configure the agent's audio input and output to PCM 24 kHz. Follow the [official connector setup](https://docs.liveavatar.com/docs/lite-mode/connectors/elevenlabs-agent) and restart `doppler run -- pnpm dev` after supplying the values. Both providers bill their respective services.
+Select a stock avatar and an English preset voice in LiveAvatar. Create a context with an opening question and a short investor-rehearsal prompt. Identify June as an AI coach; ask one question at a time, and explicitly say no company data or investor facts have been supplied. Save the context's ID. The current adapter accepts only empty practice context; connecting supplied financial data remains future work. Context creation is an explicit setup action, not repeated on each call. API keys stay on the backend and are never shared with ElevenLabs.
 
-Choose a stock avatar in LiveAvatar for the first demo and copy its avatar ID. A particular investor's appearance requires a custom avatar created through the provider's likeness/consent process; setting a person's name or a profile URL does not create that avatar. The app keeps the configured agent voice; it does not clone an investor's voice. See [avatar creation](https://docs.liveavatar.com/docs/core-concepts/avatars).
+Restart `doppler run -- pnpm dev` after changing Doppler values. Open `/voice` in Chrome, select **Live AI interviewer**, then **Start live interview** and allow the microphone. Speak to the avatar and choose **Finish interview**. The session is capped at two minutes in the provider request and browser. Sessions consume LiveAvatar credits; the current free plan supports limited, watermarked sessions. This app does not purchase credits or upgrade subscriptions.
 
-Start the interview, speak, mute/unmute as needed, then finish. The browser also exposes the video's playback controls if autoplay needs a user gesture. A ten-minute provider limit bounds the session, and leaving the video tab requests shutdown. After an abrupt browser crash, use **Stop interrupted interview** in video history. Keep the webhook tunnel running to receive the final transcript. A live call has not been verified without the LiveAvatar credentials; adapter and signed-webhook behavior are covered with mocked provider responses.
+The server retrieves the finished transcript directly from LiveAvatar for the stored provider session ID. No webhook tunnel is required for this mode. Captions are an unsaved preview. The selected ended session retries retrieval up to five times; use **Retry saving transcript** if processing takes longer. Reopen a history entry to retry later. Interrupted interviews remain marked partial. An abrupt browser crash can be cleaned up with **Stop interrupted interview**. Old ElevenLabs-connected video records retain their original webhook delivery path.
+
+`avatar_connection_failed` browser diagnostics identify microphone, session creation or stream connection failures without logging credentials or audio.
+
+A stock character is an AI simulation, not the actual investor. Custom likenesses require the provider's consent process. See [FULL mode](https://docs.liveavatar.com/docs/full-mode/overview) and [transcript retrieval](https://docs.liveavatar.com/api-reference/sessions/get-session-transcript).
 
 ## Live research
 

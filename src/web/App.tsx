@@ -178,6 +178,9 @@ export function App() {
         }
       });
     const timer = setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
       void fetchState()
         .then((data) => {
           if (alive) {

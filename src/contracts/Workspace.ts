@@ -150,10 +150,17 @@ export const turnSchema = z.strictObject({
 
 export type TranscriptTurn = z.infer<typeof turnSchema>;
 
+export const RehearsalMode = {
+  DEMO: 'demo',
+  ELEVENLABS: 'elevenlabs',
+  TEXT: 'text',
+  LIVEAVATAR: 'liveavatar',
+} as const;
+
 export const rehearsalSchema = z.strictObject({
   id: idSchema,
   briefId: idSchema.nullable(),
-  mode: z.enum(['demo', 'elevenlabs', 'text']),
+  mode: z.enum(RehearsalMode),
   status: z.enum(['active', 'awaiting_transcript', 'completed', 'partial']),
   createdAt: dateSchema,
   conversationId: z.string().nullable(),

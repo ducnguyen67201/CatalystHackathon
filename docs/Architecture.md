@@ -117,29 +117,31 @@ No raw audio is saved by this application. ElevenLabs-side retention must be con
 The browser TypeScript project (`src/web/tsconfig.json`) uses Vite's bundler resolution, including the LiveAvatar SDK's extensionless type exports. Server, worker and scripts retain NodeNext resolution. Both projects inherit the same strict checks, and `pnpm typecheck` checks both.
 
 ```text
-Empty context provider
+No-op PracticeContextProvider
         |
 POST /api/avatar/sessions
-        +--> reserve rehearsal + nonce hash
-        +--> LiveAvatar token (LITE + ElevenLabs connector)
+        +--> reserve liveavatar rehearsal + frozen empty context
+        +--> LiveAvatar FULL token (avatar + voice + context IDs)
         +--> pin provider session ID; return temporary token
                           |
 Browser LiveAvatar SDK <--+
         | microphone               | streamed video + audio
-        +--------------------------+-- LiveAvatar / ElevenLabs
+        +--------------------------+-- LiveAvatar built-in agent
                                               |
-                            signed ElevenLabs transcript webhook
-                                              |
-                            validate agent + session nonce hash
-                                              |
-                            bind conversation ID once; save turns
+Finish / disconnect --> server stop ----------+
+        |
+Server GET stored session's transcript --> validate --> save turns
+        |
+History / bounded retry / reopen transcript
 ```
 
-`AvatarProvider.ts` owns the provider port; `LiveAvatar.ts` implements token creation and server-side stop calls with timeouts and validated responses. `AvatarRoutes.ts` owns authenticated create/stop endpoints. API keys, connector secret IDs and avatar selection come from server T3 Env; browsers cannot override them. No provider registration or credential sharing happens automatically. The configured connector owns the ElevenLabs connection and video synchronization; the frontend does not start a second voice session alongside it.
+`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. The adapter currently rejects provided company context rather than silently discarding it; only the no-op slice is connected.
 
-Video sessions reserve the same rehearsal aggregate, including the frozen no-op context. Because the connector creates the ElevenLabs conversation later, the API sends a random nonce and rehearsal ID as connector dynamic variables and stores only the nonce hash. The signed ElevenLabs webhook must return that correlation before a new conversation ID can be bound. Browser events cannot establish the authoritative association. Once bound, existing transcript validation and idempotent completion apply. Correlation is separate from the prompt's company data. Legacy payloads load with null avatar metadata; this feature needs no database migration.
+New video sessions use the `liveavatar` rehearsal mode. It shares the active-session exclusion with ElevenLabs voice, freezes its context and stores a provider session ID. Token creation failures leave a partial record. Browser end requests cannot supply authoritative turns. After stopping, the server fetches the transcript for its own stored session ID, validates speaker roles and text, and accepts it only when the provider reports the session inactive. Null, empty and still-active responses remain pending. A saved receipt makes repeated retrieval idempotent. Provider failures do not turn a successful stop into a failed stop. No financial review or brief update is generated for these standalone sessions.
 
-`AvatarPractice.tsx` is lazy-loaded behind the video tab. It renders the real provider media stream with an AI simulation label, optional playback controls, speaking/listening status, mute/end controls, temporary captions and saved transcript history. Switching modes or leaving the component requests provider stop. Connect attempts have a 45-second UI timeout; token creation requests a 600-second provider duration cap. A crashed browser may leave an active record; history exposes a server stop action. Live video cannot be end-to-end verified until provider credentials, a usable avatar and the delegated ElevenLabs connector have been configured. No automatic avatar creation, likeness scraping, investor voice cloning or financial scoring is implemented.
+`AvatarPractice.tsx` renders live provider video/audio with an AI simulation label, playback controls, speaking/listening state, mute/end controls and temporary captions. Startup is bounded to 45 seconds; provider and browser duration caps are two minutes. Switching modes requests shutdown. Selected ended sessions retry transcript retrieval five times with a delay and offer manual retry afterward. Unselected sessions do not poll the provider. Browser crashes retain a record that can be stopped from history. No webhook or ElevenLabs credentials are needed for FULL mode.
+
+Legacy connector sessions remain identifiable by their ElevenLabs mode and stored correlation hash. Their signed webhook can still bind a conversation ID using the original nonce verification; it cannot bind a FULL-mode session. The existing JSON storage accepts the additional mode without a database migration. Voice-only behavior remains independent. No automatic avatar creation, likeness scraping, investor voice cloning or financial scoring is implemented.
 
 ## Local webhook ingress
 
@@ -151,7 +153,7 @@ Video sessions reserve the same rehearsal aggregate, including the frozen no-op 
 
 The application has a local session cookie, CSRF/origin checks, body limits and rate limiting. It is intentionally single-user and binds only to localhost. Hosted identity/membership authorization, remote deployment, full cash-flow modeling, June accounting integration, outbound messages and investor outreach are not implemented.
 
-Local session cookies are invalidated when the API restarts. The authorization hook returns `LOCAL_SESSION_REQUIRED` before executing a protected operation. `ApiClient.ts` renews that local session and replays the same request once, sharing pending renewal across concurrent requests. This preserves mounted form drafts without a reload. Other authorization errors, network failures and server failures are not replayed, since an uncertain write outcome must not cause duplicate operations. Origin checks still apply to session creation and every retried request.
+Local session cookies are invalidated when the API restarts. The authorization hook returns `LOCAL_SESSION_REQUIRED` before executing a protected operation. `ApiClient.ts` renews that local session and replays the same request once, sharing pending renewal across concurrent requests. This preserves mounted form drafts without a reload. Other authorization errors, network failures and server failures are not replayed, since an uncertain write outcome must not cause duplicate operations. Origin checks still apply to session creation and every retried request. Dashboard and standalone voice state polling pauses in hidden tabs so idle tabs do not exhaust the local rate limit; it resumes on the next visible polling tick. State reads have a separate rate-limit group at the same request limit, so polling does not consume the write/stop budget.
 
 Every financial explanation preserves the distinction between operating results and other income. Cash runway, currency and founder-segment facts remain unknown until supported. The sample file's July credit is recorded as other income and is not proof that cash was received then.
 
