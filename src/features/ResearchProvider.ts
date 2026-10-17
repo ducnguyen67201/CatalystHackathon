@@ -10,3 +10,12 @@ export interface ResearchProvider {
     discovery?: ResearchDiscoveryContext,
   ): Promise<Evidence[]>;
 }
+
+/** Safe message for missing configuration; never contains credential values. */
+export class ResearchConfigurationError extends Error {
+  constructor() {
+    super(
+      'Research is not configured. Add EXA_API_KEY and OPENAI_API_KEY in Doppler, then restart the API and worker.',
+    );
+  }
+}

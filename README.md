@@ -4,7 +4,7 @@ A local TypeScript application for connecting financial evidence, investor resea
 
 ## Start with Doppler
 
-Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains the local demo settings and empty optional provider fields. `doppler.yaml` records this selection without credentials.
+Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains local settings and provider credentials. `doppler.yaml` records this selection without credentials.
 
 On a new machine, sign in and select this repository's config:
 
@@ -72,12 +72,12 @@ pnpm dev
 
 Without Doppler metadata, backend entrypoints read `.env` as a fallback, with injected variables taking precedence. Setup creates `.env` from `.env.example` only when absent. Under Doppler, `.env` is neither created nor merged; a missing secret stays missing, preventing stale local keys from silently being used. Existing `.env` files are preserved.
 
-The application begins with fictional research and a paused schedule, and works without provider credentials. Stage, sector, location and fundraising target are editable demo assumptions; sample financial currency is deliberately unspecified.
+Research always uses Exa and OpenAI. Add both API keys before running research. Without them the dashboard remains available, but research reports an explicit configuration failure; it never returns fictional results. The original radar schedule begins paused. Confirm company details and sample financial currency before using them.
 
 ## Try the complete flow
 
 1. Inspect Financials and the sample's sourced operating result, credit and net income.
-2. Run a radar check. A fictional Northline announcement is saved, and the meeting brief updates.
+2. Configure Exa and OpenAI credentials, confirm your company profile, then run a radar check. Supported public evidence is saved and used to update the meeting brief.
 3. Inspect its source and fit criteria. Edit the founder profile to see mismatches reflected in the refreshed brief.
 4. Open Practice room. Start written practice or the scripted example, answer the question and finish the session.
 5. View the new brief version and the topic review. Track a follow-up, then review it against the latest data.
@@ -91,9 +91,9 @@ Open **Investor research** in the sidebar. Paste a LinkedIn profile, X profile, 
 
 **Find more** searches similar companies’ funding announcements and, when available, co-investments involving your tracked investors. It offers up to three suggestions with source passages, company stage/sector/location, announcement dates and whole-round totals. Round totals are never treated as individual investor checks. Suggestions stay separate from monitoring until you choose **Track**; **Dismiss** remembers the investor name and suppresses repeat suggestions. Exact names are normalized, but aliases may still need review. These are leads to verify, not funding recommendations. Sources show exact quoted passages, publication dates where known, fit criteria, and whether they are new or changed. Check history preserves prior quotes and source IDs. Repeated unchanged sources do not create duplicate notices; failures remain distinct from successful checks with no results.
 
-Discovery runs weekly and when the company profile version changes, after stage, sector and geography are supplied and the initial demo profile has been edited. You can pause discovery independently or use Find more manually. A full tray of three suggestions avoids further provider calls until a slot is available. Stale suggestions are hidden after a company profile change; decisions and evidence remain in history. The worker must remain running.
+Discovery runs weekly and when the company profile version changes, after stage, sector and geography are supplied and the initial company profile has been edited. You can pause discovery independently or use Find more manually. A full tray of three suggestions avoids further provider calls until a slot is available. Stale suggestions are hidden after a company profile change; decisions and evidence remain in history. The worker must remain running.
 
-Demo mode uses fictional comparable companies and investors for suggestions; the original radar example remains Northline Ventures. Other pasted identities are saved but are never assigned fictional facts. Live mode requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Monitoring requires the worker to remain running. No emails or investor outreach are sent.
+Research requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Existing fictional evidence and past checks remain labeled for historical accuracy; new checks always use live providers. Monitoring requires the worker to remain running. No emails or investor outreach are sent.
 
 For an existing checkout, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
 
@@ -128,7 +128,7 @@ Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/librarie
 
 ## Live research
 
-In Doppler, set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and `RESEARCH_MODEL=gpt-6.1-sol` (the default). Restart the API and worker after editing settings. Live mode performs one Exa query and up to five bounded extraction calls per tracked-investor/radar run. Comparable-company discovery uses up to two Exa queries (segment funding and known-investor co-investments) and extracts at most five distinct pages. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
+In Doppler, set `EXA_API_KEY`, `OPENAI_API_KEY`, and `RESEARCH_MODEL=gpt-6.1-sol` (the default). There is no research mode selector; remove the obsolete `RESEARCH_MODE` setting. Restart the API and worker after editing settings. Live mode performs one Exa query and up to five bounded extraction calls per tracked-investor/radar run. Comparable-company discovery uses up to two Exa queries (segment funding and known-investor co-investments) and extracts at most five distinct pages. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
 
 An exact supporting passage is required for an extracted record. This checks provenance; it does not prove every extracted criterion is correct. Live claims remain labeled as needing verification. Canonical URL, retrieved text and extracted investor identity identify source versions. Repeated pages do not duplicate evidence; changed text creates a preserved new version. Cross-page event grouping remains a future improvement.
 
@@ -164,7 +164,7 @@ Read [Architecture](docs/Architecture.md) for component ownership, persistence, 
 
 Run `doppler run -- pnpm dev` and watch that terminal (not the browser console). `LOG_LEVEL=debug` is the default; `info` hides per-source decisions and result counts, and `silent` disables workflow logging. This uses JSON console logging without an extra logging service. T3 Env validates the level. Change it in Doppler and restart to change verbosity.
 
-A manual check logs `workflow_queued`, then the worker logs `workflow_started`, `research_started`, provider events, `investor_check_saved`, and `workflow_succeeded`. Every event inside a job carries its `jobId`, `jobKind` and attempt number. Demo mode logs `demo_search_skipped` with `reason: demo_mode`: neither Exa nor OpenAI was called. Zero demo sources means no fictional fixture matches the profile, not that a web search found nothing.
+A manual check logs `workflow_queued`, then the worker logs `workflow_started`, `research_started`, provider events, `investor_check_saved`, and `workflow_succeeded`. Every event inside a job carries its `jobId`, `jobKind` and attempt number. Missing keys log `research_unavailable` at startup and `research_failed` with `reason: configuration_missing` if a check runs. This is a failure, never a successful zero-source check.
 
 Live mode logs Exa/OpenAI request start, HTTP status and duration; search result count; per-source accepted/rejected events; and accepted evidence count. Rejection reasons include no text, identity mismatch, missing exact quote and missing comparable-company evidence. Failures distinguish provider HTTP errors, invalid responses, timeouts and network failures. Discovery logs how many suggestions were saved or that the three-suggestion tray is already full. No repeated empty worker polls are logged.
 

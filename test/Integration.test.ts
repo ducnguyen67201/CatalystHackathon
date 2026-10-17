@@ -13,7 +13,7 @@ import {
   JobStatus,
 } from '../src/contracts/Workspace.js';
 import { PrismaStore } from '../src/infrastructure/PrismaStore.js';
-import { DemoResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
 import { readEnvironment } from '../src/server/Env.js';
 import { createApi } from '../src/server/Api.js';
@@ -39,7 +39,7 @@ beforeAll(async () => {
     throw new Error('Temporary database migration failed.');
   }
   store = new PrismaStore(databaseUrl.href);
-  service = new WorkspaceService(store, new DemoResearch());
+  service = new WorkspaceService(store, new ResearchFixture());
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
   await service.investors.discovery.setFrequency('paused');

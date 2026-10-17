@@ -111,10 +111,10 @@ export function InvestorTrackingPage({
         <ArrowRight size={14} />
         <span>03 Review what changed</span>
       </div>
-      {state.capabilities.researchMode === 'demo' && (
+      {!state.capabilities.researchReady && (
         <p className="investor-demo">
-          Demo mode: saves real profile links, but makes no live searches. “Find more” demonstrates
-          suggestions with fictional companies and investors.
+          Research is not configured. Add EXA_API_KEY and OPENAI_API_KEY in Doppler, then restart
+          the API and worker. Saved profiles will use live public-source research.
         </p>
       )}
       <form
@@ -216,7 +216,7 @@ export function InvestorTrackingPage({
                       ? 'Check failed · retry available'
                       : check
                         ? check.mode === 'demo'
-                          ? `Demo check · ${check.evidenceIds.length} sources · no live search`
+                          ? `Previous demo check · ${check.evidenceIds.length} sources · no live search`
                           : `${check.evidenceIds.length} sources · ${check.addedIds.length + check.changedIds.length} new versions`
                         : 'Waiting for first check'}
                 </small>

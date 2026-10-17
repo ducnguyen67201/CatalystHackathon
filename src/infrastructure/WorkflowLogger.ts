@@ -1,3 +1,4 @@
+import { ResearchConfigurationError } from '../features/ResearchProvider.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z } from 'zod';
 import {
@@ -77,6 +78,9 @@ export class ProviderRequestError extends Error {
 
 /** Classifies failures without exposing provider error bodies or arbitrary exception messages. */
 export function describeResearchFailure(error: unknown): LogFields {
+  if (error instanceof ResearchConfigurationError) {
+    return { reason: LogReason.CONFIGURATION_MISSING };
+  }
   if (error instanceof ProviderRequestError) {
     return { reason: LogReason.HTTP_ERROR, provider: error.provider, statusCode: error.statusCode };
   }

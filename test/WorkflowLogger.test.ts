@@ -6,7 +6,7 @@ import {
   ProviderRequestError,
 } from '../src/infrastructure/WorkflowLogger.js';
 import { LogEvent, LogReason } from '../src/features/WorkflowLog.js';
-import { DemoResearch, LiveResearch } from '../src/infrastructure/Research.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
 import { profileSchema } from '../src/contracts/Workspace.js';
 
 const profile = profileSchema.parse({
@@ -69,31 +69,35 @@ describe('structured workflow diagnostics', () => {
     expect(parseLines(lines).map((line) => line.event)).toEqual(['research_started']);
   });
 
-  it('explicitly logs that demo profiles skip provider calls', async () => {
-    const lines: string[] = [];
-    const logger = new WorkflowLogger('debug', (line) => lines.push(line));
-    const fetchMock = vi.fn<typeof fetch>();
-    vi.stubGlobal('fetch', fetchMock);
-    try {
-      const records = await logger.run({ jobId: 'demo-job' }, () =>
-        new DemoResearch(logger).discover(profile, {
-          name: 'Duc',
-          url: 'https://linkedin.com/in/ducnguyen6721',
-        }),
-      );
-      expect(records).toEqual([]);
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(parseLines(lines).map((line) => line.event)).toEqual([
-        'research_started',
-        'demo_search_skipped',
-        'research_completed',
-      ]);
-      expect(parseLines(lines).every((line) => line.jobId === 'demo-job')).toBe(true);
-      expect(lines.join('')).not.toContain('ducnguyen6721');
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
+  it.each([undefined, '', '   '])(
+    'fails explicitly when a live key is missing (%s)',
+    async (missingKey) => {
+      const lines: string[] = [];
+      const logger = new WorkflowLogger('debug', (line) => lines.push(line));
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        await expect(
+          logger.run({ jobId: 'missing-key-job' }, () =>
+            new LiveResearch(missingKey, 'test-key', 'gpt-6.1-sol', logger).discover(profile),
+          ),
+        ).rejects.toThrow('Add EXA_API_KEY and OPENAI_API_KEY in Doppler');
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(parseLines(lines).map((line) => line.event)).toEqual([
+          'research_started',
+          'research_failed',
+        ]);
+        expect(parseLines(lines)).toContainEqual(
+          expect.objectContaining({
+            jobId: 'missing-key-job',
+            reason: 'configuration_missing',
+          }),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('reports provider HTTP failures without logging response bodies or secrets', async () => {
     const lines: string[] = [];

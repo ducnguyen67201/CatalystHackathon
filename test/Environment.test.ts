@@ -34,7 +34,7 @@ describe('Injected environment boundaries', () => {
     const env = readEnvironment(settings);
     expect(env.API_PORT).toBe(4318);
     expect(env.EXA_API_KEY).toBeUndefined();
-    expect(env.RESEARCH_MODE).toBe('demo');
+    expect(env).not.toHaveProperty('RESEARCH_MODE');
     expect(settings.API_PORT).toBe('');
   });
 
@@ -58,7 +58,7 @@ describe('Injected environment boundaries', () => {
     expect(readEnvironment(values).DATABASE_URL).toBe(databaseUrl);
   });
 
-  it('rejects missing database settings, invalid protocols, and incomplete live mode without leaking inputs', () => {
+  it('rejects missing database settings, invalid protocols, and ignores the obsolete mode setting without leaking inputs', () => {
     expect(() => readEnvironment({})).toThrow('Invalid environment settings');
     expect(() => readEnvironment({ DATABASE_URL: 'not-a-url-private-key' })).toThrow(
       'Invalid environment settings',
@@ -66,21 +66,13 @@ describe('Injected environment boundaries', () => {
     expect(() => readEnvironment({ DATABASE_URL: 'https://private-secret.invalid' })).toThrow(
       'Invalid environment settings. Check Doppler or .env against .env.example.',
     );
-    expect(() =>
-      readEnvironment({
-        DATABASE_URL: databaseUrl,
-        RESEARCH_MODE: 'live',
-        EXA_API_KEY: 'private-key',
-      }),
-    ).toThrow('Invalid environment settings');
-    expect(
-      readEnvironment({
-        DATABASE_URL: databaseUrl,
-        RESEARCH_MODE: 'live',
-        EXA_API_KEY: 'test-exa',
-        OPENAI_API_KEY: 'test-model',
-      }).RESEARCH_MODE,
-    ).toBe('live');
+    const env = readEnvironment({
+      DATABASE_URL: databaseUrl,
+      RESEARCH_MODE: 'demo',
+      EXA_API_KEY: 'test-exa',
+    });
+    expect(env).not.toHaveProperty('RESEARCH_MODE');
+    expect(env.OPENAI_API_KEY).toBeUndefined();
   });
 
   it('keeps all provider and Doppler secrets out of the frontend process', () => {

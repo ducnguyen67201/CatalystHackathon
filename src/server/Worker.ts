@@ -1,3 +1,4 @@
+import { ResearchConfigurationError } from '../features/ResearchProvider.js';
 import { LogEvent } from '../features/WorkflowLog.js';
 import { describeResearchFailure } from '../infrastructure/WorkflowLogger.js';
 import { InvestorJob } from '../features/InvestorTrackingService.js';
@@ -36,11 +37,13 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
         service.logger.write(LogEvent.WORKFLOW_SUCCEEDED, { durationMs: Date.now() - started });
       } catch (error) {
         const category =
-          error instanceof Error &&
-          (error.message.startsWith('Profile changed') ||
-            error.message.startsWith('Investor identity changed'))
-            ? 'Workspace changed; retrying.'
-            : 'Workflow failed. Check provider configuration or retry after recovery.';
+          error instanceof ResearchConfigurationError
+            ? error.message
+            : error instanceof Error &&
+                (error.message.startsWith('Profile changed') ||
+                  error.message.startsWith('Investor identity changed'))
+              ? 'Workspace changed; retrying.'
+              : 'Workflow failed. Check provider configuration or retry after recovery.';
         await service.store.failJob(job, category);
         service.logger.write(
           LogEvent.WORKFLOW_FAILED,

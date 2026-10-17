@@ -283,9 +283,7 @@ export function App() {
           <span className="connection-dot" /> PostgreSQL connected
           <br />
           Research:{' '}
-          {state.capabilities.researchMode === 'demo'
-            ? 'fictional demo sources'
-            : 'Exa + evidence extraction'}
+          {state.capabilities.researchReady ? 'Exa + evidence extraction' : 'Provider keys needed'}
         </div>
       </aside>
       <main className="main">
@@ -297,7 +295,7 @@ export function App() {
           </div>
           <div className="top-right">
             <span className="demo-badge">
-              {state.capabilities.researchMode === 'demo' ? 'Demo research' : 'Live research'}
+              {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
             </span>
             <button
               className="notification-button"
@@ -490,8 +488,8 @@ export function App() {
                           evidence with your financial preparation.
                         </p>
                         <p className="source-label">
-                          Demo mode uses clearly labeled fictional investors. Live research can be
-                          configured in the server environment.
+                          Research searches public sources with Exa and checks supporting passages.
+                          Results depend on publicly accessible information.
                         </p>
                       </div>
                     )}
@@ -521,9 +519,9 @@ export function App() {
                     </article>
                   )}
                   <p className="footnote">
-                    Stage, sector, location and raise goal begin as editable demo assumptions.
-                    Financial currency stays unspecified until you confirm it. Investor matching is
-                    a research lead, not a funding prediction.
+                    Confirm your stage, sector, location and raise goal before researching
+                    investors. Financial currency stays unspecified until you confirm it. Investor
+                    matching is a research lead, not a funding prediction.
                   </p>
                 </div>
                 <div>

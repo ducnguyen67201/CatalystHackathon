@@ -123,10 +123,9 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       workspace: await service.read(),
       jobs: await service.store.listJobs(),
       capabilities: {
-        researchMode: env.RESEARCH_MODE,
+        researchMode: 'live',
         voiceReady: Boolean(env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID),
-        researchReady:
-          env.RESEARCH_MODE === 'demo' || Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
+        researchReady: Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
         localOnly: true,
       },
     }),

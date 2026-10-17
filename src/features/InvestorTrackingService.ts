@@ -188,9 +188,7 @@ export class InvestorTrackingService {
       saveEvidence(state, unique);
       const note =
         unique.length === 0
-          ? this.research.mode === 'demo'
-            ? 'Demo check only: Exa and OpenAI were not called. No fictional fixture matches this profile. Enable live research to search public sources.'
-            : 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable.'
+          ? 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable.'
           : fresh.length === 0
             ? 'No new source versions found in this check. This is not proof that nothing changed elsewhere.'
             : `${added.length} new sources; ${changed.length} updated source versions. Review identity and the cited passages before acting.`;

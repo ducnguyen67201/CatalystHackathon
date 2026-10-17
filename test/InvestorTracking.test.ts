@@ -1,3 +1,4 @@
+import { runWorkerTick } from '../src/server/Worker.js';
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { investorInputSchema, CheckFrequency } from '../src/contracts/InvestorTracking.js';
@@ -6,9 +7,10 @@ import { parseInvestorUrl, nextInvestorCheck } from '../src/features/InvestorTra
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
 import type { WorkspaceStore } from '../src/features/WorkspaceStore.js';
 import type { ResearchProvider } from '../src/features/ResearchProvider.js';
-import { DemoResearch, LiveResearch } from '../src/infrastructure/Research.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
 
-function createFixture(research: ResearchProvider = new DemoResearch()) {
+function createFixture(research: ResearchProvider = new ResearchFixture()) {
   let state: Workspace | null = null;
   const enqueue = vi.fn<WorkspaceStore['enqueue']>((key, kind) =>
     Promise.resolve(
@@ -75,6 +77,39 @@ describe('investor identity seeds', () => {
 });
 
 describe('watchlist loop', () => {
+  it('records missing credentials as a failed job without creating empty research history', async () => {
+    const { service } = createFixture(new LiveResearch(undefined, undefined, 'test-model'));
+    await initialize(service);
+    await service.investors.discovery.setFrequency('paused');
+    const target = await service.investors.add(
+      investorInputSchema.parse({ url: 'https://x.com/alex' }),
+    );
+    const job = {
+      ...jobSchema.parse({
+        id: 'missing-credentials',
+        kind: `investor:${target.id}`,
+        status: 'running',
+        attempts: 1,
+        createdAt: new Date().toISOString(),
+        result: null,
+        error: null,
+      }),
+      leaseToken: 'test-lease',
+    };
+    vi.spyOn(service.store, 'claimJob').mockResolvedValue(job);
+    const finish = vi.spyOn(service.store, 'finishJob');
+    const fail = vi.spyOn(service.store, 'failJob');
+    await runWorkerTick(service);
+    expect(finish).not.toHaveBeenCalled();
+    expect(fail).toHaveBeenCalledWith(
+      job,
+      expect.stringContaining('Add EXA_API_KEY and OPENAI_API_KEY in Doppler'),
+    );
+    expect(
+      (await service.read()).investors.find((investor) => investor.id === target.id)?.checks,
+    ).toEqual([]);
+  });
+
   it('deduplicates pasted profiles and does not fabricate demo facts about real people', async () => {
     const { service } = createFixture();
     await initialize(service);
@@ -88,7 +123,7 @@ describe('watchlist loop', () => {
     await service.investors.check(target.id, 'job-one');
     const check = (await service.read()).investors[0]?.checks[0];
     expect(check?.evidenceIds).toEqual([]);
-    expect(check?.note).toContain('Demo check only');
+    expect(check?.note).toContain('No supported public evidence');
     expect(check?.mode).toBe('demo');
   });
 
@@ -154,7 +189,7 @@ describe('watchlist loop', () => {
   });
 
   it('does not spend another discovery call on a full tray or replayed job, and rejects stale decisions', async () => {
-    const demo = new DemoResearch();
+    const demo = new ResearchFixture();
     const discover = vi.fn<ResearchProvider['discover']>((...args) => demo.discover(...args));
     const { service } = createFixture({ discover });
     await initialize(service);
@@ -175,7 +210,7 @@ describe('watchlist loop', () => {
   });
 
   it('discards discovery results when company context changes during research', async () => {
-    const demo = new DemoResearch();
+    const demo = new ResearchFixture();
     const discover = vi.fn<ResearchProvider['discover']>();
     const { service } = createFixture({ discover });
     await initialize(service);
@@ -196,7 +231,7 @@ describe('watchlist loop', () => {
     const target = await service.investors.add(
       investorInputSchema.parse({ name: 'Northline Ventures', url: 'https://example.com' }),
     );
-    const original = (await new DemoResearch().discover((await service.read()).profile))[0];
+    const original = (await new ResearchFixture().discover((await service.read()).profile))[0];
     if (!original) {
       throw new Error('Missing evidence');
     }

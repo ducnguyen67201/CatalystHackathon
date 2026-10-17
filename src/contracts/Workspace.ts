@@ -228,7 +228,7 @@ export const jobSchema = z.strictObject({
 export type Job = z.infer<typeof jobSchema>;
 
 export const capabilitiesSchema = z.strictObject({
-  researchMode: z.enum(ResearchMode),
+  researchMode: z.literal('live'),
   voiceReady: z.boolean(),
   researchReady: z.boolean(),
   localOnly: z.literal(true),

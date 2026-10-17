@@ -8,7 +8,7 @@ try {
   const service = createRuntime(env);
   await service.read();
   const stop = startWorker(service);
-  service.logger.write(LogEvent.WORKER_READY, { mode: env.RESEARCH_MODE });
+  service.logger.write(LogEvent.WORKER_READY, { mode: 'live' });
   const close = () => {
     stop();
     void service.store.close();

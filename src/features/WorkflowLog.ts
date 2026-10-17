@@ -8,7 +8,7 @@ export const LogEvent = {
   RESEARCH_STARTED: 'research_started',
   RESEARCH_COMPLETED: 'research_completed',
   RESEARCH_FAILED: 'research_failed',
-  DEMO_SEARCH_SKIPPED: 'demo_search_skipped',
+  RESEARCH_UNAVAILABLE: 'research_unavailable',
   PROVIDER_REQUEST_STARTED: 'provider_request_started',
   PROVIDER_REQUEST_COMPLETED: 'provider_request_completed',
   SEARCH_RESULTS_RECEIVED: 'search_results_received',
@@ -20,7 +20,7 @@ export const LogEvent = {
 } as const;
 
 export const LogReason = {
-  DEMO_MODE: 'demo_mode',
+  CONFIGURATION_MISSING: 'configuration_missing',
   NO_TEXT: 'no_text',
   EMPTY_COMPLETION: 'empty_completion',
   IDENTITY_MISMATCH: 'identity_mismatch',

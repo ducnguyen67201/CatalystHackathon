@@ -23,7 +23,7 @@ React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL
 - `src/features/WorkspaceService.ts` owns profile versions, snapshots, evidence intake, brief history, rehearsal lifecycle, topic checks and follow-up comparisons.
 - `src/features/WorkspaceStore.ts` owns the persistence port and concurrency error.
 - `src/infrastructure/PrismaStore.ts` maps validated application records to company-scoped tables. Prisma types do not escape the adapter.
-- `src/infrastructure/Research.ts` contains fictional and Exa/model-backed research adapters. The application chooses one mode explicitly at startup.
+- `src/infrastructure/Research.ts` contains only the Exa/OpenAI research adapter. Runtime always injects it. Deterministic research fixtures live under test/fixtures and are excluded from application builds.
 - `src/infrastructure/Voice.ts` obtains ElevenLabs conversation tokens, builds brief context and verifies provider webhooks.
 - `src/server/Api.ts` owns local session authorization, origin checking, rate limits, validated routes and static production assets. It always binds through the loopback entrypoint.
 - `src/server/Worker.ts` owns queue execution and due schedules. `src/jobs/RadarTasks.ts` optionally invokes the same work from Trigger.dev.
@@ -33,7 +33,7 @@ React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL
 
 Doppler owns the `june-workspace` project and its development settings. `doppler.yaml` selects `dev` for `doppler setup`; no tokens are committed. `doppler run` injects a configuration snapshot into the launched process. Restarting refreshes that snapshot.
 
-`src/server/Env.ts` owns T3 Env/Zod validation. Its functions require caller-supplied values and do not read or mutate global process state. Separate validators cover server, database tooling, local development ports and optional hosted workflow project settings. Validation errors omit values. Incomplete live research credentials fail validation before services start.
+`src/server/Env.ts` owns T3 Env/Zod validation. Its functions require caller-supplied values and do not read or mutate global process state. Separate validators cover server, database tooling, local development ports and optional hosted workflow project settings. Validation errors omit values. Missing research credentials leave the dashboard available with researchReady false. Runtime logs configuration_missing; an attempted check throws a safe configuration error before any network request and is recorded as failed. No fictional fallback exists.
 
 `src/server/LoadEnvironment.ts` selects the input source at process entrypoints. Injected environment values win over local file fallback. When Doppler metadata is present, local files are ignored entirely, so missing hosted secrets cannot accidentally come from `.env`. Prisma, setup, API, worker and optional workflow tasks use this same source policy. Tests inject explicit objects.
 
@@ -49,7 +49,7 @@ Workspace writes use an optimistic revision check inside a Prisma transaction. T
 
 Financial snapshots are immutable and keyed by CSV-content/currency hash. Imported raw columns and original row numbers are retained in PostgreSQL; no private object-storage adapter is implemented yet. Company profile currency does not relabel historic financial snapshots. A financial upload uses its own explicitly confirmed currency.
 
-Radar evidence is deduplicated by canonical URL, retrieved-text and extracted-investor hash in live mode and a stable fixture key in demo mode. The current extractor requires its quoted passage to appear in the retrieved text, then labels the record unverified. Changed retrieved text creates a new immutable evidence version; per-investor checks record newly observed URLs and changed versions of previously seen URLs. Check histories preserve quoted passages and evidence IDs. Cross-page event deduplication and contradictory claim resolution remain future work.
+Radar evidence is deduplicated by canonical URL, retrieved-text and extracted-investor hash. Previously saved fictional records retain their labels and IDs for compatibility. The current extractor requires its quoted passage to appear in the retrieved text, then labels the record unverified. Changed retrieved text creates a new immutable evidence version; per-investor checks record newly observed URLs and changed versions of previously seen URLs. Check histories preserve quoted passages and evidence IDs. Cross-page event deduplication and contradictory claim resolution remain future work.
 
 Briefs pin a financial snapshot ID, company profile version and evidence ID. Rehearsals pin a brief ID. A completed review appends a brief version while retaining the original. The topic reviewer is deterministic and explicitly does not certify financial correctness or speaking quality.
 
@@ -111,4 +111,4 @@ The UI keeps the monitored watchlist first and places up to three alternatives b
 
 `features/WorkflowLog.ts` defines the injected workflow logging port and a bounded metadata vocabulary. Runtime injects one `WorkflowLogger` into the service and research provider. The infrastructure logger uses AsyncLocalStorage for asynchronous per-job correlation, validates an allowlisted set of metadata fields and writes JSON lines to stdout. `LOG_LEVEL` belongs to server environment validation. Tests inject a sink or use the default silent logger; domain services have no logging-library or filesystem dependency.
 
-Provider boundaries report request status/timing, extraction acceptance/rejection and safe failure categories without serializing arbitrary exceptions or request/response bodies. Worker events wrap claimed jobs, while save events occur after persistence succeeds. Demo checks persist their research mode in optional check metadata for backward compatibility and explicitly state that no live search occurred. Existing check history is preserved. Operational usage is documented in README.
+Provider boundaries report request status/timing, extraction acceptance/rejection and safe failure categories without serializing arbitrary exceptions or request/response bodies. Worker events wrap claimed jobs, while save events occur after persistence succeeds. New checks always persist live mode. The evidence/check contracts still accept historical demo labels so existing records can be read without relabeling fictional facts as real. Existing check history is preserved. Operational usage is documented in README.

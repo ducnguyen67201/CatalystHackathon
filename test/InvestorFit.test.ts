@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DemoResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
 import { evaluateInvestorFit } from '../src/features/InvestorFit.js';
 import type { Profile } from '../src/contracts/Workspace.js';
 const profile: Profile = {
@@ -15,7 +15,7 @@ const profile: Profile = {
 };
 describe('Investor fit', () => {
   it('leaves currency comparisons unknown until both currencies are known and equal', async () => {
-    const [evidence] = await new DemoResearch().discover(profile);
+    const [evidence] = await new ResearchFixture().discover(profile);
     if (!evidence) {
       throw new Error('Missing fixture');
     }
@@ -28,7 +28,7 @@ describe('Investor fit', () => {
     );
   });
   it('rejects a mismatching stage and leaves missing stage unknown', async () => {
-    const [evidence] = await new DemoResearch().discover(profile);
+    const [evidence] = await new ResearchFixture().discover(profile);
     if (!evidence) {
       throw new Error('Missing fixture');
     }
