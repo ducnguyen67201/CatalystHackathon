@@ -90,6 +90,10 @@ Research always uses Exa and OpenAI. Add both API keys before running research. 
 
 Restart `pnpm dev` to regenerate Prisma and apply pending migrations automatically. Migrations add onboarding storage without resetting the application database. Existing workspaces are invited through setup once; their data remains intact.
 
+## Financial spreadsheet
+
+Financials displays the selected income statement as a read-only spreadsheet: all uploaded line items run down the left, with months across the top. Frozen headers, source CSV row references, and horizontal scrolling keep the figures traceable. Values retain their uploaded precision. **Show flags** highlights operating losses and positive net income supported by a credit while operations remain negative; it does not generate analysis or change saved figures. Upload a new statement to save a new snapshot. The bundled Tidewell data is labeled fictional.
+
 ## Investor watchlist
 
 Open **Investor research** in the sidebar. Paste a LinkedIn profile, X profile, or public firm URL and optionally add a name and firm. New targets get an immediate check, followed by checks every 24 hours. Choose every seven days or paused per investor. **Check now** works while paused; already queued checks may finish. Correct the saved name before retrying an ambiguous identity.
