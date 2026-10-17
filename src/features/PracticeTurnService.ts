@@ -12,7 +12,7 @@ import type { WorkspaceService } from './WorkspaceService.js';
 import type { PracticeTurnProvider } from './PracticeTurnProvider.js';
 import { assembleEvaluationContext } from './EvaluationContextAssembler.js';
 import { hashEvaluationInput, queueEvaluation } from './RehearsalEvaluationService.js';
-import { validateExtraction, checkClaims } from './EvaluationChecks.js';
+import { extractValidatedClaims, checkClaims } from './EvaluationChecks.js';
 import {
   buildPracticeInput,
   practiceAnswerFits,
@@ -278,10 +278,7 @@ export class PracticeTurnService {
     const evaluation = buildPracticeInput(id, context, session.turns);
     if (JSON.stringify(evaluation).length > PRACTICE_INPUT_LIMIT)
       throw new Error('Practice input exceeds supported size.');
-    const extraction = validateExtraction(
-      await this.service.evaluations.provider.extract(evaluation),
-      evaluation,
-    );
+    const extraction = await extractValidatedClaims(this.service.evaluations.provider, evaluation);
     const checks = checkClaims(extraction, evaluation);
     const input = {
       evaluation,

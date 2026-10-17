@@ -1519,6 +1519,108 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
   }
 });
 
+it('completes the durable review after correcting an implied numeric forecast without changing history', async () => {
+  const { createEmptyPracticeContext } = await import('../src/contracts/PracticeContext.js');
+  const { LiveEvaluation } = await import('../src/infrastructure/Evaluation.js');
+  const { z } = await import('zod');
+  const requestSchema = z.object({ messages: z.array(z.object({ content: z.string() })) });
+  const inputSchema = z.object({
+    turns: z.array(z.object({ id: z.string(), role: z.string(), text: z.string() })),
+  });
+  let extractionCalls = 0;
+  const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, options) => {
+    if (typeof options?.body !== 'string') throw new Error('Missing request body');
+    const request: unknown = JSON.parse(options.body);
+    const messages = requestSchema.parse(request).messages;
+    const content = messages[1]?.content;
+    if (!content) throw new Error('Missing provider input');
+    const rawInput: unknown = JSON.parse(content);
+    const input = inputSchema.parse(rawInput);
+    const turn = input.turns.find((t) => t.role === 'user');
+    if (!turn) throw new Error('Missing founder turn');
+    const isExtraction = messages[0]?.content.includes('You extract claims');
+    const output = isExtraction
+      ? {
+          claims: [
+            {
+              id: 'forecast',
+              turnId: turn.id,
+              questionTurnId: null,
+              quote: turn.text,
+              metric: 'revenue',
+              value: ++extractionCalls === 1 ? '100' : null,
+              period: null,
+              unit: null,
+              kind: 'forecast',
+              supersededByTurnId: null,
+              uncertainty: '',
+            },
+          ],
+          focusAreas: [],
+        }
+      : {
+          summary: 'The growth forecast needs supporting assumptions.',
+          strengths: [],
+          items: [],
+          comparison: null,
+        };
+    return Promise.resolve(
+      Response.json({
+        choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(output) } }],
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  try {
+    const coached = new WorkspaceService(
+      store,
+      new ResearchFixture(),
+      new LiveEvaluation('test-only-key', 'test-model'),
+    );
+    const brief = (await coached.read()).briefs.at(-1);
+    if (!brief) throw new Error('Missing fictional fixture brief');
+    const session = await coached.createRehearsal(
+      brief.id,
+      'text',
+      null,
+      createEmptyPracticeContext(),
+    );
+    await coached.answer(session.id, 'I expect our revenue to double next year.');
+    await coached.finishRehearsal(session.id, [], true);
+    const frozen = (await coached.read()).rehearsals.find((s) => s.id === session.id);
+    const evaluation = frozen?.evaluations[0];
+    if (!evaluation) throw new Error('Missing evaluation');
+    let claimed = await store.claimJob(new Date());
+    for (
+      let attempt = 0;
+      claimed && claimed.kind !== `evaluate:${session.id}:${evaluation.id}` && attempt < 100;
+      attempt++
+    ) {
+      await store.finishJob(claimed, 'Unrelated test job drained.');
+      claimed = await store.claimJob(new Date());
+    }
+    if (!claimed || claimed.kind !== `evaluate:${session.id}:${evaluation.id}`)
+      throw new Error('Missing evaluation job');
+    await coached.evaluations.run(session.id, evaluation.id, claimed);
+    const completed = (await coached.read()).rehearsals.find((s) => s.id === session.id);
+    expect(completed?.evaluations[0]?.status).toBe('completed');
+    expect(completed?.evaluations[0]?.report?.extraction.claims[0]).toMatchObject({
+      value: null,
+      kind: 'forecast',
+      quote: 'I expect our revenue to double next year.',
+    });
+    expect(completed?.evaluations[0]?.report?.checks[0]?.support).toBe('not_checked');
+    expect(completed?.turns).toEqual(frozen.turns);
+    expect(completed?.evaluationContext).toEqual(frozen.evaluationContext);
+    expect(completed?.evaluations[0]?.transcriptHash).toBe(evaluation.transcriptHash);
+    expect((await store.listJobs()).find((j) => j.id === claimed.id)?.status).toBe('succeeded');
+    expect(extractionCalls).toBe(2);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('durable investor suggestions', () => {
   it('deduplicates discovery jobs and persists explicit Track and Dismiss decisions', async () => {
     await service.change((workspace) => {

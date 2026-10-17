@@ -3,6 +3,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { assembleEvaluationContext } from '../src/features/EvaluationContextAssembler.js';
 import {
   checkClaims,
+  extractValidatedClaims,
   validateCoaching,
   validateExtraction,
 } from '../src/features/EvaluationChecks.js';
@@ -12,6 +13,8 @@ import { queueEvaluation } from '../src/features/RehearsalEvaluationService.js';
 import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
 import { rehearsalSchema, workspaceSchema } from '../src/contracts/Workspace.js';
 import { importFinancials } from '../src/features/Financials.js';
+import type { Extraction } from '../src/contracts/RehearsalEvaluation.js';
+import { EvaluationFailure } from '../src/features/EvaluationFailure.js';
 import type { EvaluationInput } from '../src/features/EvaluationProvider.js';
 import { readEnvironment } from '../src/server/Env.js';
 
@@ -59,6 +62,119 @@ function input(text = 'Our operating income is 122503 unspecified for 2026-07.')
 const provider = fixtureEvaluationProvider;
 afterEach(() => vi.unstubAllGlobals());
 describe('post-practice evaluator', () => {
+  const forecastText = 'I expect our revenue to double next year.';
+  function forecastExtraction(value: string | null): Extraction {
+    return {
+      claims: [
+        {
+          id: 'forecast',
+          turnId: 'answer',
+          questionTurnId: 'question',
+          quote: forecastText,
+          metric: 'revenue',
+          value,
+          period: null,
+          unit: null,
+          kind: 'forecast',
+          supersededByTurnId: null,
+          uncertainty: '',
+        },
+      ],
+      focusAreas: [],
+    };
+  }
+  it('corrects an inferred percentage while retaining the original qualitative forecast', async () => {
+    const data = input(forecastText);
+    const invalid = forecastExtraction('100');
+    const corrected = forecastExtraction(null);
+    const extract = vi.fn().mockResolvedValueOnce(invalid).mockResolvedValueOnce(corrected);
+    const result = await extractValidatedClaims({ ...provider, extract }, data);
+    expect(result).toEqual(corrected);
+    expect(invalid.claims[0]?.value).toBe('100');
+    expect(extract).toHaveBeenCalledTimes(2);
+    expect(extract).toHaveBeenNthCalledWith(1, data);
+    expect(extract).toHaveBeenNthCalledWith(2, data, 'unstated_claim_value');
+    const checks = checkClaims(result, data);
+    expect(checks[0]?.support).toBe('not_checked');
+    expect(
+      validateCoaching(await provider.coach(data, result, checks), result, data, checks),
+    ).toBeDefined();
+  });
+  it('bounds correction to one extra request and still rejects invented values', async () => {
+    const extract = vi.fn().mockResolvedValue(forecastExtraction('100'));
+    await expect(
+      extractValidatedClaims({ ...provider, extract }, input(forecastText)),
+    ).rejects.toMatchObject({ stage: 'extraction', code: 'unstated_claim_value' });
+    expect(extract).toHaveBeenCalledTimes(2);
+  });
+  it('does not retry a valid explicit value or a qualitative forecast', async () => {
+    for (const data of [input(), input(forecastText)]) {
+      const expected =
+        data.turns[1]?.text === forecastText
+          ? forecastExtraction(null)
+          : await provider.extract(data);
+      const extract = vi.fn().mockResolvedValue(expected);
+      expect(await extractValidatedClaims({ ...provider, extract }, data)).toEqual(expected);
+      expect(extract).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('does not correct fabricated quotes and revalidates every corrected reference', async () => {
+    const data = input(forecastText);
+    const fabricated = forecastExtraction(null);
+    const claim = fabricated.claims[0];
+    if (!claim) throw new Error('Missing claim fixture');
+    claim.quote = 'Invented quote';
+    const extract = vi.fn().mockResolvedValue(fabricated);
+    await expect(extractValidatedClaims({ ...provider, extract }, data)).rejects.toMatchObject({
+      code: 'invalid_evidence',
+    });
+    expect(extract).toHaveBeenCalledTimes(1);
+    extract
+      .mockReset()
+      .mockResolvedValueOnce(forecastExtraction('100'))
+      .mockResolvedValueOnce(fabricated);
+    await expect(extractValidatedClaims({ ...provider, extract }, data)).rejects.toMatchObject({
+      code: 'invalid_evidence',
+    });
+    expect(extract).toHaveBeenCalledTimes(2);
+  });
+  it('reports provider failure codes without requesting a numeric correction', async () => {
+    const extract = vi
+      .fn()
+      .mockRejectedValue(new EvaluationFailure('extraction', 'http_error', 'private body', 429));
+    await expect(extractValidatedClaims({ ...provider, extract }, input())).rejects.toMatchObject({
+      code: 'http_error',
+      statusCode: 429,
+    });
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+  it('sends a fixed correction instruction while preserving the original provider input', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          choices: [
+            {
+              finish_reason: 'stop',
+              message: { content: JSON.stringify(forecastExtraction(null)) },
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const data = input(forecastText);
+    await new LiveEvaluation('test', 'test-model').extract(data, 'unstated_claim_value');
+    const call = fetcher.mock.calls[0]?.[1];
+    const body = typeof call?.body === 'string' ? call.body : '';
+    expect(body).toContain('Correction:');
+    const requestBody: unknown = JSON.parse(body);
+    const { z } = await import('zod');
+    const messages = z
+      .object({ messages: z.array(z.object({ role: z.string(), content: z.string() })) })
+      .parse(requestBody).messages;
+    expect(messages[1]?.content).toBe(JSON.stringify(data));
+    expect(messages[0]?.content).toContain('value null, not 100 or 2');
+  });
   it('freezes sourced exact metrics and explicitly limits coverage without altering provider context', () => {
     const context = input().context;
     expect(context.interviewerContextMode).toBe('empty');

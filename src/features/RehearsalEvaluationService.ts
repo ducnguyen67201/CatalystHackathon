@@ -14,7 +14,8 @@ import {
   type EvaluationInput,
   type EvaluationProvider,
 } from './EvaluationProvider.js';
-import { checkClaims, validateCoaching, validateExtraction } from './EvaluationChecks.js';
+import { checkClaims, validateCoaching, extractValidatedClaims } from './EvaluationChecks.js';
+import { evaluationStage } from './EvaluationFailure.js';
 import { projectEvidenceReview } from './EvidenceReview.js';
 import type { EvidenceReview } from '../contracts/EvidenceReview.js';
 
@@ -154,13 +155,10 @@ export class RehearsalEvaluationService {
             }
           : null,
     };
-    const extraction = validateExtraction(await provider.extract(input), input);
+    const extraction = await extractValidatedClaims(provider, input);
     const checks = checkClaims(extraction, input);
-    const coaching = validateCoaching(
-      await provider.coach(input, extraction, checks),
-      extraction,
-      input,
-      checks,
+    const coaching = await evaluationStage('coaching', async () =>
+      validateCoaching(await provider.coach(input, extraction, checks), extraction, input, checks),
     );
     await this.service.change((current) => {
       const target = current.rehearsals

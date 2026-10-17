@@ -1,3 +1,8 @@
+import {
+  EvaluationFailure,
+  evaluationStageSchema,
+  evaluationFailureCodeSchema,
+} from '../features/EvaluationFailure.js';
 import { ResearchConfigurationError } from '../features/ResearchProvider.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z } from 'zod';
@@ -28,6 +33,8 @@ const fieldsSchema = z.object({
   changedCount: z.number().optional(),
   durationMs: z.number().optional(),
   statusCode: z.number().optional(),
+  evaluationStage: evaluationStageSchema.optional(),
+  evaluationCode: evaluationFailureCodeSchema.optional(),
   reason: z.enum(LogReason).optional(),
 });
 
@@ -79,6 +86,16 @@ export class ProviderRequestError extends Error {
 
 /** Classifies failures without exposing provider error bodies or arbitrary exception messages. */
 export function describeResearchFailure(error: unknown): LogFields {
+  if (error instanceof EvaluationFailure) {
+    return {
+      reason: LogReason.EVALUATION_FAILED,
+      evaluationStage: error.stage,
+      evaluationCode: error.code,
+      ...(error.statusCode === undefined
+        ? {}
+        : { provider: 'openai', statusCode: error.statusCode }),
+    };
+  }
   if (error instanceof ResearchConfigurationError) {
     return { reason: LogReason.CONFIGURATION_MISSING };
   }
