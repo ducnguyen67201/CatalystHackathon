@@ -65,7 +65,11 @@ export class PrismaStore implements WorkspaceStore {
       await this.save({ ...workspace, revision: existing.revision }, existing.revision);
     }
   }
-  async save(workspace: Workspace, expectedRevision: number): Promise<void> {
+  async save(
+    workspace: Workspace,
+    expectedRevision: number,
+    completedJob?: ClaimedJob,
+  ): Promise<void> {
     await this.client.$transaction(
       async (tx) => {
         const lock = await tx.workspace.updateMany({
@@ -80,6 +84,25 @@ export class PrismaStore implements WorkspaceStore {
         });
         if (lock.count !== 1) {
           throw new ConflictError('The workspace changed. Retry this operation.');
+        }
+        // Always lock workspace before jobs, matching ordinary receipt writes.
+        if (completedJob) {
+          const completed = await tx.workflowJob.updateMany({
+            where: {
+              id: completedJob.id,
+              workspaceId,
+              status: JobStatus.RUNNING,
+              leaseToken: completedJob.leaseToken,
+              leaseUntil: { gt: new Date() },
+            },
+            data: {
+              status: JobStatus.SUCCEEDED,
+              result: 'Evaluation saved.',
+              leaseToken: null,
+              leaseUntil: null,
+            },
+          });
+          if (completed.count !== 1) throw new Error('Workflow lease expired.');
         }
         for (const payload of workspace.snapshots) {
           await tx.financialSnapshot.upsert({
@@ -118,6 +141,37 @@ export class PrismaStore implements WorkspaceStore {
               payload: json(payload),
             },
           });
+        }
+        // Receipt and queue intent commit together. Unique keys make replay idempotent.
+        for (const session of workspace.rehearsals) {
+          for (const evaluation of session.evaluations) {
+            if (evaluation.status !== 'queued') continue;
+            const kind = `evaluate:${session.id}:${evaluation.id}`;
+            await tx.workflowJob.upsert({
+              where: { key: `${kind}:${evaluation.generation}` },
+              update: {},
+              create: {
+                id: randomUUID(),
+                workspaceId,
+                key: `${kind}:${evaluation.generation}`,
+                kind,
+              },
+            });
+          }
+          if (
+            session.evaluationContext !== null &&
+            session.mode === 'liveavatar' &&
+            session.status !== 'active' &&
+            session.avatarSessionId &&
+            !session.transcriptReceivedAt
+          ) {
+            const kind = `avatar-transcript:${session.id}`;
+            await tx.workflowJob.upsert({
+              where: { key: kind },
+              update: {},
+              create: { id: randomUUID(), workspaceId, key: kind, kind },
+            });
+          }
         }
         for (const payload of workspace.milestones) {
           await tx.milestone.upsert({
@@ -192,7 +246,11 @@ export class PrismaStore implements WorkspaceStore {
       this.client.workflowJob.findMany({
         where: {
           workspaceId,
-          OR: [{ kind: { startsWith: 'investor:' } }, { kind: 'discover-investors' }],
+          OR: [
+            { kind: { startsWith: 'investor:' } },
+            { kind: 'discover-investors' },
+            { kind: { startsWith: 'evaluate:' } },
+          ],
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['kind'],

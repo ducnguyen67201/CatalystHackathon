@@ -1,3 +1,4 @@
+import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
@@ -46,7 +47,7 @@ beforeAll(async () => {
     throw new Error('Temporary database migration failed.');
   }
   store = new PrismaStore(databaseUrl.href);
-  service = new WorkspaceService(store, new DemoResearch());
+  service = new WorkspaceService(store, new DemoResearch(), fixtureEvaluationProvider);
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
   app = await createApi(
@@ -63,6 +64,14 @@ afterAll(async () => {
   await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
   await admin.end();
 });
+async function drainWorker(target: WorkspaceService): Promise<boolean> {
+  let ran = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (!(await runWorkerTick(target))) return ran;
+    ran = true;
+  }
+  throw new Error('Test queue did not drain');
+}
 async function state() {
   const response = await app.inject({ url: '/api/state', headers: { cookie: sessionCookie } });
   return stateResponseSchema.parse(response.json());
@@ -287,6 +296,9 @@ describe('PostgreSQL-backed application workflow', () => {
       expect(completed?.status).toBe('completed');
       expect(completed?.turns).toHaveLength(2);
       expect(completed?.review).toBeNull();
+      expect(completed?.evaluationContext).not.toBeNull();
+      expect(completed?.evaluations[0]?.status).toBe('queued');
+      expect(completed?.evaluations[0]).not.toHaveProperty('mode');
       expect(completed?.transcriptReceivedAt).toEqual(expect.any(String));
       await deliver('standalone-conversation', 'test-agent');
       await voiceApi.inject({
@@ -368,7 +380,15 @@ describe('PostgreSQL-backed application workflow', () => {
         headers: { cookie: renewedCookie },
       });
       expect(restored.statusCode).toBe(200);
-      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual(before);
+      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual({
+        ...before,
+        rehearsals: before.rehearsals.map((s) => ({
+          ...s,
+          evaluationContext: null,
+          evaluations: [],
+          evaluationResponses: [],
+        })),
+      });
     } finally {
       await restartedApi.close();
     }
@@ -394,9 +414,9 @@ describe('PostgreSQL-backed application workflow', () => {
       ).json(),
     );
     expect(one.id).toBe(two.id);
-    await runWorkerTick(service);
+    await drainWorker(service);
     await service.store.enqueue(randomUUID(), 'radar');
-    await runWorkerTick(service);
+    await drainWorker(service);
     const response = await state();
     expect(response.workspace.evidence).toHaveLength(1);
     expect(response.workspace.notices).toHaveLength(1);
@@ -407,7 +427,7 @@ describe('PostgreSQL-backed application workflow', () => {
     for (let run = 0; run < 12; run += 1) {
       const job = await service.store.enqueue(randomUUID(), 'radar');
       jobIds.add(job.id);
-      expect(await runWorkerTick(service)).toBe(true);
+      expect(await drainWorker(service)).toBe(true);
     }
     const jobs = (await service.store.listJobs()).filter((job) => jobIds.has(job.id));
     expect(jobs).toHaveLength(12);
@@ -626,7 +646,7 @@ describe('durable investor research', () => {
     const first = await service.investors.enqueueCheck(investor.id, randomUUID());
     const second = await service.investors.enqueueCheck(investor.id, randomUUID());
     expect(second.id).toBe(first.id);
-    await runWorkerTick(service);
+    await drainWorker(service);
     const saved = (await state()).workspace.investors.find((item) => item.id === investor.id);
     expect(saved?.checks).toHaveLength(1);
     expect(saved?.checks[0]?.evidenceIds).toContain('demo-northline');
@@ -650,7 +670,7 @@ describe('durable investor research', () => {
     ).toBeNull();
     const before = (await state()).workspace.notices.length;
     await service.investors.enqueueCheck(investor.id, randomUUID());
-    await runWorkerTick(service);
+    await drainWorker(service);
     expect((await state()).workspace.notices).toHaveLength(before);
     expect(
       (await state()).workspace.investors.find((item) => item.id === investor.id)?.checks,
@@ -667,7 +687,7 @@ describe('durable investor research', () => {
       Array.from({ length: 4 }, () => service.investors.enqueueCheck(investor.id, randomUUID())),
     );
     expect(new Set(jobs.map((job) => job.id)).size).toBe(1);
-    await runWorkerTick(service);
+    await drainWorker(service);
     expect(
       (await service.read()).investors.find((item) => item.id === investor.id)?.checks[0]
         ?.evidenceIds,
@@ -742,12 +762,16 @@ describe('saved founder onboarding', () => {
     expect(investor?.profileLinks).toEqual(Object.values(links));
     expect(investor?.frequency).toBe('paused');
     const calls: unknown[] = [];
-    const researchService = new WorkspaceService(store, {
-      discover: (_profile, target) => {
-        calls.push(target);
-        return Promise.resolve([]);
+    const researchService = new WorkspaceService(
+      store,
+      {
+        discover: (_profile, target) => {
+          calls.push(target);
+          return Promise.resolve([]);
+        },
       },
-    });
+      fixtureEvaluationProvider,
+    );
     if (!investor) {
       throw new Error('Missing onboarding investor');
     }
@@ -800,7 +824,7 @@ describe('saved founder onboarding', () => {
 
 describe('onboarding restart', () => {
   it('reopens step one persistently while retaining all saved context and history', async () => {
-    const before = (await state()).workspace;
+    const before = await service.read();
     const headers = { cookie: sessionCookie };
     expect(
       (await app.inject({ method: 'POST', url: '/api/onboarding/restart', payload: {} }))
@@ -852,5 +876,126 @@ it('keeps state polling separate from interview control requests', async () => {
     ).toBe(503);
   } finally {
     await limitedApi.close();
+  }
+});
+
+it('atomically evaluates a saved transcript, fences stale workers, and preserves a written retry', async () => {
+  const { createEmptyPracticeContext } = await import('../src/contracts/PracticeContext.js');
+  const { evaluationResponseSchema } = await import('../src/contracts/RehearsalEvaluation.js');
+  const evaluator = fixtureEvaluationProvider;
+  const coached = new WorkspaceService(store, new DemoResearch(), evaluator);
+  const initial = await coached.read();
+  const snapshot = initial.snapshots.find((s) => s.fileName === 'Tidewell.csv');
+  if (!snapshot) throw new Error('Missing fictional fixture');
+  await coached.selectOnboardingFinancials(snapshot.id);
+  const brief = initial.briefs.at(-1);
+  if (!brief) throw new Error('Missing fixture brief');
+  const session = await coached.createRehearsal(
+    brief.id,
+    'text',
+    null,
+    createEmptyPracticeContext(),
+  );
+  await coached.answer(session.id, 'Our operating income is 122503 unspecified for 2026-07.');
+  await Promise.all([
+    coached.finishRehearsal(session.id, [], true),
+    coached.finishRehearsal(session.id, [], true),
+  ]);
+  const pending = (await coached.read()).rehearsals.find((s) => s.id === session.id);
+  const evaluation = pending?.evaluations[0];
+  if (!evaluation) throw new Error('Evaluation was not scheduled');
+  expect(pending.evaluations).toHaveLength(1);
+  const persisted = new PrismaStore(databaseUrl.href);
+  try {
+    expect(
+      (await persisted.load())?.rehearsals.find((s) => s.id === session.id)?.evaluations[0]?.id,
+    ).toBe(evaluation.id);
+    expect(
+      (await persisted.listJobs()).some(
+        (j) => j.kind === `evaluate:${session.id}:${evaluation.id}`,
+      ),
+    ).toBe(true);
+  } finally {
+    await persisted.close();
+  }
+  // Editing company context after the call must not change the frozen review inputs.
+  await coached.change((state) => {
+    state.profile.goal = 'Changed after practice';
+  });
+  expect(
+    (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluationContext,
+  ).toEqual(session.evaluationContext);
+  let claimed = await store.claimJob(new Date());
+  for (
+    let attempt = 0;
+    claimed && claimed.kind !== `evaluate:${session.id}:${evaluation.id}` && attempt < 100;
+    attempt++
+  ) {
+    await store.finishJob(claimed, 'Unrelated test job drained.');
+    claimed = await store.claimJob(new Date());
+  }
+  if (!claimed || claimed.kind !== `evaluate:${session.id}:${evaluation.id}`)
+    throw new Error('Expected evaluation job');
+  await expect(
+    coached.evaluations.run(session.id, evaluation.id, { ...claimed, leaseToken: 'expired-token' }),
+  ).rejects.toThrow('lease expired');
+  expect(
+    (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0]?.report,
+  ).toBeNull();
+  await coached.evaluations.run(session.id, evaluation.id, claimed);
+  const completed = (await coached.read()).rehearsals.find((s) => s.id === session.id)
+    ?.evaluations[0];
+  expect(completed?.status).toBe('completed');
+  expect(completed?.report?.checks[0]?.support).toBe('contradicted');
+  expect((await store.listJobs()).find((j) => j.id === claimed.id)?.status).toBe('succeeded');
+  const item = completed?.report?.coaching.items[0];
+  if (!item) throw new Error('Missing coaching item');
+  const reviewApi = await createApi(coached, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+  try {
+    expect(
+      (await reviewApi.inject({ url: `/api/rehearsals/${session.id}/evaluations` })).statusCode,
+    ).toBe(401);
+    const login = await reviewApi.inject({ method: 'POST', url: '/api/session' });
+    const headers = { cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join('; ') };
+    const reviewed = await reviewApi.inject({
+      url: `/api/rehearsals/${session.id}/evaluations`,
+      headers,
+    });
+    expect(evaluationResponseSchema.parse(reviewed.json()).evaluations[0]?.status).toBe(
+      'completed',
+    );
+    const body = {
+      itemId: item.id,
+      kind: 'practice',
+      text: 'Our operating income is -59797 unspecified for 2026-07.',
+      requestKey: randomUUID(),
+    };
+    const path = `/api/rehearsals/${session.id}/evaluations/${evaluation.id}/responses`;
+    const [first, duplicate] = await Promise.all([
+      reviewApi.inject({ method: 'POST', url: path, headers, payload: body }),
+      reviewApi.inject({ method: 'POST', url: path, headers, payload: body }),
+    ]);
+    expect(first.statusCode).toBe(200);
+    expect(duplicate.json()).toEqual(first.json());
+    const after = await coached.read();
+    expect(after.rehearsals.find((s) => s.id === session.id)?.evaluationResponses).toHaveLength(1);
+    const retry = after.rehearsals.find((s) =>
+      s.evaluations.some((e) => e.parentEvaluationId === evaluation.id),
+    );
+    expect(retry?.mode).toBe('text');
+    const childEvaluation = retry?.evaluations[0];
+    if (!retry || !childEvaluation) throw new Error('Missing written retry');
+    const childJob = await store.claimJob(new Date());
+    if (!childJob) throw new Error('Missing retry job');
+    await coached.evaluations.run(retry.id, childEvaluation.id, childJob);
+    const result = (await coached.read()).rehearsals.find((s) => s.id === retry.id)?.evaluations[0];
+    expect(result?.report?.checks[0]?.support).toBe('supported');
+    expect(result?.report?.coaching.items).toHaveLength(0);
+    expect(result?.report?.coaching.comparison?.outcome).toBe('not_comparable');
+    expect(
+      (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0],
+    ).toEqual(completed);
+  } finally {
+    await reviewApi.close();
   }
 });

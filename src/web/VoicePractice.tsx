@@ -1,3 +1,4 @@
+import { EvaluationPanel } from './EvaluationPanel.js';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
 import { Mic, MicOff, Square } from 'lucide-react';
@@ -258,9 +259,8 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
           </div>
           <h2>{running ? 'Talk it through with June.' : 'Start with a conversation.'}</h2>
           <p>
-            Company data and meeting notes are not connected yet. Introduce your business and
-            practise explaining it. This session saves a transcript without scoring your financial
-            answers.
+            The interviewer starts without company data or meeting notes. Introduce your business.
+            After the call, coaching reviews your answer against saved workspace evidence.
           </p>
           <div className="voice-actions">
             {running ? (
@@ -354,6 +354,13 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
           )}
         </article>
       </div>
+      {session && (
+        <EvaluationPanel
+          key={session.id}
+          sessionId={session.id}
+          receipt={session.transcriptReceivedAt}
+        />
+      )}
       {sessions.length > 0 && (
         <section className="panel" style={{ padding: '24px', marginTop: '24px' }}>
           <h3>Saved sessions</h3>

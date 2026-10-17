@@ -10,7 +10,16 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
   }
   try {
     let result: string;
-    if (job.kind.startsWith(InvestorJob.CHECK_PREFIX)) {
+    if (job.kind.startsWith('evaluate:')) {
+      const [, sessionId, evaluationId] = job.kind.split(':');
+      if (!sessionId || !evaluationId) throw new Error('Invalid evaluation job.');
+      await service.evaluations.run(sessionId, evaluationId, job);
+      return true; // Result and job success were committed atomically under this lease.
+    } else if (job.kind.startsWith('avatar-transcript:')) {
+      if (!service.retrieveAvatarTranscript) throw new Error('Transcript provider unavailable.');
+      await service.retrieveAvatarTranscript(job.kind.slice('avatar-transcript:'.length));
+      result = 'Transcript saved.';
+    } else if (job.kind.startsWith(InvestorJob.CHECK_PREFIX)) {
       result = await service.investors.check(
         job.kind.slice(InvestorJob.CHECK_PREFIX.length),
         job.id,
