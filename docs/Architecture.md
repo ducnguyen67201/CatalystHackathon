@@ -655,6 +655,18 @@ started by rendering or polling; manual investor checks reuse existing protected
 
 ## Connected six-step preparation loop
 
+`contracts/DeckClaims.ts` and `features/DeckClaims.ts` provide a source-pinned claim board
+in optional `preparation.deckClaims` storage. `/api/deck-claims` is private/no-store;
+protected commands use optimistic board versions and idempotency receipts. Original claims
+and appended founder drafts persist through the existing Prisma workspace transaction and
+remain excluded from `/api/state`. Deterministic Decimal checks retain period, unit, rounding,
+formula and row provenance. Customer-success adjustment is explicitly analytical; source
+books remain immutable. Missing customer/MRR/cash datasets are not inferred from the P&L.
+Historical source selection changes are disclosed without silently rechecking a different
+statement. Forecasts remain not checked. Known content hashes identify fictional samples
+even when renamed. `web/DeckClaims.tsx` renders a stable table and native inspection drawer
+with draft history; saving a draft does not approve the story or verify the claim.
+
 `contracts/ConnectedPreparation.ts` validates versioned pitches, cycles, decisions, source
 lineage, recommendations and the six-step projection. `features/ConnectedPreparation.ts`
 contains source fingerprints, exact-label recommendation comparisons, practice linkage and

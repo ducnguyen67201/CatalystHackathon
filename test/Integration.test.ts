@@ -1,4 +1,5 @@
 import { connectedPreparationViewSchema } from '../src/contracts/ConnectedPreparation.js';
+import { deckClaimsViewSchema } from '../src/contracts/DeckClaims.js';
 import { fictionalRecordingProvider, fictionalRecordingAudio } from './RecordingFixtures.js';
 import { meetingReviewFixture } from './MeetingReviewFixtures.js';
 import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
@@ -3214,4 +3215,81 @@ describe('Connected preparation loop API and persistence', () => {
     expect((await act({ action: 'refresh' })).statusCode).toBe(200);
     expect((await get()).history).toHaveLength(3);
   }, 60000);
+});
+
+describe('Deck claim board persistence and input boundaries', () => {
+  it('persists original claims and append-only drafts, rejects changed replays and keeps the private board out of state', async () => {
+    const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+    const get = async () => {
+      const response = await app.inject({ url: '/api/deck-claims', headers });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['cache-control']).toBe('private, no-store');
+      return deckClaimsViewSchema.parse(response.json<unknown>());
+    };
+    const initial = await get();
+    const input = {
+      action: 'add',
+      key: randomUUID(),
+      version: initial.version,
+      claim: {
+        quote: 'Our operating income was 122503 CAD.',
+        location: 'Fictional demo deck, slide 5',
+        metric: 'operating_income',
+        value: '122503',
+        period: '2026-07',
+        unit: 'CAD',
+        kind: 'actual',
+        precision: 0,
+      },
+    };
+    const post = (payload: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/deck-claims/commands',
+        headers: { ...headers, 'content-type': 'application/json' },
+        payload: JSON.stringify(payload),
+      });
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/deck-claims/commands',
+      headers: { ...headers, origin: 'https://attacker.example.com' },
+      payload: input,
+    });
+    expect(rejected.statusCode).toBe(403);
+    expect((await post({ ...input, claim: { ...input.claim, value: '999' } })).statusCode).toBe(
+      409,
+    );
+    expect((await post(input)).statusCode).toBe(200);
+    expect((await post(input)).statusCode).toBe(200);
+    const saved = await get();
+    expect(saved.results).toHaveLength(initial.results.length + 1);
+    expect(
+      (await post({ ...input, claim: { ...input.claim, quote: 'Changed claim 122503 CAD' } }))
+        .statusCode,
+    ).toBe(409);
+    const record = saved.results.at(-1);
+    if (!record) throw new Error('Missing saved claim');
+    const draft = {
+      action: 'save_draft',
+      key: randomUUID(),
+      version: saved.version,
+      claimId: record.claim.id,
+      text: 'Operating performance is separate from credited net income.',
+    };
+    expect((await post(draft)).statusCode).toBe(200);
+    expect((await post(draft)).statusCode).toBe(200);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      const persisted = (await reopened.load())?.preparation?.deckClaims?.claims.at(-1);
+      expect(persisted?.quote).toBe(input.claim.quote);
+      expect(persisted?.drafts).toHaveLength(1);
+      expect(persisted?.drafts[0]?.text).toBe(draft.text);
+    } finally {
+      await reopened.close();
+    }
+    const publicState = stateResponseSchema.parse(
+      (await app.inject({ url: '/api/state', headers })).json<unknown>(),
+    );
+    expect(Object.keys(publicState.workspace)).not.toContain('preparation');
+  });
 });

@@ -1,4 +1,5 @@
 import { preparationCsvSource } from '../features/PreparationSource.js';
+import { projectDeckClaims, saveDeckClaims } from '../features/DeckClaims.js';
 import { registerConnectedPreparationRoutes } from './ConnectedPreparationRoutes.js';
 import {
   financialPerformanceQuerySchema,
@@ -17,6 +18,22 @@ import {
 
 export function registerPreparationRoutes(app: FastifyInstance, service: WorkspaceService) {
   registerConnectedPreparationRoutes(app, service);
+  app.get(
+    '/api/deck-claims',
+    { config: { rateLimit: { groupId: 'deck-claims-read' } } },
+    async (_request, reply) => {
+      reply.header('Cache-Control', 'private, no-store');
+      return projectDeckClaims(await service.read());
+    },
+  );
+  app.post(
+    '/api/deck-claims/commands',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute', groupId: 'deck-claims-commands' } } },
+    async (request) => {
+      await saveDeckClaims(service, request.body);
+      return { ok: true };
+    },
+  );
   app.get('/api/financial-performance', async (request, reply) => {
     const query = financialPerformanceQuerySchema.parse(request.query);
     const state = await service.read();

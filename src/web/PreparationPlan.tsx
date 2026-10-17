@@ -1,4 +1,5 @@
 import { ConnectedPreparation } from './ConnectedPreparation.js';
+import { DeckClaims } from './DeckClaims.js';
 import { PreparationPosition } from './PreparationPosition.js';
 import { FinancialSourceEvidence, InvestorSourceEvidence } from './PreparationSourceEvidence.js';
 import { PreparationRecommendationBasis } from './PreparationRecommendationBasis.js';
@@ -513,6 +514,7 @@ export function PreparationPlan({
             </div>
           )}
           {schedule}
+          <DeckClaims state={state} onChange={() => setReload((value) => value + 1)} />
           <ConnectedPreparation state={state} onChange={() => setReload((value) => value + 1)} />
           {!data.connectedActive && (
             <div className="prep-next">
