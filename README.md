@@ -39,7 +39,7 @@ pnpm dev --> T3 Env + Zod validation
 
 Open http://127.0.0.1:4317. The API and worker receive the same injected configuration. Vite does not load `.env` files or expose custom environment variables to the browser. The frontend makes same-origin `/api` requests. Development ports follow `API_PORT` and `WEB_ORIGIN`, so the Vite proxy stays aligned. Origins remain restricted to localhost HTTP.
 
-If the backend restarts while a form is open, the browser automatically renews its local session and retries a rejected request once. You do not need to restart onboarding or clear data. If reconnection fails, keep the form open and retry after the API is available; unfinished fields remain in the form.
+If the backend restarts while a form is open, the browser automatically renews its local session and retries a rejected request once. You do not need to reload the page or clear data. If reconnection fails, keep the form open and retry after the API is available; unfinished fields remain in the form.
 
 `pnpm dev` starts the local PostgreSQL container before the app processes. First-time `pnpm setup` also generates Prisma, deploys migrations and imports the Tidewell sample once. Data remains in the Docker volume. Ctrl+C stops the development processes; PostgreSQL stays available. `docker compose stop postgres` stops it without deleting data.
 

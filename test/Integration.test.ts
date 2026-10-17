@@ -362,9 +362,9 @@ describe('PostgreSQL-backed application workflow', () => {
       const before = await service.read();
       const rejected = await restartedApi.inject({
         method: 'PUT',
-        url: '/api/onboarding/meeting',
+        url: '/api/profile',
         headers: { cookie: sessionCookie },
-        payload: { meeting: null },
+        payload: before.profile,
       });
       expect(rejected.statusCode).toBe(401);
       expect(rejected.json<unknown>()).toEqual({

@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe('Browser API requests', () => {
-  it('renews a rejected session and replays the exact onboarding submission once', async () => {
+  it('renews a rejected session and replays the exact form submission once', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(expiredSession())
@@ -23,12 +23,7 @@ describe('Browser API requests', () => {
       .mockResolvedValueOnce(Response.json({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await request(
-      '/onboarding/meeting',
-      z.object({ ok: z.literal(true) }),
-      { meeting: null },
-      'PUT',
-    );
+    await request('/profile', z.object({ ok: z.literal(true) }), { name: 'Example' }, 'PUT');
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1]).toEqual(['/api/session', { method: 'POST' }]);
@@ -45,7 +40,7 @@ describe('Browser API requests', () => {
 
     await Promise.all([
       request('/state', z.unknown(), undefined, 'GET'),
-      request('/onboarding/meeting', z.unknown(), { meeting: null }, 'PUT'),
+      request('/profile', z.unknown(), { name: 'Example' }, 'PUT'),
     ]);
 
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/session')).toHaveLength(1);
@@ -76,9 +71,9 @@ describe('Browser API requests', () => {
       .mockResolvedValueOnce(Response.json({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(request('/onboarding/meeting', z.unknown(), {})).rejects.toThrow('Unavailable.');
+    await expect(request('/profile', z.unknown(), {})).rejects.toThrow('Unavailable.');
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    await expect(request('/onboarding/meeting', z.unknown(), {})).resolves.toEqual({ ok: true });
+    await expect(request('/profile', z.unknown(), {})).resolves.toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
@@ -88,7 +83,7 @@ describe('Browser API requests', () => {
       .mockResolvedValue(Response.json({ error: 'Rejected.' }, { status }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(request('/onboarding/meeting', z.unknown(), {})).rejects.toThrow('Rejected.');
+    await expect(request('/profile', z.unknown(), {})).rejects.toThrow('Rejected.');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -96,9 +91,7 @@ describe('Browser API requests', () => {
     const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(request('/onboarding/meeting', z.unknown(), {})).rejects.toThrow(
-      'Failed to fetch',
-    );
+    await expect(request('/profile', z.unknown(), {})).rejects.toThrow('Failed to fetch');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
