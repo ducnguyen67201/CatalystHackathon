@@ -497,3 +497,95 @@ The preparation detail panel uses keyboard-accessible Feedback, Financial data a
 drill tabs. Status, practice, source/date, partial-session and fictional-evidence tags
 keep summaries compact; methodology and source explanations remain in disclosures.
 Tabs change presentation only and retain the existing evidence and generation controls.
+
+## Continuous fundraising preparation
+
+`contracts/FundraisingPreparation.ts` owns strict goal, plan, artifact, decision and public
+projection schemas. `PreparationPlanner.ts` creates deterministic financial explanations
+and investor briefs from selected statement rows, founder-confirmed context and only the
+selected investor's saved research. Public-source observations do not establish mandate or
+eligibility; missing inputs stay unknown. Exact source amounts are retained, with numeric
+conversion only for chart geometry. Prepared financial periods stay within the evaluator's
+latest-twelve-period evidence window.
+
+`PreparationPlanService.ts` confirms goals, records append-only review decisions and creates
+completed written rehearsals with frozen evaluation evidence. Submission and evaluation
+queue intent commit in the existing revision-checked Prisma workspace transaction. The new
+session has no invented provider receipt; its server-accepted text is its transcript.
+Unrelated meeting context is excluded. Existing evaluator jobs, lease fences, failure/retry
+controls and follow-up comparisons handle subsequent assessment. A limited numerical
+coverage gate can mark a financial rehearsal assessed; it is not a mastery score or proof
+of a qualitative understanding of cash. Unresolved coaching remains visible separately.
+
+The existing worker calls preparation reconciliation on each tick. It compares a content
+hash of relevant saved inputs, excludes ordinary notices/scheduling bookkeeping, and appends
+a plan only when inputs change and automatic drafting is enabled. No model, research or paid
+session is started by reconciliation. Explicit manual refresh works while paused. Source
+freshness is also checked inside decision and rehearsal transactions. Existing decisions
+remain attached to exact artifact content; material changes require a new review. Completed
+practice reviews update the next plan; read projections never write or run inference.
+
+For this first small single-workspace release, an additive `Workspace.preparation` JSONB
+column holds schema-validated goal/plan/decision history and rehearsal links inside the
+existing optimistic transaction. This intentionally reuses aggregate consistency rather
+than adding the focused tables proposed in the engineering spec. History is append-only;
+large histories should migrate to dedicated, paginated storage. `/api/state` excludes this
+payload. `PreparationRoutes.ts` provides a private/no-store projection and protected commands;
+written assessments have a separate bounded submission rate. Repeated request keys cannot
+create duplicate decisions or rehearsals or be reused with changed content.
+
+`web/PreparationPlan.tsx` puts the compact preparation schedule and next action above dashboard details.
+It supports confirmed goals, explicit review decisions, unverified founder notes, a native
+review dialog, source passages, accessible charts with exact-value tables and written
+rehearsal. Current/past assessments and outstanding saved feedback return to the same plan.
+The existing heartbeat reports whether the worker is online. Goal changes, new statement
+selection and selected-investor research invalidate stale plans without altering original
+snapshots. Investor comparison, freeform artifact rewriting and
+artifact-linked voice/video scenarios remain later increments; existing scenario navigation
+is available separately and does not claim to complete this plan's rehearsal milestone.
+
+### Financial statement comparison and preparation actions
+
+`contracts/FinancialPerformance.ts` validates reporting-period queries and the comparison
+projection. `features/FinancialPerformance.ts` derives a financial bridge from reconciled
+rows in the selected snapshot. Exact server-side Decimal arithmetic calculates services
+revenue, current-minus-comparison variances and percentages using the absolute prior value.
+Percentages round to two places; zero bases remain unavailable. The previous calendar month
+is the default; missing periods are disclosed without silently selecting another month.
+Explicit comparisons must exist and precede the current period. The API route inherits
+workspace/session/origin controls and is private/no-store; reads perform no generation.
+
+`web/FinancialPerformanceStatement.tsx` renders aligned current/comparison bridges, amount
+and percentage variances, exact-value labels and source references in an accessible HTML
+table. SVG conversion to numbers is presentation geometry only. Both statement columns
+share a scale; variance columns use separate centered scales, with clipping arrows and
+actual labels for large percentages. Expenses use lower-is-favorable accounting direction;
+credits remain distinct from operating results. Color interpretation, formulas and limitations
+are explicit. Line-item buttons expose source columns; period selection is read-only.
+Financial evidence keeps its fictional label and unknown currency is never inferred.
+
+The earlier ECharts dependency graph has been removed in favor of the financial statement
+visual. `PreparationJourney.tsx` retains compact keyboard-accessible preparation actions and
+prerequisite routing below it, backed by existing milestones. Selecting an action still
+opens the goal, investor context, prepared explanation or rehearsal; stale-plan actions route
+through refresh. Neither the financial comparison nor preparation progress claims a future
+funding date or a business outcome from completing tasks. The chart requires no new provider
+or chart-library dependency and preserves all saved financial and rehearsal history.
+
+### Compact dashboard schedule
+
+`PreparationSchedule.tsx` replaces the dashboard's expanded preparation journey with a compact
+current/expected position strip, accessible timeline table, scenario pace and review actions.
+`PreparationScheduleModel.ts` projects founder-confirmed effort and daily capacity using Decimal
+arithmetic and date-only UTC calendar arithmetic after selecting today in the goal timezone.
+Work is sequential and the brief waits for assumed cash delivery; this is a planning model,
+not a cash forecast or funding prediction. Missing/overdue delivery or changed plan inputs
+suppress future dates. Targetless plans have no on-track assertion. Review activity counts
+unique current accepted artifacts in seven days and is never extrapolated into velocity.
+
+`POST /api/preparation-plan/schedule` validates bounded estimates with Zod, checks optimistic
+version, current plan and source freshness, then appends an assumption record in the existing
+Prisma-backed preparation aggregate. Reads expose the latest record without writing history.
+Older records and financial snapshots remain unchanged. New plans/goals require reconfirmation;
+temporary slower/faster controls never mutate saved assumptions. Standard workspace/session,
+origin and cache controls apply. No provider calls or new worker are introduced.

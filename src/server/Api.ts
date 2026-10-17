@@ -1,5 +1,6 @@
 import { registerRecordingRoutes } from './RecordingRoutes.js';
 import type { RecordingProvider } from '../features/RecordingProvider.js';
+import { registerPreparationRoutes } from './PreparationRoutes.js';
 import { registerPeerRoutes } from './PeerRoutes.js';
 import { registerRadarRoutes } from './RadarRoutes.js';
 import { registerHostedAccess } from './HostedAccess.js';
@@ -125,7 +126,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:|Radar:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:|Radar:|Preparation:|Financial comparison:)/.test(
         error.message,
       )
     ) {
@@ -173,7 +174,8 @@ export async function createApi(
   app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
       workspace: await service.read().then((workspace) => ({
-        ...(({ radar: _privateRadar, ...publicWorkspace }) => publicWorkspace)(workspace),
+        ...(({ radar: _privateRadar, preparation: _preparation, ...publicWorkspace }) =>
+          publicWorkspace)(workspace),
         rehearsals: workspace.rehearsals.map((session) => ({
           ...session,
           guided: undefined,
@@ -246,6 +248,7 @@ export async function createApi(
     const job = await service.store.enqueue(`manual:${body.key}`, 'radar');
     return reply.code(202).send(job);
   });
+  registerPreparationRoutes(app, service);
   registerPeerRoutes(app, service);
   registerRecordingRoutes(app, service, env, voice.recordingProvider);
   registerEvaluationRoutes(app, service);

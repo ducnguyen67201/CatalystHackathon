@@ -1,0 +1,93 @@
+.preparation-journey {
+  margin: 24px 0;
+  border: 1px solid #d9dde0;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+.journey-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 24px 16px;
+}
+.journey-heading h3 {
+  margin: 6px 0 0;
+  font-size: 18px;
+}
+.journey-count {
+  color: #68717b;
+  font-size: 12px;
+}
+.journey-step-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 0 24px 18px;
+}
+.journey-step-buttons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 11px;
+  background: #fff;
+  color: #52616b;
+  border: 1px solid #d9dde0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.journey-step-buttons button[aria-pressed='true'] {
+  border-color: #697b89;
+  background: #eef2f4;
+  color: #253644;
+}
+.journey-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px 24px;
+  background: #f5f7f8;
+  border-top: 1px solid #e2e6e9;
+}
+.journey-action > div {
+  flex: 1 1 290px;
+}
+.journey-action h4 {
+  margin: 7px 0;
+  font-size: 16px;
+}
+.journey-action p {
+  margin: 0;
+  max-width: 680px;
+  color: #68717b;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.journey-footnote {
+  margin: 0;
+  padding: 12px 24px;
+  font-size: 11px;
+  color: #68717b;
+}
+.journey-stale {
+  margin: 10px 24px;
+  color: #83501e;
+}
+.preparation-journey > .progress-tag {
+  margin: 0 0 12px 24px;
+}
+@media (max-width: 600px) {
+  .journey-heading,
+  .journey-step-buttons,
+  .journey-action,
+  .journey-footnote {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

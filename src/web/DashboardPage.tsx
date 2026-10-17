@@ -1,3 +1,4 @@
+import { PreparationPlan } from './PreparationPlan.js';
 import { PreparationProgress } from './PreparationProgress.js';
 import { PeerDashboard } from './PeerDashboard.js';
 import { ArrowRight, FileText, MessageSquare, ExternalLink } from 'lucide-react';
@@ -101,143 +102,147 @@ export function DashboardPage({
           </button>
         </div>
       </div>
-      <div className="dashboard-hero-grid">
-        <article className="conversation-card">
-          <div className="eyebrow">
-            ↗ {meeting ? 'Your next conversation' : 'Your first rehearsal'}
-          </div>
-          <h2>{meeting?.name || meeting?.firm || 'Start with your financial story.'}</h2>
-          <p>
-            {meeting?.firm ? `${meeting.firm} · ` : ''}
-            {workspace.profile.goal || 'Prepare to explain your numbers clearly.'}
-          </p>
-          <dl className="meeting-facts">
-            <div>
-              <dt>When</dt>
-              <dd>
-                {meeting?.date
-                  ? new Date(`${meeting.date}T12:00:00`).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                    })
-                  : 'At your own pace'}
-              </dd>
+      <PreparationPlan state={state} onFinancials={onFinancials} onResearch={onResearch} />
+      <details className="dashboard-supporting">
+        <summary>More workspace details · meetings, financials & activity</summary>
+        <div className="dashboard-hero-grid">
+          <article className="conversation-card">
+            <div className="eyebrow">
+              ↗ {meeting ? 'Your next conversation' : 'Your first rehearsal'}
             </div>
-            <div>
-              <dt>Preparation</dt>
-              <dd>{finding ? 'Financial scenario ready' : 'Add financials'}</dd>
-            </div>
-            <div>
-              <dt>Data through</dt>
-              <dd>{row?.month ?? 'Not uploaded'}</dd>
-            </div>
-          </dl>
-          <div className="conversation-action">
-            <span>Your brief connects the numbers with the questions behind them.</span>
-            <button className="button" disabled={busy || !finding} onClick={onPrepare}>
-              Prepare for {meeting ? 'this meeting' : 'practice'} <ArrowRight size={16} />
-            </button>
-          </div>
-        </article>
-        <article className="financial-focus">
-          <div className="eyebrow">Worth preparing for</div>
-          <h2>{finding ? 'There’s a story behind the numbers.' : 'Start with the evidence.'}</h2>
-          <p>
-            {finding?.question ??
-              'Upload a monthly income statement to prepare a sourced financial explanation.'}
-          </p>
-          <button className="text-button" onClick={onFinancials}>
-            See the evidence ↗
-          </button>
-        </article>
-      </div>
-      <div className="dashboard-section-heading">
-        <h3>Your financial position</h3>
-        <button className="text-button" onClick={onFinancials}>
-          View financials ↗
-        </button>
-      </div>
-      <div className="dashboard-metrics">
-        <article>
-          <span>Revenue · {row?.month ?? 'Unknown period'}</span>
-          <strong>{row ? formatAmount(row.revenue) : 'Unknown'}</strong>
-          <small>Statement currency: {snapshot?.currency ?? 'unspecified'}</small>
-        </article>
-        <article>
-          <span>Operating result · {row?.month ?? 'Unknown period'}</span>
-          <strong>{row ? formatAmount(row.operatingIncome) : 'Unknown'}</strong>
-          <small>Before other income · {snapshot?.currency ?? 'unspecified'}</small>
-        </article>
-        <article>
-          <span>Cash runway</span>
-          <strong>Still unknown</strong>
-          <small>Cash balance and cash-flow plan needed</small>
-        </article>
-      </div>
-      <PreparationProgress onFinancials={onFinancials} revision={workspace.revision} />
-      <PeerDashboard key={`${snapshot?.id ?? 'none'}:${workspace.profile.version}`} />
-      <div className="dashboard-lower">
-        <section>
-          <div className="dashboard-section-heading">
-            <h3>What changed</h3>
-            <span className="muted">Your preparation timeline</span>
-          </div>
-          <div className="dashboard-activity">
-            <FileText size={19} />
-            <div>
-              <strong>{snapshot?.fileName ?? 'No statement yet'}</strong>
-              <p>{snapshot?.rows.length ?? 0} months saved. Source rows remain available.</p>
-            </div>
-          </div>
-          {meeting?.notes && (
-            <div className="dashboard-activity">
-              <MessageSquare size={19} />
-              <div>
-                <strong>A question to prepare for</strong>
-                <p>{meeting.notes}</p>
-              </div>
-            </div>
-          )}
-          <div className="dashboard-activity">
-            <ArrowRight size={19} />
-            <div>
-              <strong>{check ? 'Investor research updated' : 'Your investor research'}</strong>
-              <p>
-                {check?.note ??
-                  (investor
-                    ? 'Profile saved. Run a check or enable monitoring when you’re ready.'
-                    : 'Add an investor or explore candidates for your company.')}
-              </p>
-            </div>
-          </div>
-          <button className="text-button" onClick={onResearch}>
-            Review research updates →
-          </button>
-        </section>
-        <section>
-          <div className="dashboard-section-heading">
-            <h3>{lastPractice ? 'Continue your progress' : 'Your first rehearsal'}</h3>
-            <span className="count">
-              {lastPractice?.status.replaceAll('_', ' ') ?? 'Ready when you are'}
-            </span>
-          </div>
-          <article className="dashboard-practice">
-            <div className="eyebrow">Financial storytelling</div>
-            <h3>
-              {lastPractice
-                ? 'A clearer answer starts here.'
-                : 'Can you explain your financial position?'}
-            </h3>
+            <h2>{meeting?.name || meeting?.firm || 'Start with your financial story.'}</h2>
             <p>
-              {lastPractice?.review?.note ??
-                'Practise with your company evidence. Keep the figures and the unanswered questions together.'}
+              {meeting?.firm ? `${meeting.firm} · ` : ''}
+              {workspace.profile.goal || 'Prepare to explain your numbers clearly.'}
             </p>
-            <button className="button" disabled={busy} onClick={onPractice}>
-              {lastPractice ? 'Continue practice' : 'Start a practice'} <ArrowRight size={16} />
+            <dl className="meeting-facts">
+              <div>
+                <dt>When</dt>
+                <dd>
+                  {meeting?.date
+                    ? new Date(`${meeting.date}T12:00:00`).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    : 'At your own pace'}
+                </dd>
+              </div>
+              <div>
+                <dt>Preparation</dt>
+                <dd>{finding ? 'Financial scenario ready' : 'Add financials'}</dd>
+              </div>
+              <div>
+                <dt>Data through</dt>
+                <dd>{row?.month ?? 'Not uploaded'}</dd>
+              </div>
+            </dl>
+            <div className="conversation-action">
+              <span>Your brief connects the numbers with the questions behind them.</span>
+              <button className="button" disabled={busy || !finding} onClick={onPrepare}>
+                Prepare for {meeting ? 'this meeting' : 'practice'} <ArrowRight size={16} />
+              </button>
+            </div>
+          </article>
+          <article className="financial-focus">
+            <div className="eyebrow">Worth preparing for</div>
+            <h2>{finding ? 'There’s a story behind the numbers.' : 'Start with the evidence.'}</h2>
+            <p>
+              {finding?.question ??
+                'Upload a monthly income statement to prepare a sourced financial explanation.'}
+            </p>
+            <button className="text-button" onClick={onFinancials}>
+              See the evidence ↗
             </button>
           </article>
-        </section>
-      </div>
+        </div>
+        <div className="dashboard-section-heading">
+          <h3>Your financial position</h3>
+          <button className="text-button" onClick={onFinancials}>
+            View financials ↗
+          </button>
+        </div>
+        <div className="dashboard-metrics">
+          <article>
+            <span>Revenue · {row?.month ?? 'Unknown period'}</span>
+            <strong>{row ? formatAmount(row.revenue) : 'Unknown'}</strong>
+            <small>Statement currency: {snapshot?.currency ?? 'unspecified'}</small>
+          </article>
+          <article>
+            <span>Operating result · {row?.month ?? 'Unknown period'}</span>
+            <strong>{row ? formatAmount(row.operatingIncome) : 'Unknown'}</strong>
+            <small>Before other income · {snapshot?.currency ?? 'unspecified'}</small>
+          </article>
+          <article>
+            <span>Cash runway</span>
+            <strong>Still unknown</strong>
+            <small>Cash balance and cash-flow plan needed</small>
+          </article>
+        </div>
+        <PreparationProgress onFinancials={onFinancials} revision={workspace.revision} />
+        <PeerDashboard key={`${snapshot?.id ?? 'none'}:${workspace.profile.version}`} />
+        <div className="dashboard-lower">
+          <section>
+            <div className="dashboard-section-heading">
+              <h3>What changed</h3>
+              <span className="muted">Your preparation timeline</span>
+            </div>
+            <div className="dashboard-activity">
+              <FileText size={19} />
+              <div>
+                <strong>{snapshot?.fileName ?? 'No statement yet'}</strong>
+                <p>{snapshot?.rows.length ?? 0} months saved. Source rows remain available.</p>
+              </div>
+            </div>
+            {meeting?.notes && (
+              <div className="dashboard-activity">
+                <MessageSquare size={19} />
+                <div>
+                  <strong>A question to prepare for</strong>
+                  <p>{meeting.notes}</p>
+                </div>
+              </div>
+            )}
+            <div className="dashboard-activity">
+              <ArrowRight size={19} />
+              <div>
+                <strong>{check ? 'Investor research updated' : 'Your investor research'}</strong>
+                <p>
+                  {check?.note ??
+                    (investor
+                      ? 'Profile saved. Run a check or enable monitoring when you’re ready.'
+                      : 'Add an investor or explore candidates for your company.')}
+                </p>
+              </div>
+            </div>
+            <button className="text-button" onClick={onResearch}>
+              Review research updates →
+            </button>
+          </section>
+          <section>
+            <div className="dashboard-section-heading">
+              <h3>{lastPractice ? 'Continue your progress' : 'Your first rehearsal'}</h3>
+              <span className="count">
+                {lastPractice?.status.replaceAll('_', ' ') ?? 'Ready when you are'}
+              </span>
+            </div>
+            <article className="dashboard-practice">
+              <div className="eyebrow">Financial storytelling</div>
+              <h3>
+                {lastPractice
+                  ? 'A clearer answer starts here.'
+                  : 'Can you explain your financial position?'}
+              </h3>
+              <p>
+                {lastPractice?.review?.note ??
+                  'Practise with your company evidence. Keep the figures and the unanswered questions together.'}
+              </p>
+              <button className="button" disabled={busy} onClick={onPractice}>
+                {lastPractice ? 'Continue practice' : 'Start a practice'} <ArrowRight size={16} />
+              </button>
+            </article>
+          </section>
+        </div>
+      </details>
     </section>
   );
 }

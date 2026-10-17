@@ -1,3 +1,4 @@
+import { preparationStateSchema } from './FundraisingPreparation.js';
 import { savedLiveGuidanceSchema } from './LiveGuidance.js';
 import { radarSignalSchema, radarStateSchema } from './RadarDelivery.js';
 import {
@@ -240,6 +241,7 @@ export const noticeSchema = z.strictObject({
 });
 
 export const workspaceSchema = z.strictObject({
+  preparation: preparationStateSchema.optional(),
   id: idSchema,
   revision: z.int().nonnegative(),
   profile: profileSchema,
@@ -283,7 +285,7 @@ export const capabilitiesSchema = z.strictObject({
 });
 
 export const stateResponseSchema = z.strictObject({
-  workspace: workspaceSchema.omit({ radar: true }),
+  workspace: workspaceSchema.omit({ radar: true, preparation: true }),
   jobs: z.array(jobSchema),
   capabilities: capabilitiesSchema,
 });

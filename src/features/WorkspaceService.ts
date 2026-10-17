@@ -1,3 +1,4 @@
+import { PreparationPlanService } from './PreparationPlanService.js';
 import { radarStateSchema } from '../contracts/RadarDelivery.js';
 import { RadarDeliveryService } from './RadarDeliveryService.js';
 import { assembleEvaluationContext } from './EvaluationContextAssembler.js';
@@ -41,6 +42,7 @@ export class WorkspaceService {
   retrieveAvatarTranscript: ((sessionId: string) => Promise<void>) | null = null;
   readonly scenarios: ScenarioService | null;
   readonly guided: PracticeTurnService;
+  readonly preparation: PreparationPlanService;
 
   constructor(
     readonly store: WorkspaceStore,
@@ -62,6 +64,7 @@ export class WorkspaceService {
         )
       : null;
     this.guided = new PracticeTurnService(this, turnProvider);
+    this.preparation = new PreparationPlanService(this);
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
