@@ -848,8 +848,8 @@ export function App() {
                   <div className="eyebrow">From conversation to progress</div>
                   <h1>Your next steps.</h1>
                   <p className="muted">
-                    Turn your practice feedback and new investor research into preparation for your
-                    next conversation.
+                    See what needs work, track your practice, and review progress before your next
+                    conversation.
                   </p>
                 </div>
                 <button
