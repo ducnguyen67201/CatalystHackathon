@@ -415,6 +415,40 @@ retryable failures. Final report and job completion commit together. Older repor
 their existing layout and do not acquire current research. Opening reports runs no research
 or inference. The child split introduces no extra provider calls or configuration changes.
 
+## Meeting brief table and conversation review
+
+**Meeting brief** now lists saved brief versions in a searchable table. Switch to **Practice
+reviews** to browse all saved conversations, including scenario and open practices. Select a
+row to open a right-side drawer; Escape or the close button returns to the table. The drawer
+keeps the brief's original financial evidence, research links, notes and practice/follow-up
+actions. A brief's **Practice and feedback** view lists explicitly linked practices, including
+practices on its reviewed predecessor. Other conversations remain separate.
+
+Practice rows load saved evaluation versions on demand. **What went well** and **What to
+improve** link to the full transcript: select feedback to focus and scroll to its cited turn,
+then inspect the highlighted quote and preparation advice. Strength and improvement labels
+accompany the colors. Repeated quotes use the full turn instead of guessing a passage.
+Saved transcript locations use turn numbers until a retained recording is explicitly loaded. Provider timestamps are shown only when they match the saved transcript. Pending, failed, unreviewed and older sessions
+retain their saved transcript and the existing review retry controls. Viewing the table or
+drawer performs no research, evaluation or paid session creation.
+
+## Recording waveform and assessment assertions
+
+The review drawer places a recording waveform above the full transcript. Select a strength
+or improvement to open its assertion, evidence check and preparation advice. **Load recording**
+explicitly retrieves retained ElevenLabs audio and timing through authenticated backend reads.
+The browser calculates the waveform from decoded audio samples. Audio controls, the seek
+slider, waveform clicks and timed assessment markers navigate playback; selecting an assertion
+seeks its matching turn without starting playback automatically. Current playback highlights
+its transcript turn. Without matching timestamps, assertion navigation remains turn-based.
+
+Timing is used only when the provider's entire transcript matches the saved speaker/text
+sequence. Historical reports and transcript hashes are unchanged. Written practice, LiveAvatar
+sessions and recordings unavailable under provider retention remain transcript-only. No local
+microphone recording, provider setting change or new paid session is introduced. Recordings
+are proxied with private/no-store headers, a 20 MiB limit and server-held credentials; no audio
+is persisted by June. See the [ElevenLabs recording endpoint](https://elevenlabs.io/docs/api-reference/conversations/get-audio).
+
 ## Track financial preparation
 
 The dashboard connects saved practice feedback with six financial preparation topics:
