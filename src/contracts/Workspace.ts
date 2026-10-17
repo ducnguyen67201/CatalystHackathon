@@ -9,6 +9,7 @@ import { comparableDealSchema, discoveryStateSchema } from './InvestorDiscovery.
 import { onboardingSchema, meetingSchema } from './Onboarding.js';
 import { practiceContextSchema } from './PracticeContext.js';
 import { trackedInvestorSchema } from './InvestorTracking.js';
+import { guidedStateSchema } from './GuidedPractice.js';
 
 export const ResearchMode = {
   DEMO: 'demo',
@@ -169,6 +170,7 @@ export const RehearsalMode = {
 } as const;
 
 export const rehearsalSchema = z.strictObject({
+  guided: guidedStateSchema.optional(),
   id: idSchema,
   briefId: idSchema.nullable(),
   mode: z.enum(RehearsalMode),
@@ -261,6 +263,7 @@ export const jobSchema = z.strictObject({
 export type Job = z.infer<typeof jobSchema>;
 
 export const capabilitiesSchema = z.strictObject({
+  guidedReady: z.boolean().optional(),
   researchMode: z.literal('live'),
   voiceReady: z.boolean(),
   avatarReady: z.boolean().default(false),

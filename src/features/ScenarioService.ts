@@ -57,6 +57,11 @@ export function validateScenarioOutput(raw: unknown, input: ScenarioInput): Scen
   if (new Set(output.scenarios.map((scenario) => scenario.id)).size !== output.scenarios.length)
     throw new Error('Scenario IDs must be unique.');
   for (const scenario of output.scenarios) {
+    const explanations = [scenario.openingWhy, ...scenario.branches.map((branch) => branch.why)];
+    for (const why of explanations) {
+      if (why?.sourceIds.some((id) => !sourceIds.has(id)))
+        throw new Error('Question explanation contains unknown source references.');
+    }
     if (
       scenario.personalization === 'research_grounded' &&
       !scenario.rationale.some((item) => item.sourceIds.some((id) => researchIds.has(id)))

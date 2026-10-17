@@ -156,6 +156,33 @@ Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/librarie
 
 ## Investor scenarios in the Practice scenario
 
+### Guided text and question explanations
+
+Saved scenarios open in **Guided text** by default. Start explicitly, write an answer,
+and the worker extracts claims, checks saved evidence and generates the next reply,
+question and **Why?** together. Hover or focus **Why?** for a short explanation; click or
+tap for the objective, missing inputs, cited figures and frozen source passages. Opening
+an explanation does not run inference. The interface uses compact controls and keeps
+the full scenario context in a disclosure below practice.
+
+Guided turns require `OPENAI_API_KEY` and use the existing `SCENARIO_MODEL` setting.
+They use live inference even when the selected scenario was template-generated; fictional
+evidence remains labeled. No provider configuration is changed. Generation runs only after
+an explicit answer submission; no new research runs per answer. Keep the worker running.
+Each session is limited to 24 answers. Failed turn jobs retain the answer and allow retry;
+**Finish & review** safely stops pending advancement and queues the existing post-practice
+evaluation. Saved guided sessions can be reopened from the session selector.
+
+New scenario generations include explanations for opening and branch questions. Older saved
+scenarios stay readable; guided practice labels their opening explanation as general scenario
+context rather than reconstructing a missing explanation. Voice/video modes remain available
+and continue using their provider-controlled conversation; the live per-question Why button
+is implemented in guided text only.
+
+Guided state lives in validated rehearsal JSON and uses the existing Prisma aggregate and
+durable queue transactions, so no migration is required. Existing financial snapshots,
+scenario generations and session hashes are preserved. See [Question/Why specification](docs/QuestionWhySpec.md).
+
 Open **Practice scenario** or `/scenarios`, choose a saved investor and optionally enter a practice objective. **Generate more scenarios** (or **Generate scenarios** for the first run) opens a source review screen. It shows included company information, selected-investor research, financial CSV rows, relevant completed practice and saved feedback, plus missing or unsupported inputs. **Generate with this data** queues a durable job; the local worker must be running. If inputs change after review, refresh the preview before generating. Additional scenarios preserve earlier generations. Each generated scenario appears as a table row. Click a row to open a right-side panel with the full scenario, **Reverse engineer the investor** profile, uncertainty, and source snapshot. **Start Practicing** opens a separate `/practice` room with that saved scenario and its context. Start voice or video explicitly in the room. Saved generations and session contexts retain their original inputs when new research arrives. Invalid or unavailable scenario links block session creation. `/practice` without a selection and the legacy `/voice` route support open conversations.
 
 This release uses saved company/onboarding information, selected-investor research, bounded financial CSV history and relevant completed practice transcripts/feedback. Pitch documents and forecasts are not connected. Missing research produces limited-context discovery questions. Company details are founder-provided, research retains verification labels, and simulated questions are hypotheses. Sources are bounded to ten excerpts of up to 2,000 characters each; omitted source counts are visible.

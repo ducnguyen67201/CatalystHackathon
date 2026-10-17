@@ -7,6 +7,7 @@ import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { LocalSessionError } from '../contracts/LocalSession.js';
 import { registerInvestorRoutes } from './InvestorRoutes.js';
 import { registerScenarioRoutes } from './ScenarioRoutes.js';
+import { registerGuidedPracticeRoutes } from './GuidedPracticeRoutes.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -164,6 +165,7 @@ export async function createApi(
         ...(({ radar: _privateRadar, ...publicWorkspace }) => publicWorkspace)(workspace),
         rehearsals: workspace.rehearsals.map((session) => ({
           ...session,
+          guided: undefined,
           evaluationContext: null,
           evaluations: [],
           evaluationResponses: [],
@@ -179,6 +181,7 @@ export async function createApi(
         researchReady: Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
         scenarioMode: service.scenarios?.generator.mode ?? 'demo',
         scenarioReady: service.scenarios !== null,
+        guidedReady: service.guided.ready,
         localOnly: true,
       },
     }),
@@ -234,6 +237,7 @@ export async function createApi(
   registerEvaluationRoutes(app, service);
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
+  registerGuidedPracticeRoutes(app, service);
   registerResearchRunRoutes(app, service);
   registerRadarRoutes(app, service);
   app.post('/api/briefs', async () => {

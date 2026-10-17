@@ -1,6 +1,8 @@
 import { radarEvidence } from './fixtures/RadarFixture.js';
 import type { EmailSender } from '../src/features/EmailSender.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
+import { fixtureTurnProvider } from './PracticeTurnFixtures.js';
+import { guidedViewSchema } from '../src/contracts/GuidedPractice.js';
 import { evidenceReviewSchema } from '../src/contracts/EvidenceReview.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
@@ -72,6 +74,7 @@ beforeAll(async () => {
       store,
       generator: new DemoScenarioGenerator(),
     },
+    fixtureTurnProvider,
   );
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
@@ -1718,5 +1721,184 @@ describe('radar and email persistence', () => {
     } finally {
       await radarApi.close();
     }
+  });
+});
+
+describe('guided question and Why workflow', () => {
+  async function prepareGuided() {
+    await drainWorker(service);
+    const snapshotId = await service.upload(
+      readFileSync('fixtures/Tidewell.csv', 'utf8'),
+      'GuidedDemo.csv',
+      'unspecified',
+    );
+    await service.selectOnboardingFinancials(snapshotId);
+    const investor = await service.investors.add({
+      name: 'Fictional guided investor',
+      url: 'https://example.com/guided',
+      frequency: 'paused',
+    });
+    await drainWorker(service);
+    if (!service.scenarios) throw new Error('Scenario runtime missing.');
+    const generation = await service.scenarios.create(
+      investor.id,
+      'Explain operating performance',
+      randomUUID(),
+    );
+    await drainWorker(service);
+    const ready = await service.scenarios.get(generation.id);
+    const scenario = ready.output?.scenarios.find(
+      (item) => item.id === 'explain-financial-evidence',
+    );
+    if (!scenario) throw new Error('Expected financial scenario');
+    return { generationId: ready.id, scenarioId: scenario.id, requestKey: randomUUID() };
+  }
+  it('persists question/Why together, safely replays answers, preserves sources, and evaluates the finished text transcript', async () => {
+    const payload = await prepareGuided();
+    const headers = { cookie: sessionCookie };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/guided-practice/sessions', payload }))
+        .statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/guided-practice/sessions',
+          headers: { ...headers, origin: 'https://foreign.example' },
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const starts = await Promise.all(
+      [1, 2].map(() =>
+        app.inject({ method: 'POST', url: '/api/guided-practice/sessions', headers, payload }),
+      ),
+    );
+    const view = guidedViewSchema.parse(starts[0]?.json());
+    expect(guidedViewSchema.parse(starts[1]?.json()).id).toBe(view.id);
+    expect(view.guided.turns[0]?.why.sourceIds.length).toBeGreaterThan(0);
+    const base = `/api/guided-practice/sessions/${view.id}`;
+    const answer = {
+      questionId: view.guided.turns[0]?.id,
+      text: 'Our operating income is 122503 unspecified for 2026-07.',
+      expectedRevision: view.guided.revision,
+      requestKey: randomUUID(),
+    };
+    const response = await app.inject({
+      method: 'POST',
+      url: base + '/answers',
+      headers,
+      payload: answer,
+    });
+    expect(response.statusCode).toBe(202);
+    const pending = guidedViewSchema.parse(response.json());
+    expect(pending.guided.turns).toHaveLength(1);
+    expect(pending.guided.answers).toHaveLength(1);
+    const queued = (await store.listJobs()).filter((job) =>
+      job.kind.startsWith(`guided-turn:${view.id}:`),
+    );
+    expect(queued).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: base + '/answers',
+          headers,
+          payload: { ...answer, text: 'changed' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await drainWorker(service);
+    const next = guidedViewSchema.parse((await app.inject({ url: base, headers })).json());
+    expect(next.guided.turns).toHaveLength(2);
+    expect(next.guided.turns[1]?.decision).toBe('correct');
+    expect(next.guided.turns[1]?.reply).toContain('-59797');
+    expect(next.guided.turns[1]?.why.brief).toBeTruthy();
+    expect(next.guided.pending).toBeNull();
+    expect(
+      (await app.inject({ method: 'POST', url: base + '/answers', headers, payload: answer }))
+        .statusCode,
+    ).toBe(202);
+    expect((await service.guided.get(view.id)).guided.answers).toHaveLength(1);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: base + '/answers',
+          headers,
+          payload: { ...answer, requestKey: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await expect(service.finishRehearsal(view.id, [], true)).rejects.toThrow('guided');
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect(
+        (await reopened.load())?.rehearsals.find((session) => session.id === view.id)?.guided
+          ?.turns,
+      ).toEqual(next.guided.turns);
+    } finally {
+      await reopened.close();
+    }
+    const snapshot = JSON.stringify(next.context);
+    await service.change((workspace) => {
+      workspace.profile.goal = 'New unrelated goal';
+      workspace.profile.version += 1;
+    });
+    expect(JSON.stringify((await service.guided.get(view.id)).context)).toBe(snapshot);
+    const finished = await app.inject({
+      method: 'POST',
+      url: base + '/finish',
+      headers,
+      payload: { expectedRevision: next.guided.revision },
+    });
+    expect(finished.statusCode).toBe(200);
+    await drainWorker(service);
+    const session = (await service.read()).rehearsals.find((item) => item.id === view.id);
+    expect(session?.status).toBe('completed');
+    expect(session?.evaluations[0]?.status).toBe('completed');
+    expect(session?.turns.map((turn) => turn.role)).toEqual(['agent', 'user', 'agent']);
+    expect(session?.guided?.turns).toEqual(next.guided.turns);
+  });
+  it('rejects an expired worker and does not publish a pending question after finishing', async () => {
+    const payload = await prepareGuided();
+    const id = await service.guided.start(payload);
+    const first = await service.guided.get(id);
+    const questionId = first.guided.turns[0]?.id;
+    if (!questionId) throw new Error('Missing question');
+    await service.guided.answer(id, {
+      questionId,
+      text: 'Our operating income is -59797 unspecified for 2026-07.',
+      expectedRevision: 0,
+      requestKey: randomUUID(),
+    });
+    const job = await store.claimJob(new Date());
+    if (!job) throw new Error('Missing guided job');
+    const answerId = (await service.guided.get(id)).guided.pending?.answerId;
+    if (!answerId) throw new Error('Missing answer');
+    const connection = new Client({ connectionString: databaseUrl.href });
+    await connection.connect();
+    try {
+      await connection.query('UPDATE "WorkflowJob" SET "leaseUntil" = $1 WHERE id = $2', [
+        new Date(0),
+        job.id,
+      ]);
+    } finally {
+      await connection.end();
+    }
+    const recovered = await store.claimJob(new Date());
+    if (!recovered) throw new Error('Missing recovered job');
+    await expect(service.guided.run(id, answerId, job)).rejects.toThrow('lease');
+    expect((await service.guided.get(id)).guided.turns).toHaveLength(1);
+    const pending = await service.guided.get(id);
+    await service.guided.finish(id, pending.guided.revision);
+    await service.guided.run(id, answerId, recovered);
+    const ended = await service.guided.get(id);
+    expect(ended.guided.turns).toHaveLength(1);
+    expect(ended.guided.pending).toBeNull();
+    const session = (await service.read()).rehearsals.find((item) => item.id === id);
+    expect(session?.turns.map((turn) => turn.role)).toEqual(['agent', 'user']);
+    await drainWorker(service);
   });
 });

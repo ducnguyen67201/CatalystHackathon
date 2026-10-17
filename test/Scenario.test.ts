@@ -296,6 +296,24 @@ describe('scenario source boundaries', () => {
 });
 
 describe('scenario generation', () => {
+  it('saves explanations with every new question, rejects foreign explanation sources, and reads older scenarios unchanged', async () => {
+    const input = assembleScenarioInput(fixture(), investorId, '');
+    const output = await new DemoScenarioGenerator().generate(input);
+    const scenario = output.scenarios[0];
+    if (!scenario?.openingWhy) throw new Error('Missing explanation');
+    expect(
+      output.scenarios.every(
+        (item) => item.openingWhy && item.branches.every((branch) => branch.why),
+      ),
+    ).toBe(true);
+    scenario.openingWhy.sourceIds = ['unrelated-investor'];
+    expect(() => validateScenarioOutput(output, input)).toThrow('explanation');
+    delete scenario.openingWhy;
+    scenario.branches.forEach((branch) => {
+      delete branch.why;
+    });
+    expect(validateScenarioOutput(output, input).scenarios[0]?.openingWhy).toBeUndefined();
+  });
   it('evaluates the frozen scenario investor and financials without leaking newer workspace context', async () => {
     const state = fixture();
     const snapshot = importFinancials(

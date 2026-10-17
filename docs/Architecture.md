@@ -237,6 +237,32 @@ Every new session freezes evaluation context, and its final transcript automatic
 
 ## Scenario generation and investor preparation
 
+`QuestionWhy.ts` defines public, source-linked teaching explanations. New scenario generation
+requires opening and branch explanations in the same structured model output; the persisted
+scenario reader accepts older records without inventing those fields. The prompt version is
+`scenario-v3-question-why`. `QuestionExplanation.tsx` shows a hover/focus tooltip and a modal
+source inspector without inference. The practice room defaults to guided text for selected
+scenarios and collapses full scenario details beneath the compact conversation.
+
+`GuidedPractice.ts` defines a versioned optional rehearsal payload. `PracticeTurnService.ts`
+freezes the selected scenario's evaluation evidence, records explicitly submitted answers,
+and queues `guided-turn:<session>:<answer>` work through the existing Prisma save transaction.
+The durable worker reuses claim extraction and exact decimal checks, then `PracticeTurn.ts`
+requests one structured reply/question/Why bundle. `PreparationPolicy.ts` validates current
+claim references, selected investor sources, fact citations and pivot requirements. Numerical
+prose uses fact placeholders resolved from saved values, units and periods; the model does
+not calculate new figures. Reference integrity does not certify semantic correctness.
+
+Bundle publication and job completion share the existing workspace revision and lease fence.
+Session revisions, payload-checked request keys and stable question IDs protect answer
+replays. Retrying increments a pending operation's generation. Finish clears pending work,
+retains the server-accepted text transcript and queues the existing evaluation; no provider
+receipt is fabricated. The current local aggregate stores guided state inside rehearsal JSON
+instead of the separate tables proposed in the draft spec. No migration or default backfill
+is needed; larger histories should move to focused tables. Guided details are excluded from
+the polling state projection and read through scoped, private no-store routes. Historical
+voice/video transcripts retain their existing authority and behavior.
+
 `ScenarioService` assembles initial company information, selected-investor research, bounded CSV history and linked completed practices through `ScenarioSourceProvider` adapters. `Scenario.ts` owns strict Zod inputs, source provenance, coverage, investor-profile hypotheses and scenario branches. Pitch documents and forecasts are explicitly not connected; unrelated or incomplete practice sessions are excluded. `ScenarioPrompt.ts` owns the versioned instructions; new data kinds require a typed adapter and explicit prompt rules.
 
 `ScenarioGeneration` is a separate workspace-scoped Prisma table. `PrismaStore` atomically creates its input snapshot and a workflow job with kind `scenario`. Request keys are scoped to workspace and operation; changed parameters cannot reuse a key. The worker passes frozen inputs to an injected demo or live generator, validates references, and atomically commits output and job success under the current, unexpired lease. The job owns status. Concurrent or recovered workers cannot overwrite a completed result. A provider retry can incur another provider charge even though local output commits once.
