@@ -1,5 +1,6 @@
 import { ResendEmailSender } from '../infrastructure/EmailNotifications.js';
 import { LiveEvaluation } from '../infrastructure/Evaluation.js';
+import { LivePracticeTurn } from '../infrastructure/PracticeTurn.js';
 import { LiveAvatarProvider } from '../infrastructure/LiveAvatar.js';
 import { retrieveFinalAvatarTranscript } from '../features/AvatarTranscript.js';
 import { LogEvent, LogReason } from '../features/WorkflowLog.js';
@@ -34,10 +35,18 @@ export function createRuntime(env: Environment) {
       ? new LiveScenarioGenerator(env.OPENAI_API_KEY, env.SCENARIO_MODEL)
       : new DemoScenarioGenerator();
   const evaluator = new LiveEvaluation(env.OPENAI_API_KEY, env.EVALUATION_MODEL);
-  const service = new WorkspaceService(store, research, evaluator, logger, store, {
+  const service = new WorkspaceService(
     store,
-    generator,
-  });
+    research,
+    evaluator,
+    logger,
+    store,
+    {
+      store,
+      generator,
+    },
+    env.OPENAI_API_KEY ? new LivePracticeTurn(env.OPENAI_API_KEY, env.SCENARIO_MODEL) : undefined,
+  );
   service.retrieveAvatarTranscript = async (id) => {
     if (
       !(await retrieveFinalAvatarTranscript(

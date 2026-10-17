@@ -5,6 +5,7 @@ import type {
   ScenarioInput,
 } from '../contracts/Scenario.js';
 import './ScenarioPractice.css';
+import { QuestionExplanation, scenarioWhySources } from './QuestionExplanation.js';
 
 const label = (value: string) => value.replaceAll('_', ' ');
 function EvidenceLinks({ ids, input }: { ids: string[]; input: ScenarioInput }) {
@@ -74,13 +75,29 @@ export function ScenarioDetails({
             </div>
           ))}
           <h4>Opening question</h4>
-          <blockquote>{scenario.openingQuestion}</blockquote>
+          <div className="scenario-question-line">
+            <blockquote>{scenario.openingQuestion}</blockquote>
+            {scenario.openingWhy && (
+              <QuestionExplanation
+                question={scenario.openingQuestion}
+                why={scenario.openingWhy}
+                sources={scenarioWhySources(generation.input)}
+              />
+            )}
+          </div>
           <h4>How the conversation can develop</h4>
           <ol>
             {scenario.branches.map((branch, index) => (
               <li key={index}>
                 <strong>{branch.condition}</strong>
                 <p>{branch.question}</p>
+                {branch.why && (
+                  <QuestionExplanation
+                    question={branch.question}
+                    why={branch.why}
+                    sources={scenarioWhySources(generation.input)}
+                  />
+                )}
               </li>
             ))}
           </ol>

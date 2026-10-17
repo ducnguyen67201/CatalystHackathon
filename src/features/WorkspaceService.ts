@@ -31,6 +31,8 @@ import { ConflictError, type WorkspaceStore } from './WorkspaceStore.js';
 import { practiceContextSchema, type PracticeContext } from '../contracts/PracticeContext.js';
 import { ScenarioService, type ScenarioGenerator } from './ScenarioService.js';
 import type { ScenarioStore } from './ScenarioStore.js';
+import { PracticeTurnService } from './PracticeTurnService.js';
+import type { PracticeTurnProvider } from './PracticeTurnProvider.js';
 
 export class WorkspaceService {
   readonly investors: InvestorTrackingService;
@@ -38,6 +40,7 @@ export class WorkspaceService {
   readonly evaluations: RehearsalEvaluationService;
   retrieveAvatarTranscript: ((sessionId: string) => Promise<void>) | null = null;
   readonly scenarios: ScenarioService | null;
+  readonly guided: PracticeTurnService;
 
   constructor(
     readonly store: WorkspaceStore,
@@ -46,6 +49,7 @@ export class WorkspaceService {
     readonly logger: WorkflowLog = silentWorkflowLog,
     readonly researchRuns?: ResearchRunStore,
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
+    turnProvider?: PracticeTurnProvider,
   ) {
     this.investors = new InvestorTrackingService(this, research);
     this.radar = new RadarDeliveryService(this);
@@ -57,6 +61,7 @@ export class WorkspaceService {
           scenarioDependencies.generator,
         )
       : null;
+    this.guided = new PracticeTurnService(this, turnProvider);
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
@@ -428,6 +433,7 @@ export class WorkspaceService {
       const session = state.rehearsals.find((item) => item.id === sessionId);
       if (
         !session ||
+        session.guided ||
         session.status !== 'active' ||
         session.mode === 'elevenlabs' ||
         session.mode === RehearsalMode.LIVEAVATAR
@@ -461,6 +467,7 @@ export class WorkspaceService {
       if (!session) {
         throw new Error('Session unavailable.');
       }
+      if (session.guided) throw new Error('This practice must be finished in guided practice.');
       if (session.status === 'completed' || session.transcriptReceivedAt !== null) {
         return;
       }

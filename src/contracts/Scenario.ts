@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { questionWhySchema } from './QuestionWhy.js';
 
 const text = z.string().trim().min(1).max(2000);
 const reference = z.string().min(1).max(200);
@@ -150,8 +151,9 @@ export const generatedScenarioSchema = z.strictObject({
   challenge: text,
   rationale: z.array(insightSchema).min(1).max(5),
   openingQuestion: text,
+  openingWhy: questionWhySchema.optional(),
   branches: z
-    .array(z.strictObject({ condition: text, question: text }))
+    .array(z.strictObject({ condition: text, question: text, why: questionWhySchema.optional() }))
     .min(2)
     .max(4),
   successCriteria: z.array(text).min(2).max(4),
@@ -169,6 +171,22 @@ export const scenarioOutputSchema = z.strictObject({
 });
 export type ScenarioOutput = z.infer<typeof scenarioOutputSchema>;
 export type GeneratedScenario = z.infer<typeof generatedScenarioSchema>;
+
+/** New provider outputs require explanations; historical saved scenarios remain readable. */
+export const scenarioGenerationOutputSchema = scenarioOutputSchema.extend({
+  scenarios: z
+    .array(
+      generatedScenarioSchema.extend({
+        openingWhy: questionWhySchema,
+        branches: z
+          .array(z.strictObject({ condition: text, question: text, why: questionWhySchema }))
+          .min(2)
+          .max(4),
+      }),
+    )
+    .min(1)
+    .max(3),
+});
 
 export const scenarioRequestSchema = z.strictObject({
   investorId: z.uuid(),

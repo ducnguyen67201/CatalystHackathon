@@ -8,6 +8,7 @@ import { endVoicePractice, startVoicePractice } from './VoicePracticeClient.js';
 import { describeVoiceFailure } from './VoiceFailure.js';
 import './AvatarPractice.css';
 import type { ScenarioSelection } from '../contracts/Scenario.js';
+import { GuidedPractice } from './GuidedPractice.js';
 
 const AvatarPractice = lazy(async () => {
   const module = await import('./AvatarPractice.js');
@@ -39,34 +40,57 @@ export function VoicePractice({
   startDisabled = false,
 }: Props) {
   const [videoMode, setVideoMode] = useState(true);
+  const [guidedMode, setGuidedMode] = useState(!!selection);
   const [sessionBusy, setSessionBusy] = useState(false);
   return (
     <>
       <div className="interview-mode" aria-label="Interview format">
+        {selection && (
+          <button
+            className="button secondary"
+            aria-pressed={guidedMode}
+            disabled={sessionBusy || startDisabled}
+            onClick={() => {
+              onError('');
+              setGuidedMode(true);
+            }}
+          >
+            Guided text
+          </button>
+        )}
         <button
           className="button secondary"
-          aria-pressed={videoMode}
+          aria-pressed={!guidedMode && videoMode}
           disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(true);
+            setGuidedMode(false);
           }}
         >
           Live AI interviewer
         </button>
         <button
           className="button secondary"
-          aria-pressed={!videoMode}
+          aria-pressed={!guidedMode && !videoMode}
           disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(false);
+            setGuidedMode(false);
           }}
         >
           Voice only
         </button>
       </div>
-      {videoMode ? (
+      {guidedMode && selection ? (
+        <GuidedPractice
+          key={selection.generationId + ':' + selection.scenarioId}
+          selection={selection}
+          ready={!!state.capabilities.guidedReady && !startDisabled}
+          onLockChange={setSessionBusy}
+        />
+      ) : videoMode ? (
         <Suspense fallback={<p role="status">Loading interview room…</p>}>
           <AvatarPractice
             state={state}

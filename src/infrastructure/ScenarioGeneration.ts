@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   scenarioOutputSchema,
+  scenarioGenerationOutputSchema,
   type ScenarioInput,
   type ScenarioOutput,
 } from '../contracts/Scenario.js';
@@ -10,7 +11,7 @@ import { SCENARIO_SYSTEM_PROMPT, scenarioDataPrompt } from '../prompts/ScenarioP
 /** Deterministic, explicitly labeled rehearsal examples; never invents investor facts. */
 export class DemoScenarioGenerator implements ScenarioGenerator {
   readonly mode = 'demo';
-  readonly model = 'local-template-v2';
+  readonly model = 'local-template-v3';
   generate(input: ScenarioInput): Promise<ScenarioOutput> {
     const founder = input.sources.find((source) => source.kind === 'founder_initial');
     if (!founder) throw new Error('Founder context unavailable.');
@@ -185,7 +186,27 @@ export class DemoScenarioGenerator implements ScenarioGenerator {
         clarificationQuestions: ['What supporting information would help explain the figures?'],
         personalization: 'limited_context',
       });
-    return Promise.resolve(scenarioOutputSchema.parse(output));
+    for (const scenario of output.scenarios) {
+      const sourceIds = [...new Set(scenario.rationale.flatMap((item) => item.sourceIds))];
+      scenario.openingWhy = {
+        brief:
+          'Practise the saved objective using the available sources, while keeping assumptions and missing evidence explicit.',
+        explanation: scenario.rationale.map((item) => item.text).join(' '),
+        answerObjective: scenario.successCriteria.join(' '),
+        sourceIds,
+        missingInputs: scenario.unknowns,
+      };
+      for (const branch of scenario.branches)
+        branch.why = {
+          brief: 'This follow-up applies when: ' + branch.condition.toLowerCase() + '.',
+          explanation:
+            'This template follow-up asks for a clearer explanation or supporting evidence; it does not predict what the investor will ask.',
+          answerObjective: scenario.successCriteria.join(' '),
+          sourceIds,
+          missingInputs: scenario.unknowns,
+        };
+    }
+    return Promise.resolve(scenarioGenerationOutputSchema.parse(output));
   }
 }
 
@@ -216,7 +237,7 @@ export class LiveScenarioGenerator implements ScenarioGenerator {
           json_schema: {
             name: 'practice_scenarios',
             strict: true,
-            schema: z.toJSONSchema(scenarioOutputSchema),
+            schema: z.toJSONSchema(scenarioGenerationOutputSchema),
           },
         },
       }),
@@ -227,6 +248,6 @@ export class LiveScenarioGenerator implements ScenarioGenerator {
     const content = completionSchema.parse(raw).choices[0]?.message.content;
     if (!content) throw new Error('Scenario provider returned no structured output.');
     const output: unknown = JSON.parse(content);
-    return scenarioOutputSchema.parse(output);
+    return scenarioGenerationOutputSchema.parse(output);
   }
 }

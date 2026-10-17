@@ -20,6 +20,14 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
       const started = Date.now();
       service.logger.write(LogEvent.WORKFLOW_STARTED);
       try {
+        if (job.kind.startsWith('guided-turn:')) {
+          const [, sessionId, answerId] = job.kind.split(':');
+          if (!sessionId || !answerId) throw new Error('Invalid practice turn job.');
+          await service.guided.run(sessionId, answerId, job);
+          await service.radar.heartbeat('waiting', null, true);
+          service.logger.write(LogEvent.WORKFLOW_SUCCEEDED, { durationMs: Date.now() - started });
+          return true;
+        }
         if (job.kind === 'scenario') {
           if (!service.scenarios) throw new Error('Scenario runtime unavailable.');
           await service.scenarios.run(job);

@@ -52,7 +52,10 @@ export function VoicePracticePage({ page = 'room' }: { page?: 'scenarios' | 'roo
   }, []);
 
   return (
-    <main style={{ maxWidth: '1200px', padding: '32px 20px', margin: '0 auto' }}>
+    <main
+      className="practice-page"
+      style={{ maxWidth: '1200px', padding: '18px 20px', margin: '0 auto' }}
+    >
       <header className="page-heading">
         <div>
           <div className="eyebrow">

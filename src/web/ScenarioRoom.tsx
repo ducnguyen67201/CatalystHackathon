@@ -118,8 +118,8 @@ export function ScenarioRoom({
         )}
         {scenario && (
           <p className="muted">
-            The interviewer receives this saved scenario, investor profile, and source snapshot when
-            you start the session.
+            Guided text generates each question and its explanation together using this saved source
+            snapshot.
           </p>
         )}
       </section>
@@ -132,10 +132,10 @@ export function ScenarioRoom({
         startDisabled={!ready || !!error}
       />
       {scenario && generation && (
-        <section aria-label="Scenario context">
-          <h2>Your scenario context</h2>
+        <details className="practice-context-disclosure">
+          <summary>Inspect the saved scenario and source context</summary>
           <ScenarioDetails generation={generation} scenario={scenario} />
-        </section>
+        </details>
       )}
       {route.kind === 'open' && brief && (
         <details className="scenario-sources">

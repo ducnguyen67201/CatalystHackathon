@@ -127,7 +127,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
             },
             data: {
               status: JobStatus.SUCCEEDED,
-              result: 'Evaluation saved.',
+              result: 'Workflow output saved.',
               leaseToken: null,
               leaseUntil: null,
             },
@@ -174,6 +174,16 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
         }
         // Receipt and queue intent commit together. Unique keys make replay idempotent.
         for (const session of workspace.rehearsals) {
+          const pending = session.status === 'active' ? session.guided?.pending : null;
+          if (pending) {
+            const kind = `guided-turn:${session.id}:${pending.answerId}`;
+            const key = `${kind}:${pending.generation}`;
+            await tx.workflowJob.upsert({
+              where: { key },
+              update: {},
+              create: { id: randomUUID(), workspaceId, key, kind },
+            });
+          }
           for (const evaluation of session.evaluations) {
             if (evaluation.status !== 'queued') continue;
             const kind = `evaluate:${session.id}:${evaluation.id}`;
@@ -322,6 +332,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
             { kind: { startsWith: 'investor:' } },
             { kind: 'discover-investors' },
             { kind: { startsWith: 'evaluate:' } },
+            { kind: { startsWith: 'guided-turn:' } },
           ],
         },
         orderBy: { createdAt: 'desc' },
