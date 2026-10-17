@@ -43,7 +43,7 @@ Open http://127.0.0.1:4317. The API and worker receive the same injected configu
 
 If the backend restarts while a form is open, the browser automatically renews its local session and retries a rejected request once. You do not need to reload the page or clear data. If reconnection fails, keep the form open and retry after the API is available; unfinished fields remain in the form.
 
-`pnpm dev` starts the local PostgreSQL container before the app processes. First-time `pnpm setup` also generates Prisma, deploys migrations and imports the Tidewell sample once. Data remains in the Docker volume. Ctrl+C stops the development processes; PostgreSQL stays available. `docker compose stop postgres` stops it without deleting data.
+`pnpm dev` starts the local PostgreSQL container, regenerates the Prisma client, and applies pending migrations before starting the app processes. These steps use the same Doppler or local settings as the backend; if any step fails, the app processes do not start. First-time `pnpm setup` also imports the fictional Tidewell sample once. Data remains in the Docker volume. Ctrl+C stops the development processes; PostgreSQL stays available. `docker compose stop postgres` stops it without deleting data.
 
 Doppler supplies environment variables; T3 Env validates them; neither deploys a service. Secrets are fetched for each new `doppler run` process. After changing a setting in Doppler, stop and restart the command. The scheduler keeps running in the worker while the development command is running, even if the browser closes.
 
@@ -88,7 +88,7 @@ Research always uses Exa and OpenAI. Add both API keys before running research. 
 6. In Investor research, run Check now or choose monitoring. Investors added during onboarding begin paused; existing schedules are preserved. Research uses Exa and OpenAI and sends all links as public identity hints; login-only profiles may not be available.
 7. Finish practice and track a follow-up. Updates inform a new brief while earlier brief and rehearsal records remain available.
 
-Before using an existing checkout with this update, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. Migrations add onboarding storage without resetting the application database. Existing workspaces are invited through setup once; their data remains intact.
+Restart `pnpm dev` to regenerate Prisma and apply pending migrations automatically. Migrations add onboarding storage without resetting the application database. Existing workspaces are invited through setup once; their data remains intact.
 
 ## Investor watchlist
 
@@ -100,7 +100,7 @@ Discovery runs weekly and when the company profile version changes, after stage,
 
 Research requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Existing fictional evidence and past checks remain labeled for historical accuracy; new checks always use live providers. Monitoring requires the worker to remain running. Founder email alerts require the separate opt-in setup below. Investor outreach is not implemented.
 
-For an existing checkout, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
+Restart `pnpm dev` to regenerate Prisma and apply pending migrations automatically. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
 
 ## Browser voice with ElevenLabs
 
@@ -158,7 +158,7 @@ This release uses saved company/onboarding information, selected-investor resear
 
 Scenario generation defaults to `SCENARIO_MODE=demo`: deterministic template exercises clearly labeled as demo. Live generation requires `SCENARIO_MODE=live`, `OPENAI_API_KEY`, and optionally `SCENARIO_MODEL` (default `gpt-6.1-sol`). It sends the reviewed source snapshot to the model provider; it does not call Exa or run a fresh research check. There is no silent fallback from live to demo. Provider configuration is not changed by the application.
 
-Run `pnpm db:generate` and `pnpm db:deploy` with your normal environment before restarting an existing checkout. The additive migration stores generations separately and preserves financial and rehearsal history. The voice prompt template above includes scenario instructions; an existing private agent must honor those instructions for live scenario behavior. No live paid generation or call is required for automated validation.
+Restart `pnpm dev` with your normal environment to regenerate Prisma and apply pending migrations automatically. The additive migration stores generations separately and preserves financial and rehearsal history. The voice prompt template above includes scenario instructions; an existing private agent must honor those instructions for live scenario behavior. No live paid generation or call is required for automated validation.
 
 The extensible inputs and output schemas live in `src/contracts/Scenario.ts`; source adapters in `src/features/ScenarioSources.ts`; the versioned generation and voice guidance in `src/prompts/ScenarioPrompt.ts`. Add a typed source, adapter, coverage handling, prompt rules and tests when connecting more data. Keep new data optional and retain original source snapshots.
 
@@ -245,7 +245,7 @@ Logs intentionally omit API keys, headers, cookies, raw errors, source text, nam
 
 ## Saved research output API
 
-Apply the additive migration with `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. Every live investor check, comparable-company discovery and radar provider attempt automatically saves an immutable ResearchRun JSON record before returning to the worker. No browser save call is required. Captured fields include queries, retrieved source text, source decisions, extracted evidence, profile version, public segment/identity context, model, job ID, attempt number, timestamps and safe failure metadata. Failed extraction preserves sources already retrieved. No credentials, raw provider error bodies, financial rows or meeting notes enter these records.
+Restart `pnpm dev` to regenerate Prisma and apply the additive migration automatically. Every live investor check, comparable-company discovery and radar provider attempt automatically saves an immutable ResearchRun JSON record before returning to the worker. No browser save call is required. Captured fields include queries, retrieved source text, source decisions, extracted evidence, profile version, public segment/identity context, model, job ID, attempt number, timestamps and safe failure metadata. Failed extraction preserves sources already retrieved. No credentials, raw provider error bodies, financial rows or meeting notes enter these records.
 
 Authenticated local API endpoints:
 
@@ -280,6 +280,6 @@ Use a sender domain verified in your Resend account. This implementation does no
 
 New eligible live results enter the email outbox in the same PostgreSQL transaction as their radar event and investor check or suggestion. Fictional fixtures, historical backfill, identity-review results, unchanged results, and disabled categories are not emailed. Enabling alerts does not email old history. Retryable sends use the same saved message and key; Resend retains [idempotency keys for 24 hours](https://resend.com/docs/dashboard/emails/idempotency-keys), so June stops automatic replay after a conservative 23 hours and marks uncertain outcomes for provider review. `sent` means provider accepted, not guaranteed inbox delivery. Unknown outcomes are never blindly resent.
 
-Run `pnpm db:generate` and `pnpm db:deploy` using this repository's database environment before restarting an existing installation. The additive migration retains evidence and financial history. Email settings, confirmation hashes, and outbox bodies are excluded from `/api/state` and feed responses. The API exposes masked recipient status only. No live email is sent by the test suite.
+Restart `pnpm dev` using this repository's database environment to regenerate Prisma and apply pending migrations automatically. The additive migration retains evidence and financial history. Email settings, confirmation hashes, and outbox bodies are excluded from `/api/state` and feed responses. The API exposes masked recipient status only. No live email is sent by the test suite.
 
 The background worker records its heartbeat separately from research jobs. Offline means no heartbeat within 60 seconds; scheduled checks require a running worker and an awake computer. Email links point to localhost and work on the computer running June. No remote deployment, SMS, investor outreach, or voice-context integration is enabled.

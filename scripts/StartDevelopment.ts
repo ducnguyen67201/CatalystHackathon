@@ -6,6 +6,10 @@ import { createFrontendEnvironment } from './DevelopmentEnvironment.js';
 const children = new Set<ChildProcess>();
 const lifecycle = { closing: false };
 
+function isClosing(): boolean {
+  return lifecycle.closing;
+}
+
 function signalChild(child: ChildProcess): void {
   if (child.pid === undefined) {
     return;
@@ -60,13 +64,38 @@ try {
   const frontend = createFrontendEnvironment(values);
   const tunnel = readTunnelEnvironment(values);
   console.log(`Starting June with ${usesDoppler(values) ? 'Doppler' : 'local'} settings.`);
-  const database = launch('docker', ['compose', 'up', '-d', '--wait', 'postgres'], frontend);
-  const databaseReady = await new Promise<boolean>((resolve) => {
-    database.once('error', () => resolve(false));
-    database.once('exit', (code) => resolve(code === 0));
-  });
-  if (!databaseReady && !lifecycle.closing) {
-    throw new Error('Database startup failed.');
+  const preparation = [
+    {
+      label: 'Starting PostgreSQL',
+      command: 'docker',
+      args: ['compose', 'up', '-d', '--wait', 'postgres'],
+      env: frontend,
+    },
+    {
+      label: 'Generating Prisma client',
+      command: 'pnpm',
+      args: ['db:generate'],
+      env: { ...values },
+    },
+    {
+      label: 'Applying pending database migrations',
+      command: 'pnpm',
+      args: ['db:deploy'],
+      env: { ...values },
+    },
+  ];
+  for (const step of preparation) {
+    if (isClosing()) break;
+    console.log(`${step.label}...`);
+    const child = launch(step.command, step.args, step.env);
+    const succeeded = await new Promise<boolean>((resolve) => {
+      child.once('error', () => resolve(false));
+      child.once('exit', (code) => resolve(code === 0));
+    });
+    if (!succeeded && !lifecycle.closing) {
+      console.error(`${step.label} failed. Development services were not started.`);
+      throw new Error('Development preparation failed.');
+    }
   }
   if (!lifecycle.closing) {
     const services = [
