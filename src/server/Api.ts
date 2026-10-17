@@ -1,4 +1,5 @@
 import { registerRadarRoutes } from './RadarRoutes.js';
+import { registerHostedAccess } from './HostedAccess.js';
 import { registerEvaluationRoutes } from './EvaluationRoutes.js';
 import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
 import { RehearsalMode } from '../contracts/Workspace.js';
@@ -54,7 +55,7 @@ interface VoiceDependencies {
   avatarProvider?: AvatarProvider;
 }
 
-/** Single-user localhost API. Remote hosting requires an account/membership auth adapter. */
+/** Shared workspace API with explicit hosted access mode and same-origin sessions. */
 export async function createApi(
   service: WorkspaceService,
   env: Environment,
@@ -66,6 +67,7 @@ export async function createApi(
   const app = Fastify({ logger: false, bodyLimit: 2200000 });
   await app.register(cookie);
   await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  registerHostedAccess(app, env);
   const localSession = randomBytes(32).toString('hex');
   const allowedOrigins = new Set([
     env.WEB_ORIGIN,
@@ -152,13 +154,14 @@ export async function createApi(
   app.post('/api/session', async (_request, reply) => {
     reply.setCookie('june_session', localSession, {
       httpOnly: true,
+      secure: env.HOSTING_MODE === 'hosted',
       sameSite: 'strict',
       path: '/',
       maxAge: 86400,
     });
     return { ok: true };
   });
-  app.get('/api/health', () => ({ status: 'ready', localOnly: true }));
+  app.get('/api/health', () => ({ status: 'ready', localOnly: env.HOSTING_MODE === 'local' }));
   app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
       workspace: await service.read().then((workspace) => ({
@@ -182,7 +185,7 @@ export async function createApi(
         scenarioMode: service.scenarios?.generator.mode ?? 'demo',
         scenarioReady: service.scenarios !== null,
         guidedReady: service.guided.ready,
-        localOnly: true,
+        localOnly: env.HOSTING_MODE === 'local',
       },
     }),
   );

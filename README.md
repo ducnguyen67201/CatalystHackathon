@@ -2,6 +2,14 @@
 
 A local TypeScript application for connecting financial evidence, investor research, meeting preparation, browser voice practice and tracked follow-ups. Built for the Catalyst 2026 June challenge.
 
+## Shared Railway demo
+
+The hosted demo uses one shared workspace. Its explicitly configured `public-demo` access
+mode lets anyone with the link use it without signing in. See [Railway deployment](docs/RailwayDeployment.md) for deployment,
+access, data transfer and verification. Merges to `main` run CI, then automatically deploy
+the frontend/API and worker to Railway, applying committed Prisma migrations before startup.
+Local development remains bound to loopback.
+
 [Investor radar result delivery](docs/InvestorRadarEngineeringSpec.md) reuses classified research in the radar and emails meaningful updates to the founder. An [interactive HTML preview](docs/previews/InvestorRadarPreview.html) illustrates the research views. The result feed and Resend delivery path are implemented below; the HTML remains a design artifact.
 
 ## Start with Doppler
@@ -239,7 +247,11 @@ The default worker uses a PostgreSQL job queue with idempotency keys, claim toke
 
 An optional Trigger.dev task entrypoint is included in `src/jobs/RadarTasks.ts`. Configure `TRIGGER_PROJECT_REF`, the deployment environment and database access before using its CLI. Hosted tasks must reach PostgreSQL; a localhost Docker URL is not remotely reachable. Use either the local worker or the hosted runner for a deployment. The local worker already runs these workflows; do not start a hosted runner alongside it for the same deployment. For optional Trigger.dev development, inject `TRIGGER_PROJECT_REF` and `TRIGGER_SECRET_KEY` into its CLI process through `doppler run -- <your Trigger.dev CLI command>`. Hosted deployments need their own remotely reachable database and runtime environment configuration; running a local deployment command through Doppler does not automatically sync secrets into hosted tasks. No Trigger.dev project or schedule was deployed.
 
-This is a **single-user localhost application**, protected by a local session cookie, origin checks, loopback-only listening and rate limits. It does not implement hosted accounts, organizational membership, multi-tenant access or public production deployment. Do not expose the whole app remotely without adding those boundaries. For a webhook relay, expose only the signature-protected webhook route.
+Local mode uses a local session cookie, origin checks, loopback-only listening and rate limits.
+Hosted mode requires HTTPS. Its default access mode uses configured demo accounts; the
+explicit `public-demo` mode opens the one shared workspace without login. Neither mode
+provides separate private workspaces or self-service registration. Provider webhooks retain
+their signature verification in both modes.
 
 ## Commands and checks
 

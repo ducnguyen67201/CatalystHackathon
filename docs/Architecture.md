@@ -25,7 +25,7 @@ React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL
 - `src/infrastructure/PrismaStore.ts` maps validated application records to company-scoped tables. Prisma types do not escape the adapter.
 - `src/infrastructure/Research.ts` contains only the Exa/OpenAI research adapter. Runtime always injects it. Deterministic research fixtures live under test/fixtures and are excluded from application builds.
 - `src/infrastructure/Voice.ts` obtains ElevenLabs conversation tokens, retains the legacy brief-context builder and verifies provider webhooks. `src/features/PracticeContextProvider.ts` owns the independent context port and its empty implementation.
-- `src/server/Api.ts` owns local session authorization, origin checking, rate limits, validated routes and static production assets. It always binds through the loopback entrypoint.
+- `src/server/Api.ts` owns session authorization, origin checking, rate limits, validated routes and static production assets. Local mode binds to loopback; explicit hosted mode binds to the container interface and Railway port. `HostedAccess.ts` defaults to configured account authentication and shared-workspace membership. Explicit `HOSTED_ACCESS_MODE=public-demo` opens the same workspace without login; API origin/session checks and provider signature verification still apply. See [Railway deployment](RailwayDeployment.md).
 - `src/server/Worker.ts` owns queue execution and due schedules. `src/jobs/RadarTasks.ts` optionally invokes the same work from Trigger.dev.
 - `src/web` owns all browser state, rendering and ElevenLabs React controls.
 
