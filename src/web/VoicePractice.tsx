@@ -6,6 +6,7 @@ import type { StateResponse, TranscriptTurn } from '../contracts/Workspace.js';
 import { endVoicePractice, startVoicePractice } from './VoicePracticeClient.js';
 import { describeVoiceFailure } from './VoiceFailure.js';
 import './AvatarPractice.css';
+import type { ScenarioSelection } from '../contracts/Scenario.js';
 
 const AvatarPractice = lazy(async () => {
   const module = await import('./AvatarPractice.js');
@@ -16,6 +17,10 @@ interface Props {
   state: StateResponse;
   onRefresh: () => Promise<void>;
   onError: (message: string) => void;
+  selection?: ScenarioSelection | undefined;
+  onSelection?: ((selection: ScenarioSelection | undefined) => void) | undefined;
+  onLockChange?: (locked: boolean) => void;
+  startDisabled?: boolean;
 }
 
 const messageSchema = z.object({
@@ -24,14 +29,23 @@ const messageSchema = z.object({
 });
 
 /** Standalone voice surface: no brief, onboarding or research dependency. */
-export function VoicePractice({ state, onRefresh, onError }: Props) {
+export function VoicePractice({
+  state,
+  onRefresh,
+  onError,
+  selection,
+  onSelection,
+  startDisabled = false,
+}: Props) {
   const [videoMode, setVideoMode] = useState(true);
+  const [sessionBusy, setSessionBusy] = useState(false);
   return (
     <>
       <div className="interview-mode" aria-label="Interview format">
         <button
           className="button secondary"
           aria-pressed={videoMode}
+          disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(true);
@@ -42,6 +56,7 @@ export function VoicePractice({ state, onRefresh, onError }: Props) {
         <button
           className="button secondary"
           aria-pressed={!videoMode}
+          disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(false);
@@ -52,18 +67,42 @@ export function VoicePractice({ state, onRefresh, onError }: Props) {
       </div>
       {videoMode ? (
         <Suspense fallback={<p role="status">Loading interview room…</p>}>
-          <AvatarPractice state={state} onRefresh={onRefresh} onError={onError} />
+          <AvatarPractice
+            state={state}
+            onRefresh={onRefresh}
+            onError={onError}
+            selection={selection}
+            onSelection={onSelection}
+            startDisabled={startDisabled}
+            onLockChange={setSessionBusy}
+          />
         </Suspense>
       ) : (
         <ConversationProvider>
-          <VoicePracticeSession state={state} onRefresh={onRefresh} onError={onError} />
+          <VoicePracticeSession
+            state={state}
+            onRefresh={onRefresh}
+            onError={onError}
+            selection={selection}
+            onSelection={onSelection}
+            startDisabled={startDisabled}
+            onLockChange={setSessionBusy}
+          />
         </ConversationProvider>
       )}
     </>
   );
 }
 
-function VoicePracticeSession({ state, onRefresh, onError }: Props) {
+function VoicePracticeSession({
+  state,
+  onRefresh,
+  onError,
+  selection,
+  onSelection,
+  onLockChange,
+  startDisabled = false,
+}: Props) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [preview, setPreview] = useState<TranscriptTurn[]>([]);
   const [busy, setBusy] = useState(false);
@@ -125,6 +164,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
   }
 
   async function start(): Promise<void> {
+    if (startDisabled) return;
     if (starting.current || activeId.current) {
       return;
     }
@@ -135,6 +175,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
       return;
     }
     starting.current = true;
+    onLockChange?.(true);
     onError('');
     setBusy(true);
     try {
@@ -146,7 +187,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
       if (!isMounted()) {
         return;
       }
-      const response = await startVoicePractice();
+      const response = await startVoicePractice(selection);
       if (!isMounted()) {
         await endVoicePractice(response.session.id, false);
         return;
@@ -174,6 +215,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
       }
     } finally {
       starting.current = false;
+      if (!activeId.current) onLockChange?.(false);
       if (mounted.current) {
         setBusy(false);
       }
@@ -191,6 +233,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
     try {
       await endVoicePractice(id, completed);
       activeId.current = null;
+      onLockChange?.(false);
       if (mounted.current) {
         setRunning(false);
         await onRefresh();
@@ -247,7 +290,9 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
     <>
       <div className="voice-room">
         <section className="voice-stage">
-          <div className="eyebrow">Browser voice · empty context</div>
+          <div className="eyebrow">
+            Browser voice · {selection ? 'selected scenario' : 'open conversation'}
+          </div>
           <div
             className={`voice-orb ${conversation.isSpeaking ? 'speaking' : ''}`}
             aria-hidden="true"
@@ -258,9 +303,10 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
           </div>
           <h2>{running ? 'Talk it through with June.' : 'Start with a conversation.'}</h2>
           <p>
-            Company data and meeting notes are not connected yet. Introduce your business and
-            practise explaining it. This session saves a transcript without scoring your financial
-            answers.
+            {selection
+              ? 'June will use the selected scenario and its saved company and investor context. Start when you are ready.'
+              : 'Introduce your business and practise explaining it. Choose a saved scenario from Practice scenario for investor-specific preparation.'}{' '}
+            This session saves a transcript without scoring financial answers.
           </p>
           <div className="voice-actions">
             {running ? (
@@ -295,6 +341,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
               <button
                 className="button"
                 disabled={
+                  startDisabled ||
                   busy ||
                   !browserSupportsVoice ||
                   !state.capabilities.voiceReady ||
@@ -365,6 +412,7 @@ function VoicePracticeSession({ state, onRefresh, onError }: Props) {
                 disabled={running || busy}
                 onClick={() => {
                   setSessionId(item.id);
+                  onSelection?.(item.context?.version === 2 ? item.context.selection : undefined);
                   setPreview([]);
                 }}
               >

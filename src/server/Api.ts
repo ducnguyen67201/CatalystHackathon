@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { LocalSessionError } from '../contracts/LocalSession.js';
 import { registerInvestorRoutes } from './InvestorRoutes.js';
+import { registerScenarioRoutes } from './ScenarioRoutes.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -111,7 +112,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Investor discovery:|Onboarding:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:)/.test(
         error.message,
       )
     ) {
@@ -166,6 +167,8 @@ export async function createApi(
           env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID && env.ELEVENLABS_WEBHOOK_SECRET,
         ),
         researchReady: Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
+        scenarioMode: service.scenarios?.generator.mode ?? 'demo',
+        scenarioReady: service.scenarios !== null,
         localOnly: true,
       },
     }),
@@ -219,6 +222,7 @@ export async function createApi(
     return reply.code(202).send(job);
   });
   registerInvestorRoutes(app, service);
+  registerScenarioRoutes(app, service);
   registerResearchRunRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
@@ -228,11 +232,19 @@ export async function createApi(
     app,
     service,
     env,
-    voice.contextProvider,
+    {
+      loadContext: (selection) => {
+        if (selection) {
+          if (!service.scenarios) throw new Error('Scenario unavailable.');
+          return service.scenarios.loadContext(selection);
+        }
+        return voice.contextProvider.loadContext();
+      },
+    },
     voice.avatarProvider ?? new LiveAvatarProvider(),
   );
   app.post('/api/voice/sessions', async (request, reply) => {
-    voiceSessionRequestSchema.parse(request.body);
+    const { selection } = voiceSessionRequestSchema.parse(request.body);
     if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_AGENT_ID || !env.ELEVENLABS_WEBHOOK_SECRET) {
       return reply.code(503).send({
         error: 'Configure the ElevenLabs API key, private agent and transcript webhook first.',
@@ -248,7 +260,12 @@ export async function createApi(
     ) {
       throw new Error('End an active rehearsal before starting another.');
     }
-    const context = practiceContextSchema.parse(await voice.contextProvider.loadContext());
+    if (selection && !service.scenarios) throw new Error('Scenario unavailable.');
+    const context = practiceContextSchema.parse(
+      selection
+        ? await service.scenarios?.loadContext(selection)
+        : await voice.contextProvider.loadContext(),
+    );
     const credentials = await voice.createToken(env.ELEVENLABS_API_KEY, env.ELEVENLABS_AGENT_ID);
     const session = await service.createRehearsal(
       null,

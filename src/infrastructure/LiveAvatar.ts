@@ -20,15 +20,13 @@ const stoppedSessionSchema = z.object({
 /** Only this adapter sends LiveAvatar credentials; browsers receive a session token. */
 export class LiveAvatarProvider implements AvatarProvider {
   async createToken(settings: AvatarSettings, context: PracticeContext) {
-    if (context.mode !== 'empty') {
-      throw new Error('LiveAvatar company context is not connected yet.');
-    }
     const response = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
       headers: { 'X-API-KEY': settings.apiKey, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
         mode: 'FULL',
+        dynamic_variables: { brief_context: JSON.stringify(context) },
         avatar_id: settings.avatarId,
         max_session_duration: AVATAR_SESSION_DURATION_SECONDS,
         avatar_persona: {

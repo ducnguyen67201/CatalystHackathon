@@ -251,6 +251,8 @@ export const capabilitiesSchema = z.strictObject({
   researchMode: z.literal('live'),
   voiceReady: z.boolean(),
   avatarReady: z.boolean().default(false),
+  scenarioReady: z.boolean().default(false),
+  scenarioMode: z.enum(['demo', 'live']).default('demo'),
   researchReady: z.boolean(),
   localOnly: z.literal(true),
 });

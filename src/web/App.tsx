@@ -24,8 +24,7 @@ import { Stage, profileSchema } from '../contracts/Workspace.js';
 import { evaluateInvestorFit } from '../features/InvestorFit.js';
 import { command, fetchState, startLocalSession, startRadar } from './ApiClient.js';
 import { InvestorTrackingPage } from './InvestorTrackingPage.js';
-import { VoiceRoom } from './VoiceRoom.js';
-import { VoicePractice } from './VoicePractice.js';
+import { ScenarioPractice } from './ScenarioPractice.js';
 const Page = {
   OVERVIEW: 'overview',
   MEETINGS: 'meetings',
@@ -279,7 +278,7 @@ export function App() {
     { id: Page.INVESTORS, label: 'Investor research', icon: Search },
     { id: Page.FINANCIALS, label: 'Financials', icon: LayoutDashboard },
     { id: Page.BRIEF, label: 'Meeting brief', icon: FileText },
-    { id: Page.PRACTICE, label: 'Practice room', icon: MessageSquare },
+    { id: Page.PRACTICE, label: 'Practice scenario', icon: MessageSquare },
     { id: Page.FOLLOWUPS, label: 'Follow-ups', icon: Target },
   ];
   return (
@@ -904,10 +903,10 @@ export function App() {
             <>
               <div className="page-heading">
                 <div>
-                  <div className="eyebrow">Practice room</div>
-                  <h1>Know your numbers. Tell your story.</h1>
+                  <div className="eyebrow">Practice scenario</div>
+                  <h1>Choose your next conversation.</h1>
                   <p className="muted">
-                    Talk with June and save your transcript. Company context will connect next.
+                    Generate a scenario, explore the details, and take it into the practice room.
                   </p>
                 </div>
                 <button
@@ -919,22 +918,7 @@ export function App() {
                   Back to brief
                 </button>
               </div>
-              <VoicePractice state={state} onRefresh={refresh} onError={setError} />
-              {brief && (
-                <details open style={{ marginTop: '24px' }}>
-                  <summary>Existing written practice with a financial brief</summary>
-                  <VoiceRoom
-                    key={brief.id}
-                    state={state}
-                    brief={brief}
-                    onRefresh={refresh}
-                    onBrief={() => {
-                      openBrief();
-                    }}
-                    onError={setError}
-                  />
-                </details>
-              )}
+              <ScenarioPractice state={state} />
             </>
           )}
           {page === Page.FOLLOWUPS && (

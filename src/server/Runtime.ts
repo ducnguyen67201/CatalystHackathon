@@ -4,6 +4,10 @@ import { PrismaStore } from '../infrastructure/PrismaStore.js';
 import { LiveResearch } from '../infrastructure/Research.js';
 import { WorkspaceService } from '../features/WorkspaceService.js';
 import type { Environment } from './Env.js';
+import {
+  DemoScenarioGenerator,
+  LiveScenarioGenerator,
+} from '../infrastructure/ScenarioGeneration.js';
 export function createRuntime(env: Environment) {
   const logger = new WorkflowLogger(env.LOG_LEVEL);
   const store = new PrismaStore(env.DATABASE_URL);
@@ -21,5 +25,9 @@ export function createRuntime(env: Environment) {
       'warn',
     );
   }
-  return new WorkspaceService(store, research, logger, store);
+  const generator =
+    env.SCENARIO_MODE === 'live' && env.OPENAI_API_KEY
+      ? new LiveScenarioGenerator(env.OPENAI_API_KEY, env.SCENARIO_MODEL)
+      : new DemoScenarioGenerator();
+  return new WorkspaceService(store, research, logger, store, { store, generator });
 }
