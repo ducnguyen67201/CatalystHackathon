@@ -1,3 +1,4 @@
+import { runWorkerTick } from '../src/server/Worker.js';
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { investorInputSchema, CheckFrequency } from '../src/contracts/InvestorTracking.js';
@@ -6,9 +7,10 @@ import { parseInvestorUrl, nextInvestorCheck } from '../src/features/InvestorTra
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
 import type { WorkspaceStore } from '../src/features/WorkspaceStore.js';
 import type { ResearchProvider } from '../src/features/ResearchProvider.js';
-import { DemoResearch, LiveResearch } from '../src/infrastructure/Research.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
 
-function createFixture(research: ResearchProvider = new DemoResearch()) {
+function createFixture(research: ResearchProvider = new ResearchFixture()) {
   let state: Workspace | null = null;
   const enqueue = vi.fn<WorkspaceStore['enqueue']>((key, kind) =>
     Promise.resolve(
@@ -75,6 +77,39 @@ describe('investor identity seeds', () => {
 });
 
 describe('watchlist loop', () => {
+  it('records missing credentials as a failed job without creating empty research history', async () => {
+    const { service } = createFixture(new LiveResearch(undefined, undefined, 'test-model'));
+    await initialize(service);
+    await service.investors.discovery.setFrequency('paused');
+    const target = await service.investors.add(
+      investorInputSchema.parse({ url: 'https://x.com/alex' }),
+    );
+    const job = {
+      ...jobSchema.parse({
+        id: 'missing-credentials',
+        kind: `investor:${target.id}`,
+        status: 'running',
+        attempts: 1,
+        createdAt: new Date().toISOString(),
+        result: null,
+        error: null,
+      }),
+      leaseToken: 'test-lease',
+    };
+    vi.spyOn(service.store, 'claimJob').mockResolvedValue(job);
+    const finish = vi.spyOn(service.store, 'finishJob');
+    const fail = vi.spyOn(service.store, 'failJob');
+    await runWorkerTick(service);
+    expect(finish).not.toHaveBeenCalled();
+    expect(fail).toHaveBeenCalledWith(
+      job,
+      expect.stringContaining('Add EXA_API_KEY and OPENAI_API_KEY in Doppler'),
+    );
+    expect(
+      (await service.read()).investors.find((investor) => investor.id === target.id)?.checks,
+    ).toEqual([]);
+  });
+
   it('deduplicates pasted profiles and does not fabricate demo facts about real people', async () => {
     const { service } = createFixture();
     await initialize(service);
@@ -89,27 +124,104 @@ describe('watchlist loop', () => {
     const check = (await service.read()).investors[0]?.checks[0];
     expect(check?.evidenceIds).toEqual([]);
     expect(check?.note).toContain('No supported public evidence');
+    expect(check?.mode).toBe('demo');
   });
 
-  it('discovers once, schedules each candidate, and pauses future scheduling', async () => {
+  it('suggests without monitoring, tracks only selected candidates, and remembers dismissals', async () => {
     const { service, enqueue } = createFixture();
     await initialize(service);
     await service.investors.discover();
-    await service.investors.discover();
-    const target = (await service.read()).investors[0];
-    if (!target) {
-      throw new Error('Missing target');
-    }
-    expect((await service.read()).investors).toHaveLength(1);
+    const first = await service.read();
+    expect(first.investors).toHaveLength(0);
+    expect(first.discovery.suggestions).toHaveLength(3);
     await service.investors.tick(new Date());
+    expect(enqueue).not.toHaveBeenCalled();
+    const [chosen, dismissed] = first.discovery.suggestions;
+    if (!chosen || !dismissed) {
+      throw new Error('Missing suggestions');
+    }
+    await service.investors.discovery.decide(chosen.id, 'tracked');
+    await service.investors.discovery.decide(chosen.id, 'tracked');
+    await service.investors.discovery.decide(dismissed.id, 'dismissed');
+    await service.investors.discover();
+    const state = await service.read();
+    expect(state.investors).toHaveLength(1);
+    expect(state.discovery.suggestions.filter((item) => item.name === dismissed.name)).toHaveLength(
+      1,
+    );
+    expect(state.discovery.suggestions.find((item) => item.id === dismissed.id)?.status).toBe(
+      'dismissed',
+    );
     await service.investors.tick(new Date());
     expect(enqueue).toHaveBeenCalledTimes(1);
+    const target = state.investors[0];
+    if (!target) {
+      throw new Error('Missing tracked investor');
+    }
     await service.investors.setFrequency(target.id, CheckFrequency.PAUSED);
     await service.investors.tick(new Date(Date.now() + 10 * 86400000));
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(nextInvestorCheck(CheckFrequency.WEEKLY, new Date('2026-10-16T00:00:00Z'))).toBe(
       '2026-10-23T00:00:00.000Z',
     );
+  });
+
+  it('refreshes discovery weekly and on profile changes, without requeuing each worker tick', async () => {
+    const { service, enqueue } = createFixture();
+    await initialize(service);
+    const now = new Date();
+    await service.investors.discovery.tick(now);
+    expect(enqueue).not.toHaveBeenCalled();
+    await service.change((state) => {
+      state.profile.version++;
+    });
+    await service.investors.discovery.tick(now);
+    await service.investors.discovery.tick(now);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    await service.investors.discovery.tick(new Date(now.getTime() + 8 * 86400000));
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    await service.investors.discovery.setFrequency('paused');
+    await service.change((state) => {
+      state.profile.version++;
+    });
+    await service.investors.discovery.tick(new Date(now.getTime() + 16 * 86400000));
+    expect(enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not spend another discovery call on a full tray or replayed job, and rejects stale decisions', async () => {
+    const demo = new ResearchFixture();
+    const discover = vi.fn<ResearchProvider['discover']>((...args) => demo.discover(...args));
+    const { service } = createFixture({ discover });
+    await initialize(service);
+    await service.investors.discover('discovery-one');
+    await service.investors.discover('discovery-one');
+    await service.investors.discover('discovery-two');
+    expect(discover).toHaveBeenCalledTimes(1);
+    const suggestion = (await service.read()).discovery.suggestions[0];
+    if (!suggestion) {
+      throw new Error('Missing suggestion');
+    }
+    await service.change((state) => {
+      state.profile.version++;
+    });
+    await expect(service.investors.discovery.decide(suggestion.id, 'tracked')).rejects.toThrow(
+      'company context changed',
+    );
+  });
+
+  it('discards discovery results when company context changes during research', async () => {
+    const demo = new ResearchFixture();
+    const discover = vi.fn<ResearchProvider['discover']>();
+    const { service } = createFixture({ discover });
+    await initialize(service);
+    discover.mockImplementation(async (...args) => {
+      await service.change((state) => {
+        state.profile.version++;
+      });
+      return demo.discover(...args);
+    });
+    await expect(service.investors.discover()).rejects.toThrow('Profile changed');
+    expect((await service.read()).discovery.suggestions).toEqual([]);
   });
 
   it('preserves source history, records no-change checks, and makes job replay idempotent', async () => {
@@ -119,7 +231,7 @@ describe('watchlist loop', () => {
     const target = await service.investors.add(
       investorInputSchema.parse({ name: 'Northline Ventures', url: 'https://example.com' }),
     );
-    const original = (await new DemoResearch().discover((await service.read()).profile))[0];
+    const original = (await new ResearchFixture().discover((await service.read()).profile))[0];
     if (!original) {
       throw new Error('Missing evidence');
     }
@@ -212,6 +324,7 @@ it('live research uses public identity hints, rejects unrelated claims, and vers
                     currency: 'unspecified',
                     quote: 'Alex invests in seed software.',
                     explanation: 'Public profile.',
+                    comparableDeal: null,
                   }),
                 },
               },
@@ -234,6 +347,86 @@ it('live research uses public identity hints, rejects unrelated claims, and vers
     expect(requests.join('\n')).toContain(target.url);
     expect(requests.join('\n')).not.toContain(profile.goal);
     expect(requests.join('\n')).not.toContain('operatingIncome');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('uses comparable-round and co-investor searches and rejects unsupported funding passages', async () => {
+  const { service } = createFixture();
+  await initialize(service);
+  const profile = (await service.read()).profile;
+  const research = new LiveResearch('test-exa', 'test-model', 'gpt-6.1-sol');
+  let supported = true;
+  const requests: string[] = [];
+  const fetchMock = vi.fn<typeof fetch>((input, init) => {
+    const body = typeof init?.body === 'string' ? init.body : '';
+    requests.push(body);
+    if (
+      (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes(
+        'exa.ai',
+      )
+    ) {
+      return Promise.resolve(
+        Response.json({
+          results: [
+            {
+              title: 'Funding announcement',
+              url: 'https://example.com/round',
+              text: 'Cedar participated in ExampleCo seed round. ExampleCo builds B2B software in Canada. The round total was CAD 2 million.',
+            },
+          ],
+        }),
+      );
+    }
+    return Promise.resolve(
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                investor: 'Cedar',
+                matchesTarget: true,
+                stage: null,
+                sector: null,
+                geography: null,
+                checkMin: null,
+                checkMax: null,
+                currency: 'unspecified',
+                quote: 'Cedar participated in ExampleCo seed round.',
+                explanation: 'Comparable company funding, not a confirmed investor mandate.',
+                comparableDeal: {
+                  company: 'ExampleCo',
+                  stage: 'Seed',
+                  sector: 'B2B software',
+                  geography: 'Canada',
+                  announcedAt: null,
+                  roundTotal: 'CAD 2 million',
+                  participationQuote: supported
+                    ? 'Cedar participated in ExampleCo seed round.'
+                    : 'Invented participation.',
+                  comparisonQuote: 'ExampleCo builds B2B software in Canada.',
+                },
+              }),
+            },
+          },
+        ],
+      }),
+    );
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const context = { knownInvestors: ['Known Fund'], excludedInvestors: ['Dismissed Fund'] };
+    const records = await research.discover(profile, undefined, context);
+    expect(records).toHaveLength(1);
+    expect(records[0]?.checkMin).toBeNull();
+    expect(records[0]?.comparableDeal?.roundTotal).toBe('CAD 2 million');
+    expect(requests.filter((body) => body.includes('numResults'))).toHaveLength(2);
+    expect(requests[1]).toContain('Known Fund');
+    expect(requests.join('\n')).not.toContain(profile.goal);
+    expect(requests.join('\n')).toContain('Dismissed Fund');
+    supported = false;
+    expect(await research.discover(profile, undefined, context)).toEqual([]);
   } finally {
     vi.unstubAllGlobals();
   }
