@@ -97,7 +97,7 @@ export function PreparationRecommendationBasis({
                   ? ` The brief also waits for assumed evidence delivery on ${data.schedule.cashExpectedDate}.`
                   : ''}
                 <p>
-                  {projection.suggested
+                  {projection.automatic
                     ? 'These effort and availability values are June’s planning template. They are not derived from your financials or measured work speed.'
                     : 'These are your saved planning assumptions, not observed productivity.'}{' '}
                   Accepting a plan does not verify cash receipt.
