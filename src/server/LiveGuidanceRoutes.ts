@@ -1,3 +1,4 @@
+import { liveGuidanceHistorySchema } from '../contracts/LiveGuidance.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
@@ -12,6 +13,16 @@ export function registerLiveGuidanceRoutes(
   provider: LiveGuidanceProvider | null,
 ) {
   const guidance = provider ? new LiveGuidanceService(service, provider) : null;
+  app.get('/api/rehearsals/:id/live-guidance', async (request, reply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    const id = z.strictObject({ id: z.uuid() }).parse(request.params).id;
+    const session = (await service.read()).rehearsals.find((item) => item.id === id);
+    if (!session) return reply.code(404).send({ error: 'Practice session not found.' });
+    return liveGuidanceHistorySchema.parse({
+      entries: session.liveGuidance ?? [],
+      context: session.evaluationContext,
+    });
+  });
   app.post(
     '/api/rehearsals/:id/live-guidance',
     {

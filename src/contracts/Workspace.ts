@@ -1,3 +1,4 @@
+import { savedLiveGuidanceSchema } from './LiveGuidance.js';
 import { radarSignalSchema, radarStateSchema } from './RadarDelivery.js';
 import {
   evaluationContextSchema,
@@ -176,6 +177,7 @@ export const RehearsalMode = {
 
 export const rehearsalSchema = z.strictObject({
   guided: guidedStateSchema.optional(),
+  liveGuidance: z.array(savedLiveGuidanceSchema).max(200).optional(),
   id: idSchema,
   briefId: idSchema.nullable(),
   mode: z.enum(RehearsalMode),

@@ -1,17 +1,20 @@
 import { createHash } from 'node:crypto';
 import {
   liveGuidanceOutputSchema,
+  savedLiveGuidanceSchema,
   liveGuidanceRequestSchema,
   liveGuidanceResponseSchema,
   type LiveGuidanceOutput,
   type LiveGuidanceRequest,
   type LiveGuidanceResponse,
+  type SavedLiveGuidance,
 } from '../contracts/LiveGuidance.js';
 import type { EvaluationContext } from '../contracts/RehearsalEvaluation.js';
 import type { Workspace } from '../contracts/Workspace.js';
 
 export interface LiveGuidanceWorkspace {
   read(): Promise<Pick<Workspace, 'rehearsals'>>;
+  change<T>(operation: (state: Pick<Workspace, 'rehearsals'>) => T): Promise<T>;
 }
 
 export interface LiveGuidanceInput extends LiveGuidanceRequest {
@@ -58,7 +61,7 @@ export function validateLiveGuidance(raw: unknown, context: EvaluationContext): 
   });
 }
 
-/** Bounded, ephemeral sidecar; it never writes captions into authoritative session history. */
+/** Saves teaching explanations separately from authoritative provider transcripts. */
 export class LiveGuidanceService {
   private readonly cache = new Map<
     string,
@@ -84,7 +87,11 @@ export class LiveGuidanceService {
     const context = session.evaluationContext;
     const question = input.turns.at(-1)?.text;
     if (!question) throw new Error('Session unavailable for live guidance.');
-    const key = sessionId + ':' + createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const id = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const key = sessionId + ':' + id;
+    const saved = session.liveGuidance?.find((entry) => entry.id === id);
+    if (saved)
+      return liveGuidanceResponseSchema.parse({ ...savedLiveGuidanceOutput(saved), context });
     for (const [id, entry] of this.cache) if (entry.expires < Date.now()) this.cache.delete(id);
     const cached = this.cache.get(key);
     if (cached) return cached.result;
@@ -99,6 +106,26 @@ export class LiveGuidanceService {
           context,
         }),
       )
+      .then(async (response) => {
+        await this.workspace.change((state) => {
+          const current = state.rehearsals.find((item) => item.id === sessionId);
+          if (!current) throw new Error('Session unavailable for live guidance.');
+          current.liveGuidance ??= [];
+          if (current.liveGuidance.some((entry) => entry.id === id)) return;
+          if (current.liveGuidance.length >= 200) throw new Error('Guidance history is full.');
+          current.liveGuidance.push(
+            savedLiveGuidanceSchema.parse({
+              why: response.why,
+              factIds: response.factIds,
+              question: response.question,
+              id,
+              turnIndex: input.turnIndex ?? null,
+              createdAt: new Date().toISOString(),
+            }),
+          );
+        });
+        return response;
+      })
       .catch((error: unknown) => {
         this.cache.delete(key);
         throw error;
@@ -113,4 +140,8 @@ export class LiveGuidanceService {
     this.cache.set(key, { expires: Date.now() + 10 * 60 * 1000, result });
     return result;
   }
+}
+
+function savedLiveGuidanceOutput(entry: SavedLiveGuidance) {
+  return { why: entry.why, factIds: entry.factIds, question: entry.question };
 }

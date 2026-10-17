@@ -1,3 +1,4 @@
+import { pauseVoiceForInspection } from './InspectionPause.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ConversationProvider, useConversation } from '@elevenlabs/react';
@@ -113,6 +114,8 @@ function VoicePracticeSession({
   const starting = useRef(false);
   const closing = useRef(false);
   const activeId = useRef<string | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const inspectionPause = useRef<ReturnType<typeof pauseVoiceForInspection> | null>(null);
   const browserSupportsVoice =
     typeof RTCPeerConnection !== 'undefined' && typeof AudioContext !== 'undefined';
 
@@ -124,7 +127,7 @@ function VoicePracticeSession({
           role: parsed.data.source === 'ai' ? 'agent' : 'user',
           text: parsed.data.message,
         };
-        setPreview((turns) => [...turns, turn].slice(-200));
+        setPreview((turns) => (turns.length < 200 ? [...turns, turn] : turns));
       }
     },
     onError: (message: unknown) => {
@@ -148,6 +151,24 @@ function VoicePracticeSession({
       }
     },
   });
+
+  function inspectExplanation(open: boolean): void {
+    if (!activeId.current || conversation.status !== 'connected') return;
+    if (open) {
+      inspectionPause.current ??= pauseVoiceForInspection(conversation);
+    } else {
+      inspectionPause.current?.resume();
+      inspectionPause.current = null;
+    }
+    setInspecting(open);
+  }
+  useEffect(() => {
+    if (!running || conversation.status !== 'connected') {
+      inspectionPause.current?.dispose();
+      inspectionPause.current = null;
+      setInspecting(false);
+    }
+  }, [running, conversation.status]);
 
   const sessions = state.workspace.rehearsals.filter(
     (item) =>
@@ -197,6 +218,7 @@ function VoicePracticeSession({
       activeId.current = response.session.id;
       setSessionId(response.session.id);
       setPreview([]);
+      setInspecting(false);
       setRunning(true);
       conversation.startSession({
         conversationToken: response.token,
@@ -231,7 +253,10 @@ function VoicePracticeSession({
     }
     closing.current = true;
     setBusy(true);
+    inspectionPause.current?.dispose();
+    inspectionPause.current = null;
     conversation.endSession();
+    setInspecting(false);
     try {
       await endVoicePractice(id, completed);
       activeId.current = null;
@@ -279,6 +304,8 @@ function VoicePracticeSession({
     return () => {
       mounted.current = false;
       closing.current = true;
+      inspectionPause.current?.dispose();
+      inspectionPause.current = null;
       conversation.endSession();
       const id = activeId.current;
       activeId.current = null;
@@ -316,7 +343,7 @@ function VoicePracticeSession({
                 <div className="live-controls">
                   <button
                     className="voice-secondary"
-                    disabled={conversation.status !== 'connected'}
+                    disabled={inspecting || conversation.status !== 'connected'}
                     onClick={() => {
                       conversation.setMuted(!conversation.isMuted);
                     }}
@@ -336,7 +363,12 @@ function VoicePracticeSession({
                 </div>
                 <p role="status">
                   {conversation.status} ·{' '}
-                  {conversation.isSpeaking ? 'June is speaking' : 'Your turn'} · up to 10 minutes
+                  {inspecting
+                    ? 'Paused while you read'
+                    : conversation.isSpeaking
+                      ? 'June is speaking'
+                      : 'Your turn'}{' '}
+                  · up to 10 minutes
                 </p>
               </>
             ) : (
@@ -380,7 +412,15 @@ function VoicePracticeSession({
               : 'Questions and captions appear as you talk. Answer guidance uses your saved evidence; the verified transcript arrives after the session.'}
           </p>
           {sessionId && (
-            <LiveGuidance key={sessionId} sessionId={sessionId} turns={turns} running={running} />
+            <LiveGuidance
+              key={sessionId}
+              sessionId={sessionId}
+              turns={turns}
+              running={running}
+              onInspect={
+                running && conversation.status === 'connected' ? inspectExplanation : undefined
+              }
+            />
           )}
           {turns.map((turn, index) => (
             <div className="turn" key={index}>

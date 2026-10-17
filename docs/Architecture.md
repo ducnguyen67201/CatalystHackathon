@@ -282,13 +282,22 @@ scenario reader accepts older records without inventing those fields. The prompt
 source inspector without inference. The practice room offers live video and voice-only formats and collapses full scenario
 details beneath the conversation. `web/LiveGuidance.tsx` is shared by both transports and
 shows the latest spoken interviewer turn, answer objective and source-linked Why inspector.
-It coalesces caption bursts and ignores superseded responses on a new turn, session or end.
+It coalesces caption bursts and retains completed guidance for earlier turns, including
+in-flight results that finish after the call ends. Opening the inspector pauses the microphone
+and interviewer output; closing it restores the prior microphone state. ElevenLabs receives
+repeated user-activity signals while reading; LiveAvatar receives interrupt/stop-listening
+commands and resumes listening on close. Provider session duration limits still apply.
 `POST /api/rehearsals/:id/live-guidance` uses the existing local-session/origin protection,
 a separate bounded rate limit, validated recent captions and server-resolved frozen evaluation
 context. `features/LiveGuidance.ts` validates citations and renders numbers only from cited
 fact placeholders, with a bounded ten-minute in-memory cache and concurrent-request limit.
 `infrastructure/LiveGuidance.ts` makes one structured call using the existing scenario model.
-No guidance call advances the interview, writes browser captions, mutates financial evidence
+Validated explanations are saved in optional rehearsal JSON through the revision-checked
+workspace transaction, keyed by caption payload and turn index. The private no-store
+`GET /api/rehearsals/:id/live-guidance` route returns saved explanations plus the session's
+frozen context without inference, even when the model is unconfigured. General state polling
+omits guidance. Existing sessions require no migration or fabricated backfill.
+No guidance call writes browser captions into the authoritative transcript, mutates financial evidence
 or supplies a transcript receipt. Failures are isolated from media controls. Guidance is an
 inferred preparation aid, not access to the provider's private reasoning. Historical guided
 text APIs and saved records remain supported without a separate format tab.

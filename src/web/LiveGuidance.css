@@ -22,3 +22,9 @@
   display: block;
   margin-top: 8px;
 }
+
+.live-guidance-entry {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #d6e2da;
+}

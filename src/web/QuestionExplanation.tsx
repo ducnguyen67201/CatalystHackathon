@@ -14,11 +14,13 @@ export function QuestionExplanation({
   why,
   sources,
   facts = [],
+  onOpenChange,
 }: {
   question: string;
   why: QuestionWhy;
   sources: WhySource[];
   facts?: EvaluationContext['facts'];
+  onOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const tooltipId = useId();
   const titleId = useId();
@@ -35,6 +37,7 @@ export function QuestionExplanation({
   }, [open]);
   function close() {
     setOpen(false);
+    onOpenChange?.(false);
     setSuppressed(true);
     trigger.current?.focus();
   }
@@ -73,6 +76,7 @@ export function QuestionExplanation({
           if (event.key === 'Escape') setSuppressed(true);
         }}
         onClick={() => {
+          onOpenChange?.(true);
           setPane('explanation');
           setOpen(true);
         }}
@@ -93,7 +97,9 @@ export function QuestionExplanation({
           event.preventDefault();
           close();
         }}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          if (open) close();
+        }}
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             const bounds = event.currentTarget.getBoundingClientRect();
@@ -110,7 +116,11 @@ export function QuestionExplanation({
         <div className="question-why-head">
           <div>
             <h2 id={titleId}>Why this question?</h2>
-            <small>Explanation and saved evidence</small>
+            <small>
+              {onOpenChange
+                ? 'Conversation paused while you read · Close to resume'
+                : 'Explanation and saved evidence'}
+            </small>
           </div>
           <button
             type="button"

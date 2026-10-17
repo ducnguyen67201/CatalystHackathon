@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rehearsalSchema } from '../src/contracts/Workspace.js';
+import { rehearsalSchema, type Workspace } from '../src/contracts/Workspace.js';
 import {
   liveGuidanceRequestSchema,
+  liveGuidanceHistorySchema,
   type LiveGuidanceOutput,
 } from '../src/contracts/LiveGuidance.js';
 import { LiveGuidanceService, validateLiveGuidance } from '../src/features/LiveGuidance.js';
@@ -37,9 +38,11 @@ function fixture(mode: 'elevenlabs' | 'liveavatar' = 'elevenlabs') {
     },
   };
   const generate = vi.fn(() => Promise.resolve(output));
-  const service = new LiveGuidanceService({ read }, { generate });
+  const change = <T>(operation: (state: Pick<Workspace, 'rehearsals'>) => T): Promise<T> =>
+    Promise.resolve(operation({ rehearsals: [session] }));
+  const service = new LiveGuidanceService({ read, change }, { generate });
   const input = { turns: [{ role: 'agent', text: 'What does the credit change?' }] };
-  return { context, session, read, output, generate, service, input };
+  return { context, session, read, change, output, generate, service, input };
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('live interview guidance', () => {
@@ -47,12 +50,13 @@ describe('live interview guidance', () => {
     'uses frozen evidence and actual %s captions without saving browser turns',
     async (mode) => {
       const { session, service, input, context, generate } = fixture(mode);
-      const before = JSON.stringify(session);
+      const before = JSON.stringify(session.turns);
       const result = await service.explain(session.id, input);
       expect(result.question).toBe(input.turns[0]?.text);
       expect(result.why.explanation).toContain('-18000 (CAD, 2026-09)');
       expect(generate).toHaveBeenCalledWith({ ...input, context });
-      expect(JSON.stringify(session)).toBe(before);
+      expect(JSON.stringify(session.turns)).toBe(before);
+      expect(session.liveGuidance).toHaveLength(1);
       expect(session.transcriptReceivedAt).toBeNull();
     },
   );
@@ -65,6 +69,7 @@ describe('live interview guidance', () => {
     });
     expect(generate).toHaveBeenCalledTimes(2);
     session.id = randomUUID();
+    session.liveGuidance = [];
     await service.explain(session.id, input);
     expect(generate).toHaveBeenCalledTimes(3);
   });
@@ -83,6 +88,63 @@ describe('live interview guidance', () => {
     session.evaluationContext = null;
     await expect(service.explain(session.id, input)).rejects.toThrow('Session unavailable');
     await expect(service.explain(randomUUID(), input)).rejects.toThrow('Session unavailable');
+  });
+  it('keeps every turn and reuses saved explanations after a service restart', async () => {
+    const { session, service, input, read, change, generate } = fixture();
+    await service.explain(session.id, { ...input, turnIndex: 0 });
+    await service.explain(session.id, {
+      turns: [{ role: 'agent', text: 'What is missing?' }],
+      turnIndex: 2,
+    });
+    expect(session.liveGuidance?.map((entry) => entry.turnIndex)).toEqual([0, 2]);
+    const restored = rehearsalSchema.parse(JSON.parse(JSON.stringify(session)));
+    expect(restored.liveGuidance).toEqual(session.liveGuidance);
+    const restarted = new LiveGuidanceService({ read, change }, { generate });
+    await restarted.explain(session.id, { ...input, turnIndex: 0 });
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(session.liveGuidance).toHaveLength(2);
+  });
+  it('saves an in-flight explanation even when the session ends before it completes', async () => {
+    const { service, session, input, generate, output } = fixture();
+    let complete: ((value: LiveGuidanceOutput) => void) | undefined;
+    generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const pending = service.explain(session.id, input);
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    session.status = 'completed';
+    complete?.(output);
+    await pending;
+    expect(session.liveGuidance).toHaveLength(1);
+    expect(session.turns).toEqual([]);
+    expect(session.transcriptReceivedAt).toBeNull();
+  });
+  it('reads saved explanations for an ended session without a configured model', async () => {
+    const { read, change, session, service, input, generate } = fixture();
+    await service.explain(session.id, input);
+    session.status = 'completed';
+    const app = Fastify();
+    registerLiveGuidanceRoutes(app, { read, change }, null);
+    try {
+      const result = await app.inject({
+        method: 'GET',
+        url: `/api/rehearsals/${session.id}/live-guidance`,
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['cache-control']).toBe('private, no-store');
+      expect(liveGuidanceHistorySchema.parse(result.json()).entries).toHaveLength(1);
+      expect(generate).toHaveBeenCalledTimes(1);
+      const missing = await app.inject({
+        method: 'GET',
+        url: `/api/rehearsals/${randomUUID()}/live-guidance`,
+      });
+      expect(missing.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
   it('rejects invented numbers, foreign evidence and uncited fact placeholders', () => {
     const { output, context } = fixture();
@@ -121,9 +183,9 @@ describe('live interview guidance', () => {
     ).toBe(false);
   });
   it('exposes a private route and lets media continue when guidance is not configured', async () => {
-    const { read, generate, input, session } = fixture();
+    const { read, change, generate, input, session } = fixture();
     const app = Fastify();
-    registerLiveGuidanceRoutes(app, { read }, { generate });
+    registerLiveGuidanceRoutes(app, { read, change }, { generate });
     try {
       const response = await app.inject({
         method: 'POST',
@@ -136,7 +198,7 @@ describe('live interview guidance', () => {
       await app.close();
     }
     const missing = Fastify();
-    registerLiveGuidanceRoutes(missing, { read }, null);
+    registerLiveGuidanceRoutes(missing, { read, change }, null);
     try {
       const response = await missing.inject({
         method: 'POST',
