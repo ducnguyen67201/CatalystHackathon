@@ -1,3 +1,4 @@
+import { buildPeerComparison } from './PeerComparison.js';
 import { fictionalFinancialHashes } from '../contracts/FinancialProvenance.js';
 import { createHash } from 'node:crypto';
 import {
@@ -170,6 +171,10 @@ export class RehearsalScenarioSource implements ScenarioSourceProvider {
   }
 }
 
+function currentSnapshot(state: Workspace) {
+  return state.snapshots.find((item) => item.id === state.onboarding.snapshotId);
+}
+
 export function assembleScenarioInput(
   state: Workspace,
   investorId: string,
@@ -191,6 +196,16 @@ export function assembleScenarioInput(
   return scenarioInputSchema.parse({
     schemaVersion: 1,
     capturedAt,
+    ...(state.peers?.length && currentSnapshot(state)
+      ? {
+          peerComparison: buildPeerComparison(
+            currentSnapshot(state),
+            state.peers ?? [],
+            state.profile.version,
+            capturedAt,
+          ),
+        }
+      : {}),
     investor: {
       id: investor.id,
       name: investor.name,
@@ -253,6 +268,9 @@ export function scenarioInputHash(input: ScenarioInput): string {
   return hashValue({
     ...input,
     previousScenarios: [],
+    ...(input.peerComparison
+      ? { peerComparison: { ...input.peerComparison, capturedAt: null } }
+      : {}),
     capturedAt: null,
     sources: input.sources.map((source) => ({ ...source, capturedAt: null })),
   });

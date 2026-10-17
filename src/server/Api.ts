@@ -1,3 +1,4 @@
+import { registerPeerRoutes } from './PeerRoutes.js';
 import { registerRadarRoutes } from './RadarRoutes.js';
 import { registerHostedAccess } from './HostedAccess.js';
 import { registerEvaluationRoutes } from './EvaluationRoutes.js';
@@ -42,7 +43,7 @@ import { avatarCorrelationSchema } from '../contracts/AvatarPractice.js';
 import type { AvatarProvider } from '../features/AvatarProvider.js';
 import { LiveAvatarProvider } from '../infrastructure/LiveAvatar.js';
 import { isAvatarConfigured, registerAvatarRoutes } from './AvatarRoutes.js';
-import { practiceContextSchema } from '../contracts/PracticeContext.js';
+import { practiceContextSchema, interviewerContext } from '../contracts/PracticeContext.js';
 import {
   voiceSessionRequestSchema,
   voiceSessionResponseSchema,
@@ -242,6 +243,7 @@ export async function createApi(
     const job = await service.store.enqueue(`manual:${body.key}`, 'radar');
     return reply.code(202).send(job);
   });
+  registerPeerRoutes(app, service);
   registerEvaluationRoutes(app, service);
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
@@ -308,7 +310,7 @@ export async function createApi(
       token: credentials.token,
       dynamicVariables: {
         company_name: context.company?.name ?? 'the founder',
-        brief_context: JSON.stringify(context),
+        brief_context: JSON.stringify(interviewerContext(context)),
         previous_session_summary: 'No previous rehearsal supplied.',
       },
     });

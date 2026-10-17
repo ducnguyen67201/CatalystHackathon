@@ -6,6 +6,13 @@ const claims: Record<
   string,
   Pick<Extraction['claims'][number], 'metric' | 'value' | 'period' | 'unit' | 'kind'>
 > = {
+  'Our operating income is -48531 CAD for 2026-09.': {
+    metric: 'operating_income',
+    value: '-48531',
+    period: '2026-09',
+    unit: 'CAD',
+    kind: 'actual',
+  },
   'Our operating income is 122503 unspecified for 2026-07.': {
     metric: 'operating_income',
     value: '122503',

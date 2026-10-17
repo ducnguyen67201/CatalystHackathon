@@ -1,3 +1,5 @@
+import './PeerComparison.css';
+import { ComparisonChart } from './PeerCharts.js';
 import { CheckCircle2, FileCheck2, Target, TriangleAlert } from 'lucide-react';
 import type { EvaluationRecord } from '../contracts/RehearsalEvaluation.js';
 
@@ -97,6 +99,31 @@ export function PitchPreparationReport({
           </p>
         )}
       </section>
+      {report.peerInsights && report.peerInsights.length > 0 && (
+        <section
+          className="preparation-report-section peer-insights"
+          aria-label="Relevant peer insights"
+        >
+          <h4>Peer context for your answers</h4>
+          <p className="muted">
+            Saved with this practice context. This compares business metrics, not your pitch
+            performance. Peer figures are founder-entered and unverified.
+          </p>
+          {report.peerInsights.map((insight) => (
+            <article key={`${insight.claimId}:${insight.comparison.metric}`}>
+              <blockquote>
+                {report.extraction.claims.find((claim) => claim.id === insight.claimId)?.quote}
+              </blockquote>
+              {insight.comparison.peers.some((item) => item.peer.fictional) && (
+                <p>Fictional demo peer evidence</p>
+              )}
+              <p className="muted">Comparison captured {insight.capturedAt.slice(0, 10)}.</p>
+              <ComparisonChart comparison={insight.comparison} />
+              <p>{insight.preparation}</p>
+            </article>
+          ))}
+        </section>
+      )}
       <section className="preparation-report-section" aria-label="Recommended preparation">
         <h4>
           <Target aria-hidden="true" size={19} />

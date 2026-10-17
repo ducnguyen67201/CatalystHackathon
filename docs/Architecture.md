@@ -358,3 +358,34 @@ Source freshness excludes prior generated scenarios to avoid immediately marking
 new generation outdated. The prompt version is scenario-v2. Sources include bounded
 financial history and investor-linked completed practice; source snapshots remain immutable.
 CSV amounts are copied as exact decimal strings and no LLM financial arithmetic is requested.
+
+## Peer comparison snapshots
+
+`contracts/PeerComparison.ts` validates founder-entered monthly peer statements, source
+metadata, comparison projections and saved report insights. `features/PeerComparison.ts`
+selects the latest active evidence version per peer and calculates revenue growth, gross
+margin and operating margin with an 80-digit Decimal context, rounding only derived
+percentages to eight decimal places. Each metric retains the company snapshot/CSV rows,
+selected peer evidence versions, exact source values and exclusion reasons. Group membership
+is an explicit founder judgment; entered public sources are not fetched or verified.
+
+The additive `Workspace.peers` JSON column stores append-only evidence revisions within the
+existing revision-checked Prisma transaction. `server/PeerRoutes.ts` uses existing API access
+hooks, expected peer versions and a 20-active-peer bound; archives append evidence rather than
+erase history. The private no-store dashboard endpoint returns active peers and a comparison
+for the selected financial statement. `web/PeerDashboard.tsx` owns the evidence form and group
+management; `PeerCharts.tsx` shares accessible SVG and source disclosures with the report.
+
+New evaluation contexts optionally capture a peer comparison. Scenario inputs freeze it at
+creation; evaluation contexts for older scenarios do not attach current evidence. Optional
+fields have no defaults, preserving old context hashes. Scenario freshness ignores the peer
+comparison's capture time but includes its content. `withoutPeerComparison` excludes peer
+snapshots from model evaluation/guidance and written-practice budgets; `scenarioDataPrompt`
+also excludes them. The ordinary extraction/coaching prompts remain unchanged.
+
+After validated extraction, `PeerInsights.ts` links at most three locally calculated insights
+to actual, non-superseded founder claims matching the metric topic and latest reporting month.
+It preserves claim/turn references, the captured comparison and preparation template in the
+saved report under the existing worker lease transaction. Missing or unrelated comparisons
+produce an empty list; historical reports remain absent rather than backfilled. Numerical
+context does not establish claim support, causation, investor preference or pitch quality.

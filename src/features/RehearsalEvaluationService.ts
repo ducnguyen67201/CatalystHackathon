@@ -1,6 +1,8 @@
+import { buildPeerInsights } from './PeerInsights.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   evaluationRecordSchema,
+  withoutPeerComparison,
   type EvaluationRecord,
   type EvaluationResponse,
 } from '../contracts/RehearsalEvaluation.js';
@@ -38,7 +40,10 @@ export function queueEvaluation(
   }
   const reason = !session.turns.some((t) => t.role === 'user' && t.text.trim())
     ? 'No substantive founder turns were received.'
-    : JSON.stringify({ context: session.evaluationContext, turns: session.turns }).length > 100000
+    : JSON.stringify({
+          context: withoutPeerComparison(session.evaluationContext),
+          turns: session.turns,
+        }).length > 100000
       ? 'This session exceeds the supported input size. No partial assessment was generated.'
       : null;
   const now = new Date().toISOString();
@@ -133,13 +138,20 @@ export class RehearsalEvaluationService {
       .flatMap((s) => s.evaluations)
       .find((e) => e.id === evaluation.parentEvaluationId);
     const input: EvaluationInput = {
-      context,
+      context: withoutPeerComparison(context),
       turns: evaluation.turns,
       scope: evaluation.scope,
       clarification: evaluation.clarification,
       previous:
         parent?.report && evaluation.parentItemId
-          ? { report: parent.report, itemId: evaluation.parentItemId }
+          ? {
+              report: {
+                extraction: parent.report.extraction,
+                checks: parent.report.checks,
+                coaching: parent.report.coaching,
+              },
+              itemId: evaluation.parentItemId,
+            }
           : null,
     };
     const extraction = validateExtraction(await provider.extract(input), input);
@@ -156,7 +168,12 @@ export class RehearsalEvaluationService {
         ?.evaluations.find((e) => e.id === evaluationId);
       if (!target || target.generation !== evaluation.generation || target.status !== 'queued')
         throw new Error('Evaluation changed.');
-      target.report = { extraction, checks, coaching };
+      target.report = {
+        extraction,
+        checks,
+        coaching,
+        peerInsights: buildPeerInsights(context.peerComparison, extraction),
+      };
       target.status = 'completed';
       target.completedAt = new Date().toISOString();
     }, job);

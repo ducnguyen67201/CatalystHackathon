@@ -16,7 +16,9 @@ export const SCENARIO_SYSTEM_PROMPT = [
 ].join('\n');
 
 export function scenarioDataPrompt(input: ScenarioInput): string {
-  const data = JSON.stringify(input);
+  const scenarioEvidence = { ...input };
+  delete scenarioEvidence.peerComparison;
+  const data = JSON.stringify(scenarioEvidence);
   if (data.length > 90000) throw new Error('Scenario input exceeds the prompt limit.');
   return data;
 }

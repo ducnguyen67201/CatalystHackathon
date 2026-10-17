@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { peerComparisonSchema } from './PeerComparison.js';
 import { questionWhySchema } from './QuestionWhy.js';
 
 const text = z.string().trim().min(1).max(2000);
@@ -119,6 +120,7 @@ export const coverageSchema = z.strictObject({
 });
 
 export const scenarioInputSchema = z.strictObject({
+  peerComparison: peerComparisonSchema.optional(),
   schemaVersion: z.literal(1),
   capturedAt: z.iso.datetime(),
   investor: z.strictObject({
