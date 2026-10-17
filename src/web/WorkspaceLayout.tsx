@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import {
   Activity,
   Bell,
-  CalendarDays,
   ChartNoAxesCombined,
   FileText,
   LayoutDashboard,
@@ -31,7 +30,6 @@ export function WorkspaceLayout({
   const [sidebarLabelsDismissed, setSidebarLabelsDismissed] = useState(false);
   const nav = [
     { id: Page.OVERVIEW, label: 'Overview', icon: LayoutDashboard },
-    { id: Page.MEETINGS, label: 'Meetings', icon: CalendarDays },
     { id: Page.RADAR, label: 'Investor radar', icon: Radar },
     { id: Page.INVESTORS, label: 'Investor research', icon: Search },
     { id: Page.FINANCIALS, label: 'Financials', icon: ChartNoAxesCombined },

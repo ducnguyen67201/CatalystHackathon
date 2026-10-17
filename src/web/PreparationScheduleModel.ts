@@ -18,23 +18,28 @@ export type ScheduleTone = 'unknown' | 'on_track' | 'ahead' | 'at_risk' | 'behin
 export function projectSchedule(view: PreparationView, pace = 1, now = new Date()) {
   const today = preparationDay(now, view.goal?.timezone ?? 'UTC');
   const start = dayNumber(today);
-  const assumption = view.schedule;
-  const current =
-    !!assumption &&
-    assumption.goalId === view.goal?.id &&
-    assumption.planId === view.plan?.id &&
-    !view.outdated;
+  const saved = view.schedule;
+  const savedCurrent = !!saved && saved.goalId === view.goal?.id && saved.planId === view.plan?.id;
+  const suggested = !savedCurrent;
+  const assumption = savedCurrent
+    ? saved
+    : {
+        dailyHours: 0.5,
+        cashExpectedDate: null,
+        hours: { financial: 0.5, investor: 0.5, brief: 0.5, rehearse: 1 },
+      };
+  const current = !!view.goal && !!view.plan && !view.outdated;
   const cashDate = current ? assumption.cashExpectedDate : null;
   const validCash = !!cashDate && cashDate >= today;
   const complete = view.milestones.every((item) => item.status === 'complete') && !view.outdated;
   const reason = view.outdated
     ? 'Saved evidence changed. Refresh the plan.'
     : !current
-      ? 'Confirm effort, daily availability and evidence delivery.'
-      : !validCash
+      ? 'Set your goal to prepare the next steps.'
+      : cashDate !== null && !validCash
         ? 'Confirm a future cash-evidence delivery date; receipt is not verified.'
         : null;
-  const capacity = new Decimal(assumption?.dailyHours ?? 2).mul(pace);
+  const capacity = new Decimal(assumption.dailyHours).mul(pace);
   let cursor = new Decimal(start);
   const rows = view.milestones.map((milestone) => {
     const key = milestone.id;
@@ -100,6 +105,7 @@ export function projectSchedule(view: PreparationView, pace = 1, now = new Date(
     label,
     reason,
     current,
+    suggested,
     reviewed,
     next,
     capacity: capacity.toString(),

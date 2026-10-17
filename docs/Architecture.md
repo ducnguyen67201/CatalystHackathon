@@ -185,7 +185,7 @@ Prisma owns the separate ResearchRun table with immutable JSON payload, a conten
 
 ## Founder onboarding and dashboard
 
-`src/contracts/Onboarding.ts` owns the three-step setup and current meeting context. `ProfileLinks.ts` owns canonical HTTPS identity URLs, rejecting credentials, local/IP hosts and social post/search URLs. LinkedIn and X fields require their respective profile hosts; the firm URL can identify a public team page. These are search hints, not fetched directly or treated as verified evidence.
+`src/contracts/Onboarding.ts` owns the persisted setup steps (the UI completes in two steps) and current meeting context. `ProfileLinks.ts` owns canonical HTTPS identity URLs, rejecting credentials, local/IP hosts and social post/search URLs. LinkedIn and X fields require their respective profile hosts; the firm URL can identify a public team page. These are search hints, not fetched directly or treated as verified evidence.
 
 The additive onboarding migration adds a JSON column to Workspace. Existing rows load as incomplete setup without deleting or reinterpreting financials, investors, briefs or rehearsals. Each Continue action saves a completed step; unfinished text edits stay in the form. The sample route reuses the original fixture by content hash. Financial selection explicitly identifies an existing snapshot. Uploads retain all previous snapshots. Company stage, sector, geography and raise amount can be unknown, and matching returns unknown for those criteria.
 
@@ -579,13 +579,72 @@ current/expected position strip, accessible timeline table, scenario pace and re
 `PreparationScheduleModel.ts` projects founder-confirmed effort and daily capacity using Decimal
 arithmetic and date-only UTC calendar arithmetic after selecting today in the goal timezone.
 Work is sequential and the brief waits for assumed cash delivery; this is a planning model,
-not a cash forecast or funding prediction. Missing/overdue delivery or changed plan inputs
-suppress future dates. Targetless plans have no on-track assertion. Review activity counts
+not a cash forecast or funding prediction. Overdue explicit delivery or changed source inputs
+suppress future dates. Missing delivery stays an unresolved cash gap, not a prerequisite for
+preparing a brief that discloses that gap. Targetless plans have no on-track assertion. Review activity counts
 unique current accepted artifacts in seven days and is never extrapolated into velocity.
 
 `POST /api/preparation-plan/schedule` validates bounded estimates with Zod, checks optimistic
 version, current plan and source freshness, then appends an assumption record in the existing
 Prisma-backed preparation aggregate. Reads expose the latest record without writing history.
-Older records and financial snapshots remain unchanged. New plans/goals require reconfirmation;
+Older records and financial snapshots remain unchanged. New plans/goals use labeled suggested estimates until customized;
 temporary slower/faster controls never mutate saved assumptions. Standard workspace/session,
 origin and cache controls apply. No provider calls or new worker are introduced.
+
+### Goal-first preparation and conversation context
+
+`PreparationIntent.ts` synchronizes an explicit company objective into a versioned preparation
+goal and local draft in the same workspace transaction. Onboarding/company edits and the
+version-checked `POST /api/preparation-plan/intent` share this function; no parser guesses round,
+amount or financing history from free text. Existing goal detail and history are preserved.
+The worker continues to reconcile saved evidence; this edit starts no provider calls.
+
+`PreparationIntentForm.tsx` exposes a single goal input; detailed round controls stay optional.
+`PreparationScheduleModel.ts` uses disclosed template effort and 0.5 hours/day when no current
+custom schedule exists. This makes the timeline usable without a required assumption form.
+Current custom plans remain supported. Real accepted-review activity stays separate from
+suggested availability and cash/runway is not inferred.
+
+`InvestorMeetingContext.tsx` embeds current conversation editing in Radar through protected
+`PUT /api/investor-meeting`. The selected investor follows this explicit edit and the current
+preparation draft is regenerated locally. Legacy Meetings URLs resolve to Radar. Existing
+brief, rehearsal and recording snapshots are preserved. The onboarding UI completes the
+existing persisted company/meeting transitions without forcing a separate conversation screen.
+
+`PreparationRecommendationBasis.tsx` exposes the current recommendation's review dependency,
+exact financial baseline, frozen source excerpts, timestamps and uncertainty. Its rationale
+selects the actual next review/investor/rehearsal gate and discloses stale inputs. Schedule
+explanations reuse `projectSchedule` and exact Decimal effort sums; template estimates never
+claim to be measured or derived from financial performance. No alternative raise amount is
+generated from an income statement. Existing source/decision history is unchanged.
+
+### Exact preparation source inspection
+
+New financial snapshots retain optional `sourceCsv` in the existing immutable JSON payload.
+Original text is excluded from `/api/state` and loaded only through authenticated, private/no-store
+`GET /api/preparation-plan/:planId/sources/:artifactId`. The route resolves a saved plan and
+financial artifact to its frozen snapshot, returns exact parsed cells and supporting record/
+column locators, and discloses missing original text for historical uploads. It never
+reconstructs old files or changes historical snapshots. No database migration is needed.
+
+`PreparationSourceEvidence.tsx` renders CSV records with supporting cells highlighted and an
+optional unchanged-text view. Investor source panels distinguish publication/retrieval dates,
+original quoted passages and model interpretation. Saved research context comes from the
+existing protected research-run endpoint; only a literal matching substring is highlighted.
+Missing speaker identity and absent context stay explicit. Planner version 2 adds optional
+publication, research-run and interpretation metadata to new artifacts while retaining old plans.
+
+### Position freshness and change manifests
+
+`PreparationPosition.ts` projects the currently selected financial snapshot and investor check
+status alongside pending change reasons. `PreparationPlanner` version 3 persists optional hashes
+of goal/context, financial identity, selected-investor evidence, and relevant completed reviews
+in each append-only plan. Its change labels compare manifests; schedule bookkeeping, unchanged
+checks, heartbeat and display timestamps are excluded from input identity. Legacy plans disclose
+that no comparable manifest exists. Reads remain pure; reconciliation writes only new inputs.
+
+`PreparationPosition.tsx` exposes source timestamps, synchronization state, monitoring status and
+manual recovery controls. Dashboard figures use the same preparation projection as freshness;
+visibility-aware serialized polling preserves open drafts and announces meaningful changes.
+Network failure retains prior state with explicit stale-view messaging. Provider work is never
+started by rendering or polling; manual investor checks reuse existing protected routes.

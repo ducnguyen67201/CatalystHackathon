@@ -530,6 +530,7 @@ describe('PostgreSQL-backed application workflow', () => {
         value)(before);
       expect(stateResponseSchema.parse(restored.json()).workspace).toEqual({
         ...publicBefore,
+        snapshots: before.snapshots.map(({ sourceCsv: _sourceCsv, ...snapshot }) => snapshot),
         rehearsals: before.rehearsals.map((s) => ({
           ...s,
           evaluationContext: null,
@@ -2854,7 +2855,9 @@ describe('Continuous preparation plan', () => {
     );
     expect(publicState.workspace).not.toHaveProperty('preparation');
     await service.preparation.reconcile();
-    expect((await service.read()).preparation?.plans).toHaveLength(1);
+    expect((await service.read()).preparation?.plans).toHaveLength(
+      (before.preparation?.plans.length ?? 0) + 1,
+    );
     await service.change((state) => {
       state.profile.version++;
     });
@@ -2869,9 +2872,13 @@ describe('Continuous preparation plan', () => {
       ).statusCode,
     ).toBe(409);
     await service.preparation.reconcile();
-    expect((await service.read()).preparation?.plans).toHaveLength(2);
+    expect((await service.read()).preparation?.plans).toHaveLength(
+      (before.preparation?.plans.length ?? 0) + 2,
+    );
     const historical = await store.load();
-    expect(historical?.preparation?.plans[0]).toEqual(saved.plan);
+    expect(historical?.preparation?.plans[before.preparation?.plans.length ?? 0]).toEqual(
+      saved.plan,
+    );
   });
 });
 
@@ -2885,3 +2892,130 @@ function zTestId(value: unknown): string {
     throw new Error('Missing response ID');
   return value.id;
 }
+
+it('saves a single preparation intent and investor conversation under existing access controls', async () => {
+  const { preparationViewSchema } = await import('../src/contracts/FundraisingPreparation.js');
+  const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+  const initial = preparationViewSchema.parse(
+    (await app.inject({ url: '/api/preparation-plan', headers })).json(),
+  );
+  const before = await service.read();
+  const payload = {
+    intent: 'I want to raise my next round',
+    version: initial.version,
+    profileVersion: before.profile.version,
+  };
+  expect(
+    (await app.inject({ method: 'POST', url: '/api/preparation-plan/intent', headers, payload }))
+      .statusCode,
+  ).toBe(200);
+  expect((await service.read()).profile.goal).toBe(payload.intent);
+  expect((await service.preparation.view()).outdated).toBe(false);
+  expect(
+    (await app.inject({ method: 'POST', url: '/api/preparation-plan/intent', headers, payload }))
+      .statusCode,
+  ).toBe(409);
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/preparation-plan/intent',
+        headers,
+        payload: { ...payload, intent: ' ' },
+      })
+    ).statusCode,
+  ).toBe(400);
+  expect(
+    (await app.inject({ method: 'POST', url: '/api/preparation-plan/intent', payload })).statusCode,
+  ).toBe(401);
+  const meeting = {
+    name: 'Fictional Partner',
+    firm: 'Example Fund',
+    date: null,
+    notes: 'Discuss retention.',
+    links: { linkedin: null, x: null, website: null },
+  };
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/investor-meeting',
+        headers,
+        payload: { meeting },
+      })
+    ).statusCode,
+  ).toBe(200);
+  const after = await service.read();
+  expect(after.onboarding.meeting?.notes).toBe(meeting.notes);
+  expect((await service.preparation.view()).goal?.investorId).toBe(
+    after.onboarding.meeting?.investorId,
+  );
+  expect(after.snapshots).toEqual(before.snapshots);
+  expect(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: '/api/investor-meeting',
+        headers: { ...headers, origin: 'https://untrusted.example' },
+        payload: { meeting },
+      })
+    ).statusCode,
+  ).toBe(403);
+});
+
+it('serves original CSV evidence lazily with snapshot identity and private access controls', async () => {
+  const view = await service.preparation.view();
+  const artifact = view.plan?.artifacts.find((item) => item.kind === 'financial');
+  if (!view.plan || !artifact) throw new Error('Missing current financial plan');
+  const path = `/api/preparation-plan/${view.plan.id}/sources/${artifact.id}`;
+  const headers = { cookie: sessionCookie };
+  const before = await service.read();
+  const response = await app.inject({ url: path, headers });
+  expect(response.statusCode).toBe(200);
+  expect(response.headers['cache-control']).toBe('private, no-store');
+  const { preparationCsvSourceSchema } = await import('../src/contracts/PreparationSource.js');
+  const source = preparationCsvSourceSchema.parse(response.json());
+  expect(source.sourceCsv).toBe(
+    before.snapshots.find((item) => item.id === artifact.snapshotId)?.sourceCsv,
+  );
+  expect(source.highlightedRecord).toBe(artifact.chart?.sourceRow);
+  expect((await app.inject({ url: path })).statusCode).toBe(401);
+  expect(
+    (await app.inject({ url: path, headers: { ...headers, origin: 'https://untrusted.example' } }))
+      .statusCode,
+  ).toBe(403);
+  const publicState = stateResponseSchema.parse(
+    (await app.inject({ url: '/api/state', headers })).json(),
+  );
+  expect(
+    publicState.workspace.snapshots.every((snapshot) => snapshot.sourceCsv === undefined),
+  ).toBe(true);
+  expect(await service.read()).toEqual(before);
+});
+
+it('updates the position projection from new saved financials without reads mutating history', async () => {
+  const { preparationViewSchema } = await import('../src/contracts/FundraisingPreparation.js');
+  await service.preparation.setAutomatic(true, (await service.preparation.view()).version);
+  const initial = await service.preparation.view();
+  const csv = readFileSync('fixtures/Tidewell.csv', 'utf8').replaceAll('2026-09', '2026-10');
+  await service.upload(csv, 'Tidewell.csv', 'unspecified');
+  const headers = { cookie: sessionCookie };
+  const beforeRead = await service.read();
+  const pending = preparationViewSchema.parse(
+    (await app.inject({ url: '/api/preparation-plan', headers })).json(),
+  );
+  expect(pending.position?.financial?.period).toBe('2026-10');
+  expect(pending.position?.pendingChanges).toContain('Selected financial baseline changed.');
+  expect(pending.outdated).toBe(true);
+  expect(await service.read()).toEqual(beforeRead);
+  await service.preparation.reconcile();
+  const after = preparationViewSchema.parse(
+    (await app.inject({ url: '/api/preparation-plan', headers })).json(),
+  );
+  expect(after.outdated).toBe(false);
+  expect(after.plan?.changes).toContain('Selected financial baseline changed.');
+  expect(after.position?.financial?.snapshotId).not.toBe(initial.position?.financial?.snapshotId);
+  expect(
+    (await service.read()).preparation?.plans.find((plan) => plan.id === initial.plan?.id),
+  ).toEqual(initial.plan);
+});

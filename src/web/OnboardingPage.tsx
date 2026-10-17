@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { z } from 'zod';
 import { ArrowRight, Check, Upload } from 'lucide-react';
 import { Stage, profileSchema, type Profile, type StateResponse } from '../contracts/Workspace.js';
-import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { command, request } from './ApiClient.js';
 
 type Props = {
@@ -16,20 +15,13 @@ type Props = {
 /** Each completed step is saved on the server; drafts stay local until Continue. */
 export function OnboardingPage({ state, onComplete, onRefresh, editing = false, onCancel }: Props) {
   const workspace = state.workspace;
-  const [step, setStep] = useState(editing ? 2 : workspace.onboarding.step);
+  const [step, setStep] = useState(editing ? 2 : Math.min(workspace.onboarding.step, 2));
   const [profile, setProfile] = useState<Profile>(() =>
     workspace.profile.version === 1 && !workspace.onboarding.completedAt
       ? { ...workspace.profile, stage: Stage.UNKNOWN, sector: '', geography: '', raiseTarget: null }
       : workspace.profile,
   );
   const meeting = workspace.onboarding.meeting;
-  const [name, setName] = useState(meeting?.name ?? '');
-  const [firm, setFirm] = useState(meeting?.firm ?? '');
-  const [date, setDate] = useState(meeting?.date ?? '');
-  const [notes, setNotes] = useState(meeting?.notes ?? '');
-  const [linkedin, setLinkedin] = useState(meeting?.links.linkedin ?? '');
-  const [x, setX] = useState(meeting?.links.x ?? '');
-  const [website, setWebsite] = useState(meeting?.links.website ?? '');
   const [currency, setCurrency] = useState<Profile['currency']>('unspecified');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,7 +90,7 @@ export function OnboardingPage({ state, onComplete, onRefresh, editing = false, 
           </h1>
           <p>A few details to make your investor preparation feel like yours.</p>
           <ol className="setup-steps">
-            {['Your financials', 'Your company', 'Your conversation'].map((label, index) => (
+            {['Your financials', 'Your goal'].map((label, index) => (
               <li
                 key={label}
                 aria-current={step === index + 1 ? 'step' : undefined}
@@ -127,7 +119,7 @@ export function OnboardingPage({ state, onComplete, onRefresh, editing = false, 
           </p>
         </aside>
         <section className="setup-form" aria-label={`Onboarding step ${step}`}>
-          <div className="eyebrow">Step {step} of 3</div>
+          <div className="eyebrow">Step {Math.min(step, 2)} of 2</div>
           {error && (
             <p className="error" role="alert">
               {error}
@@ -243,7 +235,22 @@ export function OnboardingPage({ state, onComplete, onRefresh, editing = false, 
                 void saveStep(async () => {
                   const input = profileSchema.omit({ version: true }).strip().parse(profile);
                   await command('/onboarding/company', input, 'PUT');
-                  setStep(3);
+                  await command(
+                    '/onboarding/meeting',
+                    {
+                      meeting: meeting
+                        ? {
+                            name: meeting.name,
+                            firm: meeting.firm,
+                            date: meeting.date,
+                            notes: meeting.notes,
+                            links: meeting.links,
+                          }
+                        : null,
+                    },
+                    'PUT',
+                  );
+                  await onComplete();
                 });
               }}
             >
@@ -251,102 +258,120 @@ export function OnboardingPage({ state, onComplete, onRefresh, editing = false, 
               <p className="muted">
                 Give the numbers context. Leave anything you haven’t confirmed blank.
               </p>
+              <details>
+                <summary>Company details · optional</summary>
+                <label>
+                  Company name
+                  <input
+                    required
+                    maxLength={100}
+                    value={profile.name}
+                    onChange={(event) => {
+                      changeProfile('name', event.target.value);
+                    }}
+                  />
+                </label>
+              </details>
               <label>
-                Company name
-                <input
-                  required
-                  maxLength={100}
-                  value={profile.name}
-                  onChange={(event) => {
-                    changeProfile('name', event.target.value);
-                  }}
-                />
-              </label>
-              <label>
-                What do you want from your next conversation?
+                What do you want to achieve?
                 <textarea
                   required
                   maxLength={1000}
+                  placeholder="I want to raise my next round"
                   value={profile.goal}
                   onChange={(event) => {
                     changeProfile('goal', event.target.value);
                   }}
                 />
               </label>
-              <div className="setup-field-grid">
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => changeProfile('goal', 'I want to raise my next round')}
+              >
+                Raise my next round
+              </button>
+              <details>
+                <summary>Stage, funding target & market · optional</summary>
+                <div className="setup-field-grid">
+                  <label>
+                    Company stage
+                    <select
+                      value={profile.stage}
+                      onChange={(event) => {
+                        setProfile({
+                          ...profile,
+                          stage: profileSchema.shape.stage.parse(event.target.value),
+                        });
+                      }}
+                    >
+                      {Object.values(Stage).map((value) => (
+                        <option key={value}>{value}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Funding target · optional
+                    <input
+                      type="number"
+                      min="0.0001"
+                      step="0.0001"
+                      placeholder="Not confirmed"
+                      value={profile.raiseTarget ?? ''}
+                      onChange={(event) => {
+                        setProfile({ ...profile, raiseTarget: event.target.value || null });
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="setup-field-grid">
+                  <label>
+                    Sector · optional
+                    <input
+                      placeholder="e.g. B2B software"
+                      maxLength={100}
+                      value={profile.sector}
+                      onChange={(event) => {
+                        changeProfile('sector', event.target.value);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Geography · optional
+                    <input
+                      placeholder="e.g. Canada"
+                      maxLength={100}
+                      value={profile.geography}
+                      onChange={(event) => {
+                        changeProfile('geography', event.target.value);
+                      }}
+                    />
+                  </label>
+                </div>
                 <label>
-                  Company stage
+                  Funding currency
                   <select
-                    value={profile.stage}
+                    value={profile.currency}
                     onChange={(event) => {
                       setProfile({
                         ...profile,
-                        stage: profileSchema.shape.stage.parse(event.target.value),
+                        currency: profileSchema.shape.currency.parse(event.target.value),
                       });
                     }}
                   >
-                    {Object.values(Stage).map((value) => (
-                      <option key={value}>{value}</option>
+                    {['unspecified', 'CAD', 'USD', 'EUR', 'GBP'].map((value) => (
+                      <option key={value} value={value}>
+                        {value === 'unspecified' ? 'Not confirmed' : value}
+                      </option>
                     ))}
                   </select>
+                  <small>This does not relabel your financial statement.</small>
                 </label>
-                <label>
-                  Funding target · optional
-                  <input
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    placeholder="Not confirmed"
-                    value={profile.raiseTarget ?? ''}
-                    onChange={(event) => {
-                      setProfile({ ...profile, raiseTarget: event.target.value || null });
-                    }}
-                  />
-                </label>
-              </div>
-              <div className="setup-field-grid">
-                <label>
-                  Sector · optional
-                  <input
-                    placeholder="e.g. B2B software"
-                    maxLength={100}
-                    value={profile.sector}
-                    onChange={(event) => {
-                      changeProfile('sector', event.target.value);
-                    }}
-                  />
-                </label>
-                <label>
-                  Geography · optional
-                  <input
-                    placeholder="e.g. Canada"
-                    maxLength={100}
-                    value={profile.geography}
-                    onChange={(event) => {
-                      changeProfile('geography', event.target.value);
-                    }}
-                  />
-                </label>
-              </div>
-              <label>
-                Funding currency
-                <select
-                  value={profile.currency}
-                  onChange={(event) => {
-                    setProfile({
-                      ...profile,
-                      currency: profileSchema.shape.currency.parse(event.target.value),
-                    });
-                  }}
-                >
-                  {['unspecified', 'CAD', 'USD', 'EUR', 'GBP'].map((value) => (
-                    <option key={value} value={value}>
-                      {value === 'unspecified' ? 'Not confirmed' : value}
-                    </option>
-                  ))}
-                </select>
-                <small>This does not relabel your financial statement.</small>
-              </label>
+              </details>
+              <p className="muted">
+                June prepares your next steps from saved evidence. Add an investor conversation in
+                Investor Radar whenever you’re ready.
+              </p>
               <div className="setup-actions">
                 <button
                   className="text-button"
@@ -359,153 +384,7 @@ export function OnboardingPage({ state, onComplete, onRefresh, editing = false, 
                   ← Back
                 </button>
                 <button className="button" disabled={busy}>
-                  Save & continue <ArrowRight size={16} />
-                </button>
-              </div>
-            </form>
-          )}
-          {step === 3 && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void saveStep(async () => {
-                  const input = meetingInputSchema.parse({
-                    name,
-                    firm,
-                    date: date || null,
-                    notes,
-                    links: { linkedin: linkedin || null, x: x || null, website: website || null },
-                  });
-                  await command('/onboarding/meeting', { meeting: input }, 'PUT');
-                  await onComplete();
-                });
-              }}
-            >
-              <h2>Who’s on the other side?</h2>
-              <p className="muted">
-                Add an investor you’re talking to, or skip this and start with general financial
-                practice.
-              </p>
-              <div className="setup-field-grid">
-                <label>
-                  Investor name
-                  <input
-                    maxLength={100}
-                    placeholder="Person’s name"
-                    value={name}
-                    onChange={(event) => {
-                      setName(event.target.value);
-                    }}
-                  />
-                </label>
-                <label>
-                  Firm
-                  <input
-                    maxLength={100}
-                    placeholder="Investment firm"
-                    value={firm}
-                    onChange={(event) => {
-                      setFirm(event.target.value);
-                    }}
-                  />
-                </label>
-              </div>
-              <div className="setup-divider">
-                <h3>Where can we learn more about them?</h3>
-                <p className="muted">
-                  Optional profile links help research identify the right person.
-                </p>
-              </div>
-              <label>
-                LinkedIn profile
-                <input
-                  type="url"
-                  maxLength={500}
-                  placeholder="https://linkedin.com/in/…"
-                  value={linkedin}
-                  onChange={(event) => {
-                    setLinkedin(event.target.value);
-                  }}
-                />
-              </label>
-              <div className="setup-field-grid">
-                <label>
-                  X profile
-                  <input
-                    type="url"
-                    maxLength={500}
-                    placeholder="https://x.com/…"
-                    value={x}
-                    onChange={(event) => {
-                      setX(event.target.value);
-                    }}
-                  />
-                </label>
-                <label>
-                  Firm website or team page
-                  <input
-                    type="url"
-                    maxLength={500}
-                    placeholder="https://example.com/team"
-                    value={website}
-                    onChange={(event) => {
-                      setWebsite(event.target.value);
-                    }}
-                  />
-                </label>
-              </div>
-              <p className="setup-hint">
-                Saved as research starting points, not verified evidence. Monitoring starts paused;
-                choose Check now or a schedule in Investor research.
-              </p>
-              <label>
-                Next meeting · optional
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(event) => {
-                    setDate(event.target.value);
-                  }}
-                />
-              </label>
-              <label>
-                What did they ask or challenge?
-                <textarea
-                  maxLength={5000}
-                  placeholder="Paste a question or notes from your last conversation."
-                  value={notes}
-                  onChange={(event) => {
-                    setNotes(event.target.value);
-                  }}
-                />
-                <small>Your notes stay separate from public investor research.</small>
-              </label>
-              <div className="setup-actions">
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setStep(2);
-                  }}
-                >
-                  ← Back
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    void saveStep(async () => {
-                      await command('/onboarding/meeting', { meeting: null }, 'PUT');
-                      await onComplete();
-                    });
-                  }}
-                >
-                  Skip for now
-                </button>
-                <button className="button" disabled={busy}>
-                  Open my workspace <ArrowRight size={16} />
+                  Build my preparation plan <ArrowRight size={16} />
                 </button>
               </div>
             </form>

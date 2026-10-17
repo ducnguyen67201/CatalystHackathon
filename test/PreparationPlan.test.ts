@@ -1,3 +1,4 @@
+import { radarEvidence } from './fixtures/RadarFixture.js';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { preparationFixture } from './PreparationProgressFixtures.js';
@@ -297,5 +298,151 @@ describe('saved preparation scheduling assumptions', () => {
     await expect(
       service.preparation.saveSchedule(assumptions, view.version + 2, view.plan.id),
     ).rejects.toThrow('Preparation changed');
+  });
+});
+
+describe('goal-first preparation', () => {
+  it('prepares from one intent, updates downstream context and rejects stale edits', async () => {
+    const { service, state } = fixture();
+    const before = structuredClone(state().snapshots);
+    await service.preparation.setIntent(
+      'I want to raise my next round',
+      0,
+      state().profile.version,
+    );
+    const first = await service.preparation.view();
+    expect(first.goal).toMatchObject({
+      round: 'Next round',
+      previousRounds: null,
+      targetDate: null,
+    });
+    expect(first.plan?.artifacts[0]?.kind).toBe('financial');
+    expect(first.automatic).toBe(true);
+    expect(state().profile.goal).toBe('I want to raise my next round');
+    await expect(
+      service.preparation.setIntent('Raise growth funding', 0, state().profile.version),
+    ).rejects.toThrow('Preparation changed');
+    await expect(
+      service.preparation.setIntent('   ', first.version, state().profile.version),
+    ).rejects.toThrow();
+    await service.preparation.setIntent(
+      'Prepare for an institutional round',
+      first.version,
+      state().profile.version,
+    );
+    expect(state().preparation?.goals).toHaveLength(2);
+    expect(state().preparation?.plans[0]).toEqual(first.plan);
+    expect(state().snapshots).toEqual(before);
+    await service.updateInvestorMeeting({
+      name: 'Example Investor',
+      firm: 'Fictional Firm',
+      date: null,
+      notes: 'Ask about retention.',
+      links: { linkedin: null, x: null, website: null },
+    });
+    const next = await service.preparation.view();
+    expect(next.goal?.investorId).toBe(state().onboarding.meeting?.investorId);
+    expect(next.plan?.artifacts.some((artifact) => artifact.kind === 'investor')).toBe(true);
+    expect(state().investors.at(-1)?.frequency).toBe('paused');
+  });
+  it('creates the same plan from onboarding without a second goal confirmation', async () => {
+    const { service, state } = fixture();
+    const profile = state().profile;
+    await service.saveOnboardingCompany({ ...profile, goal: 'Raise my next round' });
+    const view = await service.preparation.view();
+    expect(view.goal?.round).toBe('Next round');
+    expect(view.plan).not.toBeNull();
+    expect(state().onboarding.step).toBe(3);
+    await service.completeOnboarding(null);
+    expect(state().onboarding.completedAt).not.toBeNull();
+    expect((await service.preparation.view()).outdated).toBe(false);
+  });
+});
+
+describe('automatic position reconciliation', () => {
+  it('updates selected-investor evidence while preserving financial position and unchanged reviews', async () => {
+    const { service, state } = fixture();
+    const investorId = randomUUID();
+    await service.change((current) => {
+      current.investors.push({
+        id: investorId,
+        key: 'fixture',
+        name: 'Fictional Investor',
+        url: null,
+        profileLinks: [],
+        origin: 'added',
+        discoveryEvidenceId: null,
+        createdAt: new Date().toISOString(),
+        frequency: 'paused',
+        nextAt: null,
+        checks: [],
+      });
+    });
+    await service.preparation.confirmGoal({ ...input, investorId }, 0, true);
+    const initial = await service.preparation.view();
+    if (!initial.plan?.artifacts[0]) throw new Error('Missing initial plan');
+    await service.preparation.decide(
+      initial.plan.id,
+      initial.plan.artifacts[0].id,
+      'accepted',
+      '',
+      randomUUID(),
+    );
+    const evidence = radarEvidence();
+    evidence.mode = 'demo';
+    evidence.investor = 'Fictional Investor';
+    await service.change((current) => {
+      current.evidence.push(evidence);
+      const investor = current.investors.find((item) => item.id === investorId);
+      if (!investor) throw new Error('Missing investor');
+      investor.checks.push({
+        jobId: 'fixture-check',
+        checkedAt: new Date().toISOString(),
+        profileVersion: current.profile.version,
+        evidenceIds: [evidence.id],
+        addedIds: [evidence.id],
+        changedIds: [],
+        note: 'New fictional source',
+      });
+    });
+    const pending = await service.preparation.view();
+    expect(pending.outdated).toBe(true);
+    expect(pending.position?.pendingChanges).toContain(
+      'Selected investor or supporting research changed.',
+    );
+    await service.preparation.reconcile();
+    const updated = await service.preparation.view();
+    expect(updated.outdated).toBe(false);
+    expect(updated.plan?.changes).toEqual(['Selected investor or supporting research changed.']);
+    expect(updated.position?.financial).toEqual(initial.position?.financial);
+    expect(updated.milestones.find((item) => item.id === 'financial')?.status).toBe('complete');
+    expect(
+      updated.plan?.artifacts.find((item) => item.kind === 'investor')?.sources[0]?.excerpt,
+    ).toBe(evidence.excerpt);
+    expect(state().preparation?.plans[0]).toEqual(initial.plan);
+    const length = state().preparation?.plans.length;
+    await service.preparation.reconcile();
+    expect(state().preparation?.plans).toHaveLength(length ?? 0);
+  });
+  it('reacts to completed assessments but remains read-only and respects paused drafting', async () => {
+    const { service, state } = fixture();
+    await service.preparation.confirmGoal(input, 0, true);
+    const initial = await service.preparation.view();
+    const { session } = preparationFixture();
+    await service.change((current) => {
+      current.rehearsals.push(session);
+    });
+    expect((await service.preparation.view()).position?.pendingChanges).toEqual([
+      'Completed assessment feedback changed.',
+    ]);
+    await service.preparation.setAutomatic(false, (await service.preparation.view()).version);
+    const before = structuredClone(state());
+    await service.preparation.view();
+    await service.preparation.reconcile();
+    expect(state()).toEqual(before);
+    await service.preparation.reconcile(true);
+    const updated = await service.preparation.view();
+    expect(updated.plan?.id).not.toBe(initial.plan?.id);
+    expect(updated.plan?.changes).toEqual(['Completed assessment feedback changed.']);
   });
 });

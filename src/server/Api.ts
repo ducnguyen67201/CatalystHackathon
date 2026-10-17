@@ -176,6 +176,7 @@ export async function createApi(
       workspace: await service.read().then((workspace) => ({
         ...(({ radar: _privateRadar, preparation: _preparation, ...publicWorkspace }) =>
           publicWorkspace)(workspace),
+        snapshots: workspace.snapshots.map(({ sourceCsv: _sourceCsv, ...snapshot }) => snapshot),
         rehearsals: workspace.rehearsals.map((session) => ({
           ...session,
           guided: undefined,
@@ -225,6 +226,13 @@ export async function createApi(
       .strictObject({ meeting: meetingInputSchema.nullable() })
       .parse(request.body);
     await service.completeOnboarding(meeting);
+    return { ok: true };
+  });
+  app.put('/api/investor-meeting', async (request) => {
+    const { meeting } = z
+      .strictObject({ meeting: meetingInputSchema.nullable() })
+      .parse(request.body);
+    await service.updateInvestorMeeting(meeting);
     return { ok: true };
   });
   app.put('/api/profile', async (request) => {

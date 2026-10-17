@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Bell, ExternalLink, RefreshCw, Radio, Mail, Check } from 'lucide-react';
 import {
@@ -32,9 +32,11 @@ const ok = z.object({ ok: z.boolean() });
 export function RadarUpdates({
   state,
   onRefresh,
+  children,
 }: {
   state: StateResponse;
   onRefresh: () => Promise<void>;
+  children?: ReactNode;
 }) {
   const [feed, setFeed] = useState<RadarFeed | null>(null);
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -256,6 +258,7 @@ export function RadarUpdates({
           Refresh feed
         </button>
       </div>
+      {children}
       <div className="radar-health" role="status">
         <Radio size={17} />
         <strong>{feed ? `Worker: ${feed.status.state}` : 'Loading worker status…'}</strong>

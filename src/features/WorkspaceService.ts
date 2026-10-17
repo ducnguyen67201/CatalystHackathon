@@ -1,3 +1,4 @@
+import { synchronizePreparationIntent } from './PreparationIntent.js';
 import { PreparationPlanService } from './PreparationPlanService.js';
 import { radarStateSchema } from '../contracts/RadarDelivery.js';
 import { RadarDeliveryService } from './RadarDeliveryService.js';
@@ -148,6 +149,7 @@ export class WorkspaceService {
         throw new Error('Onboarding: choose financial data first.');
       }
       state.profile = { ...profile, version: state.profile.version + 1 };
+      synchronizePreparationIntent(state);
       state.onboarding.step = 3;
     });
   }
@@ -158,9 +160,25 @@ export class WorkspaceService {
         throw new Error('Onboarding: finish financial and company setup first.');
       }
       saveMeetingContext(state, meeting);
+      synchronizePreparationIntent(
+        state,
+        new Date().toISOString(),
+        state.onboarding.meeting?.investorId ?? null,
+      );
       state.onboarding.completedAt ??= new Date().toISOString();
       state.briefs.push(
         this.buildBrief(state, this.chooseEvidenceId(state), state.briefs.at(-1) ?? null),
+      );
+    });
+  }
+
+  async updateInvestorMeeting(meeting: MeetingInput | null): Promise<void> {
+    await this.change((state) => {
+      saveMeetingContext(state, meeting);
+      synchronizePreparationIntent(
+        state,
+        new Date().toISOString(),
+        state.onboarding.meeting?.investorId ?? null,
       );
     });
   }
@@ -183,6 +201,7 @@ export class WorkspaceService {
   async updateProfile(profile: Omit<Profile, 'version'>): Promise<void> {
     await this.change((state) => {
       state.profile = { ...profile, version: state.profile.version + 1 };
+      synchronizePreparationIntent(state);
     });
     await this.store.enqueue(`profile:${(await this.read()).profile.version}`, 'rebuild');
   }

@@ -1,8 +1,9 @@
+import { InvestorMeetingContext } from './InvestorMeetingContext.js';
 import { FinancialSheet } from './FinancialSheet.js';
 import { RadarUpdates } from './RadarUpdates.js';
 import { PracticeFollowups } from './Followups.js';
 import { OnboardingPage } from './OnboardingPage.js';
-import { DashboardPage, MeetingsPage } from './DashboardPage.js';
+import { DashboardPage } from './DashboardPage.js';
 import { MeetingBriefs } from './MeetingBriefs.js';
 import { useEffect, useState, useRef } from 'react';
 import {
@@ -315,22 +316,16 @@ export function App() {
               }}
             />
           )}
-          {page === Page.MEETINGS && (
-            <MeetingsPage
-              state={state}
-              busy={busy}
-              onEdit={() => {
-                setEditingOnboarding(true);
-              }}
-              onPrepare={() => {
-                prepare();
-              }}
-            />
-          )}
           {page === Page.INVESTORS && <InvestorTrackingPage state={state} onRefresh={refresh} />}
           {page === Page.RADAR && (
             <>
-              <RadarUpdates state={state} onRefresh={refresh} />
+              <RadarUpdates state={state} onRefresh={refresh}>
+                <InvestorMeetingContext
+                  state={state}
+                  onRefresh={refresh}
+                  onPrepare={() => prepare()}
+                />
+              </RadarUpdates>
               <details className="radar-legacy">
                 <summary>Company fit and legacy research schedule</summary>
                 <div className="page-heading">

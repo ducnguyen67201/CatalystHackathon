@@ -75,7 +75,7 @@ describe('conditional preparation schedule', () => {
     view.schedule.cashExpectedDate = null;
     expect(projectSchedule(view, 1, now).tone).toBe('unknown');
     view.schedule.planId = 'earlier';
-    expect(projectSchedule(view, 1, now).current).toBe(false);
+    expect(projectSchedule(view, 1, now).suggested).toBe(true);
   });
   it('recalculates remaining work, waits for external evidence, and uses the goal timezone', () => {
     const view = fixture();
@@ -118,10 +118,10 @@ describe('conditional preparation schedule', () => {
     });
     expect(projectSchedule(view, 1, now).reviewed).toBe(0);
   });
-  it('keeps estimates unavailable before configuration and renders accessible action paths', () => {
+  it('suggests an editable plan without asking for hours and renders accessible actions', () => {
     const view = fixture();
     view.schedule = null;
-    expect(projectSchedule(view, 1, now).finish).toBeNull();
+    expect(projectSchedule(view, 1, now)).toMatchObject({ suggested: true, finish: '2026-10-22' });
     const html = renderToStaticMarkup(
       <PreparationSchedule
         data={view}
@@ -134,10 +134,11 @@ describe('conditional preparation schedule', () => {
         currency="Unconfirmed"
       />,
     );
-    expect(html).toContain('Pace unknown');
+    expect(html).toContain('June’s suggested estimate');
     expect(html).toContain('scope="row"');
-    expect(html).toContain('Assumptions &amp; expected outcome');
+    expect(html).toContain('Review suggested plan');
     expect(html).toContain('Fictional demo evidence');
-    expect(html).not.toContain('On track');
+    view.goal = null;
+    expect(projectSchedule(view, 1, now).finish).toBeNull();
   });
 });
