@@ -6,16 +6,9 @@ import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
 import { useEffect, useState, useRef } from 'react';
 import {
   Activity,
-  Search,
   ArrowRight,
-  Bell,
-  CalendarDays,
-  ChartNoAxesCombined,
   Check,
-  FileText,
-  LayoutDashboard,
   LoaderCircle,
-  MessageSquare,
   Radar,
   RefreshCw,
   X,
@@ -29,17 +22,9 @@ import { evaluateInvestorFit } from '../features/InvestorFit.js';
 import { command, fetchState, startLocalSession, startRadar } from './ApiClient.js';
 import { InvestorTrackingPage } from './InvestorTrackingPage.js';
 import { ScenarioPractice } from './ScenarioPractice.js';
-const Page = {
-  OVERVIEW: 'overview',
-  MEETINGS: 'meetings',
-  RADAR: 'radar',
-  INVESTORS: 'investors',
-  FINANCIALS: 'financials',
-  BRIEF: 'brief',
-  PRACTICE: 'practice',
-  FOLLOWUPS: 'followups',
-} as const;
-type Page = (typeof Page)[keyof typeof Page];
+import { ScenarioRoom } from './ScenarioRoom.js';
+import { WorkspaceLayout } from './WorkspaceLayout.js';
+import { Page, readWorkspacePage, workspacePageHref } from './WorkspaceNavigation.js';
 function criterionLabel(key: string): string {
   const labels: Record<string, string> = {
     stage: 'Stage',
@@ -137,15 +122,17 @@ function RevenueChart({ state }: { state: StateResponse }) {
 }
 export function App() {
   const [state, setState] = useState<StateResponse | null>(null);
-  const [page, setPage] = useState<Page>(
-    new URLSearchParams(window.location.search).has('radarEvent')
-      ? Page.RADAR
-      : new URLSearchParams(window.location.search).has('followups')
-        ? Page.FOLLOWUPS
-        : Page.OVERVIEW,
-  );
+  const [page, updatePage] = useState<Page>(() => readWorkspacePage(window.location));
+  function setPage(next: Page): void {
+    window.history.pushState(null, '', workspacePageHref(next));
+    updatePage(next);
+  }
+  useEffect(() => {
+    const onPopState = () => updatePage(readWorkspacePage(window.location));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [editingOnboarding, setEditingOnboarding] = useState(false);
-  const [sidebarLabelsDismissed, setSidebarLabelsDismissed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -258,7 +245,10 @@ export function App() {
     setSelectedBrief(id ?? null);
     setPage(Page.BRIEF);
   };
-  if (!workspace.onboarding.completedAt || editingOnboarding) {
+  if (
+    editingOnboarding ||
+    (!workspace.onboarding.completedAt && page !== Page.ROOM && page !== Page.PRACTICE)
+  ) {
     return (
       <OnboardingPage
         state={state}
@@ -282,89 +272,14 @@ export function App() {
       setPage(practice ? Page.PRACTICE : Page.BRIEF);
     });
   };
-  const nav = [
-    { id: Page.OVERVIEW, label: 'Overview', icon: LayoutDashboard },
-    { id: Page.MEETINGS, label: 'Meetings', icon: CalendarDays },
-    { id: Page.RADAR, label: 'Investor radar', icon: Radar },
-    { id: Page.INVESTORS, label: 'Investor research', icon: Search },
-    { id: Page.FINANCIALS, label: 'Financials', icon: ChartNoAxesCombined },
-    { id: Page.BRIEF, label: 'Meeting brief', icon: FileText },
-    { id: Page.PRACTICE, label: 'Practice scenario', icon: MessageSquare },
-    { id: Page.FOLLOWUPS, label: 'Follow-ups', icon: Target },
-  ];
   return (
-    <div className="layout dashboard-layout">
-      <aside
-        className="workspace-sidebar"
-        aria-label="Workspace sidebar"
-        data-labels-dismissed={sidebarLabelsDismissed}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setSidebarLabelsDismissed(true);
-        }}
-        onFocus={() => setSidebarLabelsDismissed(false)}
-        onPointerOver={() => setSidebarLabelsDismissed(false)}
-      >
-        <button
-          className="brand brand-home"
-          aria-label="June home"
-          onClick={() => {
-            setPage(Page.OVERVIEW);
-          }}
-        >
-          j<small className="brand-wordmark">une</small>
-          <span />
-        </button>
-        <nav className="workspace-nav" aria-label="Workspace">
-          {nav.map((item) => (
-            <button
-              key={item.id}
-              className={page === item.id ? 'active' : ''}
-              aria-label={item.label}
-              aria-current={page === item.id ? 'page' : undefined}
-              onClick={() => {
-                if (item.id === Page.PRACTICE && brief) {
-                  setSelectedBrief(brief.id);
-                }
-                setPage(item.id);
-              }}
-            >
-              <item.icon size={18} aria-hidden="true" />
-              <span className="sidebar-label" aria-hidden="true">
-                {item.label}
-              </span>
-            </button>
-          ))}
-        </nav>
-        <div className="workspace-status">
-          <span
-            className="workspace-research-status"
-            tabIndex={0}
-            role="img"
-            aria-label={
-              state.capabilities.researchReady ? 'Live research' : 'Research not configured'
-            }
-            data-ready={state.capabilities.researchReady}
-          >
-            <Activity size={18} aria-hidden="true" />
-            <span className="sidebar-label demo-badge" aria-hidden="true">
-              {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
-            </span>
-          </span>
-          <button
-            className="notification-button"
-            aria-label={`Notifications, ${unread} unread`}
-            onClick={() => {
-              setModal('notices');
-            }}
-          >
-            <Bell size={18} aria-hidden="true" />
-            {unread > 0 && <i />}
-            <span className="sidebar-label" aria-hidden="true">
-              Notifications, {unread} unread
-            </span>
-          </button>
-        </div>
-      </aside>
+    <WorkspaceLayout
+      page={page}
+      onNavigate={setPage}
+      researchReady={state.capabilities.researchReady}
+      unread={unread}
+      onNotifications={() => setModal('notices')}
+    >
       <main className="main">
         <div className="content">
           {error && (
@@ -890,6 +805,20 @@ export function App() {
               )}
             </>
           )}
+          {page === Page.ROOM && (
+            <>
+              <header className="page-heading">
+                <div>
+                  <div className="eyebrow">June · Practice room</div>
+                  <h1>Make the next conversation count.</h1>
+                  <p className="muted">
+                    Rehearse with June using your selected scenario and saved context.
+                  </p>
+                </div>
+              </header>
+              <ScenarioRoom state={state} onRefresh={refresh} onError={setError} />
+            </>
+          )}
           {page === Page.PRACTICE && (
             <>
               <div className="page-heading">
@@ -1282,6 +1211,6 @@ export function App() {
           </div>
         </Modal>
       )}
-    </div>
+    </WorkspaceLayout>
   );
 }
