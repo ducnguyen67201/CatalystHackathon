@@ -1978,3 +1978,26 @@ it('persists validated discovery preferences without modifying meeting context o
   expect(invalid.statusCode).toBe(400);
   expect((await service.read()).profile.investorPreferences).toEqual(preferences);
 });
+
+describe('live guidance access boundary', () => {
+  it('requires the local session and allowed origin before attempting guidance', async () => {
+    const url = `/api/rehearsals/${randomUUID()}/live-guidance`;
+    const payload = { turns: [{ role: 'agent', text: 'Explain your business.' }] };
+    const unauthenticated = await app.inject({ method: 'POST', url, payload });
+    expect(unauthenticated.statusCode).toBe(401);
+    const crossOrigin = await app.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: { cookie: sessionCookie, origin: 'https://untrusted.example' },
+    });
+    expect(crossOrigin.statusCode).toBe(403);
+    const unavailable = await app.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: { cookie: sessionCookie },
+    });
+    expect(unavailable.statusCode).toBe(503);
+  });
+});

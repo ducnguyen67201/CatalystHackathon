@@ -1,3 +1,4 @@
+import { LiveGuidance } from './LiveGuidance.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -69,7 +70,7 @@ export function AvatarPractice({
 
   function addCaption(role: TranscriptTurn['role'], raw: unknown): void {
     const parsed = captionSchema.safeParse(raw);
-    if (mounted.current && parsed.success) {
+    if (mounted.current && activeId.current && !closing.current && parsed.success) {
       setPreview((current) => [...current, { role, text: parsed.data.text }].slice(-200));
     }
   }
@@ -372,7 +373,8 @@ export function AvatarPractice({
             {selection
               ? 'Uses your selected saved scenario.'
               : 'Open conversation with no supplied company context.'}
-            Demo interviews last up to two minutes and use your LiveAvatar credits.
+            Live guidance sends recent captions and saved evidence to OpenAI. Demo interviews last
+            up to two minutes and use your LiveAvatar credits.
           </p>
           {!state.capabilities.avatarReady && (
             <p className="notice">
@@ -382,7 +384,9 @@ export function AvatarPractice({
         </section>
         <article className="panel transcript">
           <div className="transcript-heading">
-            <h3>{session?.transcriptReceivedAt ? 'Saved transcript' : 'Live conversation'}</h3>
+            <h3>
+              {session?.transcriptReceivedAt ? 'Saved transcript' : 'Live conversation & guidance'}
+            </h3>
             <span className="count">{session?.status ?? 'Ready'}</span>
           </div>
           <p className="muted">
@@ -390,8 +394,11 @@ export function AvatarPractice({
               ? session.mode === RehearsalMode.LIVEAVATAR
                 ? 'Saved directly from LiveAvatar.'
                 : 'Saved from the verified ElevenLabs webhook.'
-              : 'Captions appear as you talk. The provider transcript is retrieved after the interview.'}
+              : 'Questions and captions appear as you talk. Answer guidance uses your saved evidence; the provider transcript is retrieved after the interview.'}
           </p>
+          {sessionId && (
+            <LiveGuidance key={sessionId} sessionId={sessionId} turns={turns} running={running} />
+          )}
           {turns.map((turn, index) => (
             <div className="turn" key={index}>
               <small>{turn.role === 'agent' ? 'AI interviewer' : 'You'}</small>

@@ -7,6 +7,9 @@ import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { LocalSessionError } from '../contracts/LocalSession.js';
 import { registerInvestorRoutes } from './InvestorRoutes.js';
 import { registerScenarioRoutes } from './ScenarioRoutes.js';
+import { registerLiveGuidanceRoutes } from './LiveGuidanceRoutes.js';
+import { LiveGuidance } from '../infrastructure/LiveGuidance.js';
+import type { LiveGuidanceProvider } from '../features/LiveGuidance.js';
 import { registerGuidedPracticeRoutes } from './GuidedPracticeRoutes.js';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
@@ -52,6 +55,7 @@ interface VoiceDependencies {
   contextProvider: PracticeContextProvider;
   createToken: typeof createVoiceToken;
   avatarProvider?: AvatarProvider;
+  guidanceProvider?: LiveGuidanceProvider;
 }
 
 /** Single-user localhost API. Remote hosting requires an account/membership auth adapter. */
@@ -238,6 +242,12 @@ export async function createApi(
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
   registerGuidedPracticeRoutes(app, service);
+  registerLiveGuidanceRoutes(
+    app,
+    service,
+    voice.guidanceProvider ??
+      (env.OPENAI_API_KEY ? new LiveGuidance(env.OPENAI_API_KEY, env.SCENARIO_MODEL) : null),
+  );
   registerResearchRunRoutes(app, service);
   registerRadarRoutes(app, service);
   app.post('/api/briefs', async () => {

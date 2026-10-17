@@ -8,7 +8,7 @@ import { endVoicePractice, startVoicePractice } from './VoicePracticeClient.js';
 import { describeVoiceFailure } from './VoiceFailure.js';
 import './AvatarPractice.css';
 import type { ScenarioSelection } from '../contracts/Scenario.js';
-import { GuidedPractice } from './GuidedPractice.js';
+import { LiveGuidance } from './LiveGuidance.js';
 
 const AvatarPractice = lazy(async () => {
   const module = await import('./AvatarPractice.js');
@@ -40,57 +40,34 @@ export function VoicePractice({
   startDisabled = false,
 }: Props) {
   const [videoMode, setVideoMode] = useState(true);
-  const [guidedMode, setGuidedMode] = useState(!!selection);
   const [sessionBusy, setSessionBusy] = useState(false);
   return (
     <>
       <div className="interview-mode" aria-label="Interview format">
-        {selection && (
-          <button
-            className="button secondary"
-            aria-pressed={guidedMode}
-            disabled={sessionBusy || startDisabled}
-            onClick={() => {
-              onError('');
-              setGuidedMode(true);
-            }}
-          >
-            Guided text
-          </button>
-        )}
         <button
           className="button secondary"
-          aria-pressed={!guidedMode && videoMode}
+          aria-pressed={videoMode}
           disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(true);
-            setGuidedMode(false);
           }}
         >
           Live AI interviewer
         </button>
         <button
           className="button secondary"
-          aria-pressed={!guidedMode && !videoMode}
+          aria-pressed={!videoMode}
           disabled={sessionBusy}
           onClick={() => {
             onError('');
             setVideoMode(false);
-            setGuidedMode(false);
           }}
         >
           Voice only
         </button>
       </div>
-      {guidedMode && selection ? (
-        <GuidedPractice
-          key={selection.generationId + ':' + selection.scenarioId}
-          selection={selection}
-          ready={!!state.capabilities.guidedReady && !startDisabled}
-          onLockChange={setSessionBusy}
-        />
-      ) : videoMode ? (
+      {videoMode ? (
         <Suspense fallback={<p role="status">Loading interview room…</p>}>
           <AvatarPractice
             state={state}
@@ -381,7 +358,7 @@ function VoicePracticeSession({
             )}
             <small>
               {state.capabilities.voiceReady
-                ? 'Microphone audio goes to ElevenLabs after you start. Final transcripts are saved in this workspace.'
+                ? 'Microphone audio goes to ElevenLabs after you start. Live guidance sends recent captions and saved evidence to OpenAI. Final transcripts are saved in this workspace.'
                 : 'Configure the ElevenLabs key, private agent and transcript webhook to enable voice.'}
             </small>
             {!browserSupportsVoice && (
@@ -394,14 +371,17 @@ function VoicePracticeSession({
         </section>
         <article className="panel transcript">
           <div className="transcript-heading">
-            <h3>{verified ? 'Saved transcript' : 'Live transcript preview'}</h3>
+            <h3>{verified ? 'Saved transcript' : 'Live conversation & guidance'}</h3>
             <span className="count">{session?.status ?? 'Ready'}</span>
           </div>
           <p className="muted">
             {verified
               ? 'Received from ElevenLabs through the verified webhook.'
-              : 'Live captions are temporary. The verified transcript appears here after the session ends.'}
+              : 'Questions and captions appear as you talk. Answer guidance uses your saved evidence; the verified transcript arrives after the session.'}
           </p>
+          {sessionId && (
+            <LiveGuidance key={sessionId} sessionId={sessionId} turns={turns} running={running} />
+          )}
           {turns.map((turn, index) => (
             <div className="turn" key={index}>
               <small>{turn.role === 'agent' ? 'June' : 'You'}</small>

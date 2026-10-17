@@ -258,8 +258,19 @@ Every new session freezes evaluation context, and its final transcript automatic
 requires opening and branch explanations in the same structured model output; the persisted
 scenario reader accepts older records without inventing those fields. The prompt version is
 `scenario-v3-question-why`. `QuestionExplanation.tsx` shows a hover/focus tooltip and a modal
-source inspector without inference. The practice room defaults to guided text for selected
-scenarios and collapses full scenario details beneath the compact conversation.
+source inspector without inference. The practice room offers live video and voice-only formats and collapses full scenario
+details beneath the conversation. `web/LiveGuidance.tsx` is shared by both transports and
+shows the latest spoken interviewer turn, answer objective and source-linked Why inspector.
+It coalesces caption bursts and ignores superseded responses on a new turn, session or end.
+`POST /api/rehearsals/:id/live-guidance` uses the existing local-session/origin protection,
+a separate bounded rate limit, validated recent captions and server-resolved frozen evaluation
+context. `features/LiveGuidance.ts` validates citations and renders numbers only from cited
+fact placeholders, with a bounded ten-minute in-memory cache and concurrent-request limit.
+`infrastructure/LiveGuidance.ts` makes one structured call using the existing scenario model.
+No guidance call advances the interview, writes browser captions, mutates financial evidence
+or supplies a transcript receipt. Failures are isolated from media controls. Guidance is an
+inferred preparation aid, not access to the provider's private reasoning. Historical guided
+text APIs and saved records remain supported without a separate format tab.
 
 `features/QuestionEvidence.ts` projects scenario financial periods and schema-validated
 evaluation source rows into browser-safe evidence rows. Original filenames are used only
