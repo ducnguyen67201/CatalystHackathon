@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { silentWorkflowLog, type WorkflowLog } from './WorkflowLog.js';
 import { discoveryStateSchema } from '../contracts/InvestorDiscovery.js';
 import { InvestorTrackingService } from './InvestorTrackingService.js';
 import { Decimal } from 'decimal.js';
@@ -24,6 +25,7 @@ export class WorkspaceService {
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
+    readonly logger: WorkflowLog = silentWorkflowLog,
   ) {
     this.investors = new InvestorTrackingService(this, research);
   }

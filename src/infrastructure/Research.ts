@@ -1,4 +1,11 @@
 import { createHash } from 'node:crypto';
+import {
+  LogEvent,
+  LogReason,
+  silentWorkflowLog,
+  type WorkflowLog,
+} from '../features/WorkflowLog.js';
+import { describeResearchFailure, ProviderRequestError } from './WorkflowLogger.js';
 import { z } from 'zod';
 import {
   comparableDealSchema,
@@ -8,7 +15,31 @@ import type { InvestorResearchTarget } from '../contracts/InvestorTracking.js';
 import { evidenceSchema, type Evidence, type Profile } from '../contracts/Workspace.js';
 import type { ResearchProvider } from '../features/ResearchProvider.js';
 export class DemoResearch implements ResearchProvider {
+  readonly mode = 'demo';
+
+  constructor(private readonly logger: WorkflowLog = silentWorkflowLog) {}
+
   async discover(
+    profile: Profile,
+    target?: InvestorResearchTarget,
+    discovery?: ResearchDiscoveryContext,
+  ): Promise<Evidence[]> {
+    const started = Date.now();
+    this.logger.write(LogEvent.RESEARCH_STARTED, { mode: this.mode });
+    this.logger.write(LogEvent.DEMO_SEARCH_SKIPPED, {
+      mode: this.mode,
+      reason: LogReason.DEMO_MODE,
+    });
+    const records = await this.collectExamples(profile, target, discovery);
+    this.logger.write(LogEvent.RESEARCH_COMPLETED, {
+      mode: this.mode,
+      count: records.length,
+      durationMs: Date.now() - started,
+    });
+    return records;
+  }
+
+  private async collectExamples(
     profile: Profile,
     target?: InvestorResearchTarget,
     discovery?: ResearchDiscoveryContext,
@@ -54,7 +85,7 @@ export class DemoResearch implements ResearchProvider {
         );
     }
     if (target && target.name.toLowerCase() !== 'northline ventures') {
-      const examples = await this.discover(profile, undefined, {
+      const examples = await this.collectExamples(profile, undefined, {
         knownInvestors: [],
         excludedInvestors: [],
       });
@@ -118,12 +149,60 @@ const completionSchema = z.object({
 });
 /** Public-source discovery only. The model never receives financial rows here. */
 export class LiveResearch implements ResearchProvider {
+  readonly mode = 'live';
   constructor(
     private readonly exaKey: string,
     private readonly modelKey: string,
     private readonly model: string,
+    private readonly logger: WorkflowLog = silentWorkflowLog,
   ) {}
+
   async discover(
+    profile: Profile,
+    target?: InvestorResearchTarget,
+    discovery?: ResearchDiscoveryContext,
+  ): Promise<Evidence[]> {
+    const started = Date.now();
+    this.logger.write(LogEvent.RESEARCH_STARTED, { mode: this.mode });
+    try {
+      const records = await this.collectEvidence(profile, target, discovery);
+      this.logger.write(LogEvent.RESEARCH_COMPLETED, {
+        mode: this.mode,
+        count: records.length,
+        durationMs: Date.now() - started,
+      });
+      return records;
+    } catch (error) {
+      this.logger.write(
+        LogEvent.RESEARCH_FAILED,
+        { mode: this.mode, ...describeResearchFailure(error), durationMs: Date.now() - started },
+        'error',
+      );
+      throw error;
+    }
+  }
+
+  private async requestJson(
+    provider: 'exa' | 'openai',
+    url: string,
+    options: RequestInit,
+  ): Promise<unknown> {
+    const started = Date.now();
+    this.logger.write(LogEvent.PROVIDER_REQUEST_STARTED, { provider });
+    const response = await fetch(url, options);
+    this.logger.write(LogEvent.PROVIDER_REQUEST_COMPLETED, {
+      provider,
+      statusCode: response.status,
+      durationMs: Date.now() - started,
+    });
+    if (!response.ok) {
+      throw new ProviderRequestError(provider, response.status);
+    }
+    const raw: unknown = await response.json();
+    return raw;
+  }
+
+  private async collectEvidence(
     profile: Profile,
     target?: InvestorResearchTarget,
     discovery?: ResearchDiscoveryContext,
@@ -143,7 +222,7 @@ export class LiveResearch implements ResearchProvider {
     }
     const pages: z.infer<typeof searchSchema>['results'][] = [];
     for (const searchQuery of queries) {
-      const response = await fetch('https://api.exa.ai/search', {
+      const raw = await this.requestJson('exa', 'https://api.exa.ai/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': this.exaKey },
         body: JSON.stringify({
@@ -154,11 +233,13 @@ export class LiveResearch implements ResearchProvider {
         }),
         signal: AbortSignal.timeout(30000),
       });
-      if (!response.ok) {
-        throw new Error(`Research search failed (${response.status}).`);
-      }
-      const raw: unknown = await response.json();
-      pages.push(searchSchema.parse(raw).results);
+      const parsed = searchSchema.parse(raw).results;
+      this.logger.write(
+        LogEvent.SEARCH_RESULTS_RECEIVED,
+        { provider: 'exa', count: parsed.length },
+        'debug',
+      );
+      pages.push(parsed);
     }
     // Interleave the two searches so co-investor evidence is not displaced by the first query.
     const results = [
@@ -171,12 +252,17 @@ export class LiveResearch implements ResearchProvider {
       ).values(),
     ];
     const evidence: Evidence[] = [];
-    for (const result of results.slice(0, 5)) {
+    for (const [sourceIndex, result] of results.slice(0, 5).entries()) {
       const text = result.text ?? result.highlights?.join('\n') ?? '';
       if (!text) {
+        this.logger.write(
+          LogEvent.SOURCE_REJECTED,
+          { sourceIndex, reason: LogReason.NO_TEXT },
+          'debug',
+        );
         continue;
       }
-      const completion = await fetch('https://api.openai.com/v1/chat/completions', {
+      const body = await this.requestJson('openai', 'https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.modelKey}` },
         body: JSON.stringify({
@@ -219,17 +305,27 @@ export class LiveResearch implements ResearchProvider {
         }),
         signal: AbortSignal.timeout(40000),
       });
-      if (!completion.ok) {
-        throw new Error(`Evidence extraction failed (${completion.status}).`);
-      }
-      const body: unknown = await completion.json();
+
       const content = completionSchema.parse(body).choices[0]?.message.content;
       if (!content) {
+        this.logger.write(
+          LogEvent.SOURCE_REJECTED,
+          { sourceIndex, reason: LogReason.EMPTY_COMPLETION },
+          'debug',
+        );
         continue;
       }
       const extracted: unknown = JSON.parse(content);
       const claim = claimSchema.parse(extracted);
       if (!claim.matchesTarget || !text.includes(claim.quote)) {
+        this.logger.write(
+          LogEvent.SOURCE_REJECTED,
+          {
+            sourceIndex,
+            reason: !claim.matchesTarget ? LogReason.IDENTITY_MISMATCH : LogReason.QUOTE_NOT_FOUND,
+          },
+          'debug',
+        );
         continue;
       }
       if (
@@ -238,10 +334,20 @@ export class LiveResearch implements ResearchProvider {
           !text.includes(claim.comparableDeal.participationQuote) ||
           !text.includes(claim.comparableDeal.comparisonQuote))
       ) {
+        this.logger.write(
+          LogEvent.SOURCE_REJECTED,
+          { sourceIndex, reason: LogReason.COMPARABLE_EVIDENCE_MISSING },
+          'debug',
+        );
         continue;
       }
       const url = new URL(result.url);
       if (url.protocol !== 'https:') {
+        this.logger.write(
+          LogEvent.SOURCE_REJECTED,
+          { sourceIndex, reason: LogReason.NON_HTTPS },
+          'debug',
+        );
         continue;
       }
       url.hash = '';
@@ -282,6 +388,7 @@ export class LiveResearch implements ResearchProvider {
           ...(claim.comparableDeal ? { comparableDeal: claim.comparableDeal } : {}),
         }),
       );
+      this.logger.write(LogEvent.SOURCE_ACCEPTED, { sourceIndex }, 'debug');
     }
     return evidence;
   }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { LogEvent } from './WorkflowLog.js';
 import { InvestorDiscoveryService } from './InvestorDiscoveryService.js';
 import { parseInvestorUrl } from '../contracts/ProfileLinks.js';
 import {
@@ -153,7 +154,9 @@ export class InvestorTrackingService {
       url: target.url,
       profileLinks: target.profileLinks,
     });
-    return this.workspace.change((state) => {
+    let addedCount = 0;
+    let changedCount = 0;
+    const savedNote = await this.workspace.change((state) => {
       if (state.profile.version !== initial.profile.version) {
         throw new Error('Profile changed during investor research.');
       }
@@ -185,12 +188,17 @@ export class InvestorTrackingService {
       saveEvidence(state, unique);
       const note =
         unique.length === 0
-          ? 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable. Demo mode researches only the supplied fictional investor examples.'
+          ? this.research.mode === 'demo'
+            ? 'Demo check only: Exa and OpenAI were not called. No fictional fixture matches this profile. Enable live research to search public sources.'
+            : 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable.'
           : fresh.length === 0
             ? 'No new source versions found in this check. This is not proof that nothing changed elsewhere.'
             : `${added.length} new sources; ${changed.length} updated source versions. Review identity and the cited passages before acting.`;
+      addedCount = added.length;
+      changedCount = changed.length;
       investor.checks.push({
         jobId,
+        ...(this.research.mode ? { mode: this.research.mode } : {}),
         checkedAt: new Date().toISOString(),
         profileVersion: state.profile.version,
         evidenceIds: unique.map((item) => item.id),
@@ -209,5 +217,12 @@ export class InvestorTrackingService {
       }
       return note;
     });
+    this.workspace.logger.write(LogEvent.INVESTOR_CHECK_SAVED, {
+      jobId,
+      count: new Set(records.map((record) => record.id)).size,
+      addedCount,
+      changedCount,
+    });
+    return savedNote;
   }
 }

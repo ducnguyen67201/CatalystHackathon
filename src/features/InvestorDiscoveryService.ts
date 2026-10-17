@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { LogEvent, LogReason } from './WorkflowLog.js';
 import {
   DiscoveryFrequency,
   SuggestionStatus,
@@ -70,6 +71,10 @@ export class InvestorDiscoveryService {
       throw new Error('Investor discovery: complete company stage, sector and geography first.');
     }
     if (listCurrentSuggestions(initial).length >= suggestionLimit) {
+      this.workspace.logger.write(LogEvent.DISCOVERY_SKIPPED, {
+        jobId,
+        reason: LogReason.FULL_TRAY,
+      });
       return 'Review your three suggestions: Track or Dismiss one before finding more.';
     }
     const records = await this.research.discover({ ...initial.profile, watchlist: [] }, undefined, {
@@ -83,7 +88,8 @@ export class InvestorDiscoveryService {
         .map((suggestion) => suggestion.name)
         .slice(-200),
     });
-    return this.workspace.change((state) => {
+    let addedCount = 0;
+    const result = await this.workspace.change((state) => {
       if (state.profile.version !== initial.profile.version) {
         throw new Error('Profile changed during discovery.');
       }
@@ -129,6 +135,7 @@ export class InvestorDiscoveryService {
         remaining--;
         added++;
       }
+      addedCount = added;
       const now = new Date();
       state.discovery.lastAt = now.toISOString();
       state.discovery.lastJobId = jobId;
@@ -151,6 +158,12 @@ export class InvestorDiscoveryService {
       }
       return state.discovery.note;
     });
+    this.workspace.logger.write(LogEvent.DISCOVERY_SAVED, {
+      jobId,
+      count: records.length,
+      addedCount,
+    });
+    return result;
   }
 
   async decide(id: string, decision: 'tracked' | 'dismissed'): Promise<void> {

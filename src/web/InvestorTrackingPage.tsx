@@ -215,7 +215,9 @@ export function InvestorTrackingPage({
                     : job?.status === JobStatus.FAILED
                       ? 'Check failed · retry available'
                       : check
-                        ? `${check.addedIds.length + check.changedIds.length} new source versions in last check`
+                        ? check.mode === 'demo'
+                          ? `Demo check · ${check.evidenceIds.length} sources · no live search`
+                          : `${check.evidenceIds.length} sources · ${check.addedIds.length + check.changedIds.length} new versions`
                         : 'Waiting for first check'}
                 </small>
               </button>

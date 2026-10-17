@@ -88,7 +88,8 @@ describe('watchlist loop', () => {
     await service.investors.check(target.id, 'job-one');
     const check = (await service.read()).investors[0]?.checks[0];
     expect(check?.evidenceIds).toEqual([]);
-    expect(check?.note).toContain('No supported public evidence');
+    expect(check?.note).toContain('Demo check only');
+    expect(check?.mode).toBe('demo');
   });
 
   it('suggests without monitoring, tracks only selected candidates, and remembers dismissals', async () => {

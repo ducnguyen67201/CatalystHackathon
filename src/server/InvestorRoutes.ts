@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { LogEvent } from '../features/WorkflowLog.js';
 import { DiscoveryFrequency, SuggestionStatus } from '../contracts/InvestorDiscovery.js';
 import { CheckFrequency, investorInputSchema } from '../contracts/InvestorTracking.js';
 import { radarRequestSchema } from '../contracts/Workspace.js';
@@ -34,7 +35,9 @@ export function registerInvestorRoutes(app: FastifyInstance, service: WorkspaceS
   app.post('/api/investors/:id/check', async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
     const { key } = radarRequestSchema.parse(request.body);
-    return reply.code(202).send(await service.investors.enqueueCheck(id, key));
+    const job = await service.investors.enqueueCheck(id, key);
+    service.logger.write(LogEvent.WORKFLOW_QUEUED, { jobId: job.id, jobKind: job.kind });
+    return reply.code(202).send(job);
   });
 
   app.put('/api/investors/discovery/schedule', async (request) => {
@@ -56,8 +59,8 @@ export function registerInvestorRoutes(app: FastifyInstance, service: WorkspaceS
 
   app.post('/api/investors/discover', async (request, reply) => {
     const { key } = radarRequestSchema.parse(request.body);
-    return reply
-      .code(202)
-      .send(await service.store.enqueue(`investor-discovery:${key}`, InvestorJob.DISCOVER));
+    const job = await service.store.enqueue(`investor-discovery:${key}`, InvestorJob.DISCOVER);
+    service.logger.write(LogEvent.WORKFLOW_QUEUED, { jobId: job.id, jobKind: job.kind });
+    return reply.code(202).send(job);
   });
 }

@@ -159,3 +159,13 @@ Use `doppler run -- pnpm test:integration` to inject the development database se
 For a built app, run `doppler run -- pnpm start` and `doppler run -- pnpm worker` in separate processes and open http://127.0.0.1:4318. Keep `WEB_ORIGIN` aligned with the URL used in the browser. For normal development use `pnpm dev`.
 
 Read [Architecture](docs/Architecture.md) for component ownership, persistence, workflow semantics and current limits.
+
+## Research terminal logs
+
+Run `doppler run -- pnpm dev` and watch that terminal (not the browser console). `LOG_LEVEL=debug` is the default; `info` hides per-source decisions and result counts, and `silent` disables workflow logging. This uses JSON console logging without an extra logging service. T3 Env validates the level. Change it in Doppler and restart to change verbosity.
+
+A manual check logs `workflow_queued`, then the worker logs `workflow_started`, `research_started`, provider events, `investor_check_saved`, and `workflow_succeeded`. Every event inside a job carries its `jobId`, `jobKind` and attempt number. Demo mode logs `demo_search_skipped` with `reason: demo_mode`: neither Exa nor OpenAI was called. Zero demo sources means no fictional fixture matches the profile, not that a web search found nothing.
+
+Live mode logs Exa/OpenAI request start, HTTP status and duration; search result count; per-source accepted/rejected events; and accepted evidence count. Rejection reasons include no text, identity mismatch, missing exact quote and missing comparable-company evidence. Failures distinguish provider HTTP errors, invalid responses, timeouts and network failures. Discovery logs how many suggestions were saved or that the three-suggestion tray is already full. No repeated empty worker polls are logged.
+
+Logs intentionally omit API keys, headers, cookies, raw errors, source text, names, URLs, prompts, financial records and transcripts. API failure logs include the original error status and request ID to distinguish rate-limit failures from generic server errors. Logs appear in the server/worker terminal; they are not streamed to the frontend.

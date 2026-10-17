@@ -91,8 +91,13 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       typeof error.code === 'string'
         ? error.code
         : 'UNKNOWN';
+    const diagnostic = z
+      .object({ statusCode: z.number().int().min(400).max(599).optional() })
+      .safeParse(error);
     console.warn(
       JSON.stringify({
+        statusCode: diagnostic.success ? (diagnostic.data.statusCode ?? 500) : 500,
+        requestId: request.id,
         event: 'api_request_failed',
         stage: request.routeOptions.url,
         code,
