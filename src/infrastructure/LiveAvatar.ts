@@ -1,3 +1,4 @@
+import { interviewerContext } from '../contracts/PracticeContext.js';
 import { z } from 'zod';
 import { AVATAR_SESSION_DURATION_SECONDS } from '../contracts/AvatarPractice.js';
 import type { TranscriptTurn } from '../contracts/Workspace.js';
@@ -26,7 +27,7 @@ export class LiveAvatarProvider implements AvatarProvider {
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
         mode: 'FULL',
-        dynamic_variables: { brief_context: JSON.stringify(context) },
+        dynamic_variables: { brief_context: JSON.stringify(interviewerContext(context)) },
         avatar_id: settings.avatarId,
         max_session_duration: AVATAR_SESSION_DURATION_SECONDS,
         avatar_persona: {

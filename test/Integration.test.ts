@@ -2142,3 +2142,161 @@ describe('live guidance access boundary', () => {
     expect(unavailable.statusCode).toBe(503);
   });
 });
+
+describe('peer comparison evidence lifecycle', () => {
+  it('enforces access, persists revisions, and freezes relevant peer insights with the call', async () => {
+    const { peerDashboardSchema } = await import('../src/contracts/PeerComparison.js');
+    const { createEmptyPracticeContext } = await import('../src/contracts/PracticeContext.js');
+    const { importFinancials } = await import('../src/features/Financials.js');
+    const original = await service.read();
+    const snapshot = importFinancials(
+      readFileSync('fixtures/Tidewell.csv', 'utf8'),
+      'FictionalPeerTest.csv',
+      'CAD',
+    );
+    await service.change((state) => {
+      if (!state.snapshots.some((item) => item.id === snapshot.id)) state.snapshots.push(snapshot);
+      // Content deduplication might already have saved a snapshot with this hash.
+      state.onboarding.snapshotId =
+        state.snapshots.find((item) => item.hash === snapshot.hash)?.id ?? snapshot.id;
+    });
+    const payload = {
+      peerId: randomUUID(),
+      expectedVersion: 0,
+      name: 'Fictional peer',
+      stage: 'Seed',
+      customer: 'Software teams',
+      businessModel: 'Subscription',
+      rationale: 'Similar customer and business model; founder-selected.',
+      currency: 'CAD',
+      sourceUrl: 'https://example.com/fictional-disclosure',
+      excerpt: 'Fictional monthly statement evidence.',
+      publishedAt: '2026-10-01',
+      fictional: true,
+      periods: [
+        { month: '2026-08', revenue: '100000', grossProfit: '60000', operatingIncome: '-30000' },
+        { month: '2026-09', revenue: '110000', grossProfit: '66000', operatingIncome: '-22000' },
+      ],
+    };
+    try {
+      expect((await app.inject({ method: 'GET', url: '/api/peers' })).statusCode).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/peers',
+            payload,
+            headers: { cookie: sessionCookie, origin: 'https://untrusted.example' },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/peers',
+            payload: { ...payload, sourceUrl: 'javascript:alert(1)' },
+            headers: { cookie: sessionCookie },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const added = await app.inject({
+        method: 'POST',
+        url: '/api/peers',
+        payload,
+        headers: { cookie: sessionCookie },
+      });
+      expect(added.statusCode).toBe(200);
+      const read = await app.inject({
+        method: 'GET',
+        url: '/api/peers',
+        headers: { cookie: sessionCookie },
+      });
+      expect(read.headers['cache-control']).toBe('private, no-store');
+      const dashboard = peerDashboardSchema.parse(read.json());
+      expect(
+        dashboard.comparison.metrics[2]?.peers.some((item) => item.peer.peerId === payload.peerId),
+      ).toBe(true);
+      const call = await service.createRehearsal(
+        null,
+        'elevenlabs',
+        randomUUID(),
+        createEmptyPracticeContext(),
+      );
+      const captured = (await service.read()).rehearsals.find((item) => item.id === call.id)
+        ?.evaluationContext?.peerComparison;
+      expect(captured?.metrics[2]?.peers.some((item) => item.peer.peerId === payload.peerId)).toBe(
+        true,
+      );
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/peers',
+            payload: { ...payload, expectedVersion: 1, name: 'Fictional peer revised' },
+            headers: { cookie: sessionCookie },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/peers',
+            payload,
+            headers: { cookie: sessionCookie },
+          })
+        ).statusCode,
+      ).toBe(409);
+      const archive = await app.inject({
+        method: 'POST',
+        url: `/api/peers/${payload.peerId}/archive`,
+        payload: { expectedVersion: 2 },
+        headers: { cookie: sessionCookie },
+      });
+      expect(archive.statusCode).toBe(200);
+      const after = await service.read();
+      expect(after.peers?.filter((item) => item.peerId === payload.peerId)).toHaveLength(3);
+      expect(
+        after.rehearsals.find((item) => item.id === call.id)?.evaluationContext?.peerComparison,
+      ).toEqual(captured);
+      await service.finishRehearsal(
+        call.id,
+        [
+          { role: 'agent', text: 'Explain the operating result.' },
+          { role: 'user', text: 'Our operating income is -48531 CAD for 2026-09.' },
+        ],
+        true,
+        true,
+      );
+      const evaluation = (await service.read()).rehearsals.find((item) => item.id === call.id)
+        ?.evaluations[0];
+      if (!evaluation) throw new Error('Missing peer evaluation');
+      let job = await store.claimJob(new Date());
+      for (
+        let index = 0;
+        job && index < 100 && job.kind !== `evaluate:${call.id}:${evaluation.id}`;
+        index++
+      ) {
+        await store.finishJob(job, 'Unrelated test job drained.');
+        job = await store.claimJob(new Date());
+      }
+      if (!job || job.kind !== `evaluate:${call.id}:${evaluation.id}`)
+        throw new Error('Missing evaluation job');
+      await service.evaluations.run(call.id, evaluation.id, job);
+      const review = await service.evaluations.get(call.id);
+      expect(review.evaluations[0]?.report?.peerInsights?.[0]?.comparison.metric).toBe(
+        'operating_margin',
+      );
+      expect(
+        review.evaluations[0]?.report?.peerInsights?.[0]?.comparison.peers.some(
+          (item) => item.peer.name === 'Fictional peer',
+        ),
+      ).toBe(true);
+    } finally {
+      await service.change((state) => {
+        state.onboarding.snapshotId = original.onboarding.snapshotId;
+      });
+    }
+  });
+});

@@ -1,3 +1,4 @@
+import { buildPeerComparison } from './PeerComparison.js';
 import { Decimal } from 'decimal.js';
 import {
   evaluationContextSchema,
@@ -196,5 +197,16 @@ export function assembleEvaluationContext(
   context.limitations.push(
     'The income statement does not establish cash balance, cash runway, ad attribution, customer acquisition counts or retention.',
   );
+  if (scenarioInput?.peerComparison) {
+    context.peerComparison = scenarioInput.peerComparison;
+  } else if (!scenarioInput) {
+    const selected = state.snapshots.find((item) => item.id === selectedSnapshotId);
+    context.peerComparison = buildPeerComparison(
+      selected,
+      state.peers ?? [],
+      state.profile.version,
+      context.capturedAt,
+    );
+  }
   return evaluationContextSchema.parse(context);
 }

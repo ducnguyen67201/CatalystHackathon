@@ -119,3 +119,11 @@ export function createEmptyPracticeContext(): PracticeContext {
     scenario: null,
   });
 }
+
+/** Peer evidence is reserved for local comparisons, not interviewer instructions. */
+export function interviewerContext(context: PracticeContext): PracticeContext {
+  if (context.version !== 2) return context;
+  const input = { ...context.input };
+  delete input.peerComparison;
+  return { ...context, input };
+}

@@ -1,4 +1,4 @@
-import type { EvaluationContext } from '../contracts/RehearsalEvaluation.js';
+import { withoutPeerComparison, type EvaluationContext } from '../contracts/RehearsalEvaluation.js';
 import type { TranscriptTurn } from '../contracts/Workspace.js';
 import type { EvaluationInput } from './EvaluationProvider.js';
 
@@ -13,7 +13,7 @@ export function buildPracticeInput(
   turns: TranscriptTurn[],
 ): EvaluationInput {
   return {
-    context,
+    context: withoutPeerComparison(context),
     scope: 'partial',
     clarification: null,
     previous: null,

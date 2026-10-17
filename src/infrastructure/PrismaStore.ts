@@ -55,6 +55,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
       id: record.id,
       revision: record.revision,
       profile: record.profile,
+      peers: record.peers,
       onboarding: record.onboarding,
       schedule: record.schedule,
       discovery: record.discovery,
@@ -80,6 +81,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
       create: {
         id: workspaceId,
         profile: json(workspace.profile),
+        peers: workspace.peers ?? [],
         onboarding: json(workspace.onboarding),
         schedule: json(workspace.schedule),
         discovery: json(workspace.discovery),
@@ -102,6 +104,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
           data: {
             revision: { increment: 1 },
             profile: json(workspace.profile),
+            peers: workspace.peers ?? [],
             onboarding: json(workspace.onboarding),
             schedule: json(workspace.schedule),
             discovery: json(workspace.discovery),

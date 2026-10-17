@@ -1,3 +1,4 @@
+import { withoutPeerComparison } from '../contracts/RehearsalEvaluation.js';
 import { createHash } from 'node:crypto';
 import {
   liveGuidanceOutputSchema,
@@ -91,7 +92,7 @@ export class LiveGuidanceService {
     if (this.pending >= 4) throw new Error('This practice guidance is busy. Retry shortly.');
     this.pending += 1;
     const result = Promise.resolve()
-      .then(() => this.provider.generate({ ...input, context }))
+      .then(() => this.provider.generate({ ...input, context: withoutPeerComparison(context) }))
       .then((output) =>
         liveGuidanceResponseSchema.parse({
           ...validateLiveGuidance(output, context),
