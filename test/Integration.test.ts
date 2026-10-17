@@ -10,6 +10,7 @@ import { fixtureTurnProvider } from './PracticeTurnFixtures.js';
 import { guidedViewSchema } from '../src/contracts/GuidedPractice.js';
 import { evidenceReviewSchema } from '../src/contracts/EvidenceReview.js';
 import { followupsResponseSchema } from '../src/contracts/Followups.js';
+import { preparationProgressSchema } from '../src/contracts/PreparationProgress.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
@@ -1403,6 +1404,7 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
   const reviewApi = await createApi(coached, readEnvironment({ DATABASE_URL: databaseUrl.href }));
   try {
     expect((await reviewApi.inject({ url: '/api/followups' })).statusCode).toBe(401);
+    expect((await reviewApi.inject({ url: '/api/preparation-progress' })).statusCode).toBe(401);
     const evidencePath = `/api/rehearsals/${session.id}/evaluations/${evaluation.id}/evidence`;
     expect((await reviewApi.inject({ url: evidencePath })).statusCode).toBe(401);
     expect(
@@ -1410,6 +1412,18 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
     ).toBe(401);
     const login = await reviewApi.inject({ method: 'POST', url: '/api/session' });
     const headers = { cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join('; ') };
+    const progress = await reviewApi.inject({ url: '/api/preparation-progress', headers });
+    expect(progress.statusCode).toBe(200);
+    expect(progress.headers['cache-control']).toBe('private, no-store');
+    expect(preparationProgressSchema.parse(progress.json()).counts.followups).toBeGreaterThan(0);
+    expect(
+      (
+        await reviewApi.inject({
+          url: '/api/preparation-progress',
+          headers: { ...headers, origin: 'https://other.example' },
+        })
+      ).statusCode,
+    ).toBe(403);
     const followups = await reviewApi.inject({ url: '/api/followups?limit=20', headers });
     expect(followups.statusCode).toBe(200);
     expect(followups.headers['cache-control']).toBe('private, no-store');
