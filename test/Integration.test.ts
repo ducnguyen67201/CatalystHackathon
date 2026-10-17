@@ -1,3 +1,4 @@
+import { connectedPreparationViewSchema } from '../src/contracts/ConnectedPreparation.js';
 import { fictionalRecordingProvider, fictionalRecordingAudio } from './RecordingFixtures.js';
 import { meetingReviewFixture } from './MeetingReviewFixtures.js';
 import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
@@ -3018,4 +3019,199 @@ it('updates the position projection from new saved financials without reads muta
   expect(
     (await service.read()).preparation?.plans.find((plan) => plan.id === initial.plan?.id),
   ).toEqual(initial.plan);
+});
+
+describe('Connected preparation loop API and persistence', () => {
+  it('gates six steps, atomically binds a single scenario, evaluates written practice and starts a revision cycle', async () => {
+    const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+    const investorId = randomUUID();
+    await service.change((state) => {
+      state.investors.push(
+        trackedInvestorSchema.parse({
+          id: investorId,
+          key: investorId,
+          name: 'Fictional loop investor',
+          url: 'https://example.com/loop-investor',
+          origin: 'added',
+          discoveryEvidenceId: null,
+          createdAt: new Date().toISOString(),
+          frequency: 'paused',
+          nextAt: null,
+          checks: [],
+        }),
+      );
+      const original = state.snapshots.find((snapshot) => snapshot.fileName === 'Tidewell.csv');
+      if (!original) throw new Error('Missing fictional statement');
+      state.onboarding.snapshotId = original.id;
+    });
+    const initial = await service.read();
+    await service.preparation.confirmGoal(
+      {
+        round: 'Seed',
+        previousRounds: 1,
+        amount: null,
+        currency: 'unspecified',
+        targetDate: null,
+        timezone: 'UTC',
+        investorId: null,
+      },
+      initial.preparation?.version ?? 0,
+      true,
+    );
+    const get = async () =>
+      connectedPreparationViewSchema.parse(
+        (await app.inject({ url: '/api/preparation-loop', headers })).json<unknown>(),
+      );
+    const act = async (payload: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: '/api/preparation-loop/commands',
+        headers,
+        payload: { ...payload, version: (await get()).version, key: randomUUID() },
+      });
+    const before = await store.load();
+    const readResponse = await app.inject({ url: '/api/preparation-loop', headers });
+    expect(readResponse.headers['cache-control']).toBe('private, no-store');
+    expect(await store.load()).toEqual(before);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-loop/commands',
+          payload: { action: 'start', version: 0, key: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect((await act({ action: 'start' })).statusCode).toBe(200);
+    expect((await act({ action: 'approve_brief' })).statusCode).toBe(409);
+    expect((await act({ action: 'approve_pitch' })).statusCode).toBe(200);
+    expect((await act({ action: 'select_investor', investorId })).statusCode).toBe(200);
+    expect((await act({ action: 'approve_brief' })).statusCode).toBe(200);
+    const selected = await get();
+    const cycleId = selected.cycle?.id;
+    if (!cycleId) throw new Error('Missing cycle');
+    const preview = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/preparation-loop/scenario-preview',
+          headers,
+          payload: { cycleId },
+        })
+      ).json<unknown>(),
+    );
+    expect(preview.input.preparation?.pitch).toBe(selected.pitch?.text);
+    const create = { cycleId, key: randomUUID(), expectedInputHash: preview.inputHash };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-loop/scenarios',
+      headers,
+      payload: create,
+    });
+    expect(first.statusCode).toBe(202);
+    const generation = generationSchema.parse(first.json<unknown>());
+    expect((await get()).cycle?.generationId).toBe(generation.id);
+    // A different request cannot create another active paid workflow for the same cycle.
+    const competing = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-loop/scenarios',
+      headers,
+      payload: { ...create, key: randomUUID() },
+    });
+    expect(competing.statusCode).toBe(409);
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-loop/scenarios',
+      headers,
+      payload: create,
+    });
+    expect(generationSchema.parse(replay.json<unknown>()).id).toBe(generation.id);
+    for (let i = 0; i < 60; i++) {
+      if ((await store.getGeneration(generation.id))?.status === 'succeeded') break;
+      await runWorkerTick(service);
+    }
+    const generated = await store.getGeneration(generation.id);
+    const scenario = generated?.output?.scenarios[0];
+    if (!scenario) throw new Error('Scenario did not complete');
+    const previousSession = (await service.read()).rehearsals[0];
+    const body = {
+      cycleId,
+      scenarioId: scenario.id,
+      answer: 'Our operating income is 122503 unspecified for 2026-07.',
+      // A request key that equals an existing session ID must never overwrite that session.
+      key: previousSession?.id ?? randomUUID(),
+    };
+    const submission = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-loop/rehearsals',
+      headers,
+      payload: body,
+    });
+    expect(submission.statusCode).toBe(202);
+    const sessionId = zTestId(submission.json<unknown>());
+    expect(sessionId).not.toBe(body.key);
+    if (previousSession)
+      expect(
+        (await service.read()).rehearsals.find((session) => session.id === previousSession.id),
+      ).toEqual(previousSession);
+    for (let i = 0; i < 60; i++) {
+      if ((await get()).latestSession?.status === 'ready') break;
+      await runWorkerTick(service);
+    }
+    const reviewed = await get();
+    expect(reviewed.latestSession?.id).toBe(sessionId);
+    expect(reviewed.latestSession?.status).toBe('ready');
+    expect(reviewed.latestSession?.hasGaps).toBe(true);
+    const evaluationId = reviewed.latestSession?.evaluationId;
+    if (!evaluationId) throw new Error('Missing evaluation');
+    const frozen = (await service.read()).rehearsals.find((session) => session.id === sessionId);
+    expect(frozen?.context?.version === 2 ? frozen.context.input.preparation?.cycleId : null).toBe(
+      cycleId,
+    );
+    expect(
+      frozen?.evaluationContext?.sources.some((source) => source.id === 'approved-preparation'),
+    ).toBe(true);
+    expect((await act({ action: 'review_feedback', sessionId, evaluationId })).statusCode).toBe(
+      200,
+    );
+    expect((await get()).cycle?.proposal?.itemIds.length).toBeGreaterThan(0);
+    expect(
+      (
+        await act({
+          action: 'accept_revision',
+          text: 'The saved operating result is negative; the credit affects net income. Cash timing and runway remain unknown.',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const next = await get();
+    expect(next.completedCycles).toBe(1);
+    expect(next.cycle?.id).not.toBe(cycleId);
+    expect(next.steps[0]?.status).toBe('complete');
+    expect(next.steps[2]?.status).toBe('needs_review');
+    expect(next.steps[3]?.status).toBe('blocked');
+    expect((await service.read()).rehearsals.find((session) => session.id === sessionId)).toEqual(
+      frozen,
+    );
+    const replayAnswer = await app.inject({
+      method: 'POST',
+      url: '/api/preparation-loop/rehearsals',
+      headers,
+      payload: body,
+    });
+    expect(replayAnswer.statusCode).toBe(202);
+    expect(zTestId(replayAnswer.json<unknown>())).toBe(sessionId);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.load())?.preparation?.connected?.cycles).toHaveLength(2);
+    } finally {
+      await reopened.close();
+    }
+    await service.change((state) => {
+      state.profile.version++;
+    });
+    expect((await get()).outdated).toBe(true);
+    expect((await act({ action: 'approve_brief' })).statusCode).toBe(409);
+    expect((await act({ action: 'refresh' })).statusCode).toBe(200);
+    expect((await get()).history).toHaveLength(3);
+  }, 60000);
 });

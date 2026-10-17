@@ -1,3 +1,4 @@
+import { ConnectedPreparation } from './ConnectedPreparation.js';
 import { PreparationPosition } from './PreparationPosition.js';
 import { FinancialSourceEvidence, InvestorSourceEvidence } from './PreparationSourceEvidence.js';
 import { PreparationRecommendationBasis } from './PreparationRecommendationBasis.js';
@@ -346,6 +347,71 @@ export function PreparationPlan({
     data.milestones.find((item) => item.id === 'brief')?.status !== 'complete'
       ? data.plan?.artifacts.find((item) => item.kind === 'investor')
       : financial;
+  const schedule = (
+    <PreparationSchedule
+      operatingResult={
+        data.position
+          ? (data.position.financial?.operatingIncome ?? null)
+          : (latestRow?.operatingIncome ?? null)
+      }
+      period={
+        data.position ? (data.position.financial?.period ?? null) : (latestRow?.month ?? null)
+      }
+      currency={
+        (data.position ? data.position.financial?.currency : snapshot?.currency) === 'unspecified'
+          ? 'Currency unconfirmed'
+          : data.position
+            ? (data.position.financial?.currency ?? 'Currency unconfirmed')
+            : (snapshot?.currency ?? 'Currency unconfirmed')
+      }
+      busy={busy}
+      onFinancialReview={() => {
+        if (!data.goal) onFinancials();
+        else setFinancialView((value) => !value);
+      }}
+      onSave={async (assumptions) => {
+        setBusy(true);
+        try {
+          await command('/preparation-plan/schedule', {
+            assumptions,
+            version: data.version,
+            planId: data.plan?.id,
+          });
+          setReload((value) => value + 1);
+        } finally {
+          setBusy(false);
+        }
+      }}
+      data={data}
+      onAction={(action) => {
+        if (data.connectedActive && action !== 'goal') {
+          const step =
+            data.milestones.find((item) => item.id === action)?.preparationStep ?? 'story';
+          window.location.assign(`/?preparationStep=${step}`);
+          return;
+        }
+        if (action === 'investor' && state.workspace.investors.length === 0) {
+          onResearch();
+          return;
+        }
+        if (action === 'goal' || action === 'investor') {
+          setEditing(true);
+          return;
+        }
+        if (action === 'refresh') {
+          void run(() => command('/preparation-plan/refresh', {}));
+          return;
+        }
+        const kind = action === 'brief' ? 'investor' : 'financial';
+        const prepared = data.plan?.artifacts.find((item) => item.kind === kind);
+        if (prepared) {
+          setArtifactId(prepared.id);
+          setSessionId(null);
+        } else if (action === 'brief') setEditing(true);
+        else onFinancials();
+      }}
+    />
+  );
   return (
     <section className="prep-plan" aria-label="Fundraising preparation">
       <div className="prep-heading">
@@ -362,6 +428,7 @@ export function PreparationPlan({
         </span>
       </div>
       {error && <p role="alert">{error}</p>}
+      {!data.goal && schedule}
       {!data.goal || editing ? (
         <div className="prep-goal-box">
           <h3>{data.goal ? 'Update your goal' : 'What are you preparing for?'}</h3>
@@ -445,102 +512,51 @@ export function PreparationPlan({
               />
             </div>
           )}
-          <PreparationSchedule
-            operatingResult={
-              data.position
-                ? (data.position.financial?.operatingIncome ?? null)
-                : (latestRow?.operatingIncome ?? null)
-            }
-            period={
-              data.position ? (data.position.financial?.period ?? null) : (latestRow?.month ?? null)
-            }
-            currency={
-              (data.position ? data.position.financial?.currency : snapshot?.currency) ===
-              'unspecified'
-                ? 'Currency unconfirmed'
-                : data.position
-                  ? (data.position.financial?.currency ?? 'Currency unconfirmed')
-                  : (snapshot?.currency ?? 'Currency unconfirmed')
-            }
-            busy={busy}
-            onFinancialReview={() => setFinancialView((value) => !value)}
-            onSave={async (assumptions) => {
-              setBusy(true);
-              try {
-                await command('/preparation-plan/schedule', {
-                  assumptions,
-                  version: data.version,
-                  planId: data.plan?.id,
-                });
-                setReload((value) => value + 1);
-              } finally {
-                setBusy(false);
-              }
-            }}
-            data={data}
-            onAction={(action) => {
-              if (action === 'investor' && state.workspace.investors.length === 0) {
-                onResearch();
-                return;
-              }
-              if (action === 'goal' || action === 'investor') {
-                setEditing(true);
-                return;
-              }
-              if (action === 'refresh') {
-                void run(() => command('/preparation-plan/refresh', {}));
-                return;
-              }
-              const kind = action === 'brief' ? 'investor' : 'financial';
-              const prepared = data.plan?.artifacts.find((item) => item.kind === kind);
-              if (prepared) {
-                setArtifactId(prepared.id);
-                setSessionId(null);
-              } else if (action === 'brief') setEditing(true);
-              else onFinancials();
-            }}
-          />
-          <div className="prep-next">
-            <div>
-              <span className="eyebrow">Recommended next action</span>
-              <h3>{data.nextAction}</h3>
-              {data.outdated && (
-                <p>
-                  Saved inputs changed. Previous reviews remain in history; refresh before accepting
-                  or rehearsing.
-                </p>
-              )}
+          {schedule}
+          <ConnectedPreparation state={state} onChange={() => setReload((value) => value + 1)} />
+          {!data.connectedActive && (
+            <div className="prep-next">
+              <div>
+                <span className="eyebrow">Recommended next action</span>
+                <h3>{data.nextAction}</h3>
+                {data.outdated && (
+                  <p>
+                    Saved inputs changed. Previous reviews remain in history; refresh before
+                    accepting or rehearsing.
+                  </p>
+                )}
+              </div>
+              <div className="prep-buttons">
+                {data.outdated ? (
+                  <button
+                    className="button"
+                    disabled={busy}
+                    onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
+                  >
+                    Refresh plan
+                  </button>
+                ) : nextArtifact ? (
+                  <button
+                    ref={actionButton}
+                    className="button"
+                    onClick={() => {
+                      setArtifactId(nextArtifact.id);
+                      setSessionId(null);
+                    }}
+                  >
+                    Review prepared work <ArrowRight size={16} />
+                  </button>
+                ) : (
+                  <button className="button" onClick={onFinancials}>
+                    Open financial evidence
+                  </button>
+                )}
+                <button className="button secondary" onClick={onResearch}>
+                  Investor research
+                </button>
+              </div>
             </div>
-            <div className="prep-buttons">
-              {data.outdated ? (
-                <button
-                  className="button"
-                  disabled={busy}
-                  onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
-                >
-                  Refresh plan
-                </button>
-              ) : nextArtifact ? (
-                <button
-                  ref={actionButton}
-                  className="button"
-                  onClick={() => {
-                    setArtifactId(nextArtifact.id);
-                    setSessionId(null);
-                  }}
-                >
-                  Review prepared work <ArrowRight size={16} />
-                </button>
-              ) : (
-                <button className="button" onClick={onFinancials}>
-                  Open financial evidence
-                </button>
-              )}
-              <button className="button secondary" onClick={onResearch}>
-                Investor research
-              </button>
-            </div>
-          </div>
+          )}
           <PreparationRecommendationBasis
             data={data}
             onEvidence={(id) => {

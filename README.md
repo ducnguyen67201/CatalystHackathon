@@ -86,6 +86,35 @@ Without Doppler metadata, backend entrypoints read `.env` as a fallback, with in
 
 Research always uses Exa and OpenAI. Add both API keys before running research. Without them the dashboard remains available, but research reports an explicit configuration failure; it never returns fictional results. The original radar schedule begins paused. Confirm company details and sample financial currency before using them.
 
+## Connected six-step preparation
+
+The preparation graph appears immediately after setup, including before a goal is confirmed.
+It starts with clearly labeled, unconfirmed work estimates (2 hours/day; 2 hours each for
+financial review, investor selection and brief review, plus 4 hours for practice and feedback).
+Edit these in **Review suggested plan → Adjust timing & effort**. Planned, 25% faster and 25% slower dates
+update from remaining work and saved checklist state. Saved estimates carry across plan
+updates for the same goal. Missing cash-evidence delivery produces a work-only estimate,
+excluding external waiting; it never confirms receipt or predicts funding.
+
+After confirming a preparation goal on Overview, choose **Prepare my checklist**. The
+saved loop connects financial-story revision, sourced investor recommendations, tailored
+brief approval, reviewed scenario generation, written or voice/video practice, saved
+assessment, and a revision decision. Complete steps become available from saved records;
+clicking navigation never completes a gate. Investor research uses the same recommendation
+projection and distinguishes “Recommended to review”, tradeoffs and unknown criteria.
+
+Written practice queues the existing evaluator. Voice/video use the existing provider
+configuration and receipt rules; no provider configuration is changed by this feature.
+Automatic drafting, when enabled, prepares proposals from completed saved coaching without
+an additional model call. Proposed wording still needs founder review. Accepting a revision
+starts the next cycle and prepares a fresh brief; rejecting it records the decision and keeps
+the unresolved feedback. A no-gap reviewed cycle waits for new inputs or explicit practice.
+New sources reopen affected preparation; prior pitches, source references and reports remain
+in history. Preparation completion is not mastery or a funding prediction.
+
+See [the implementation checklist](docs/ConnectedPitchImplementationChecklist.md) and
+[engineering plan](docs/ConnectedPitchEngineeringPlan.md).
+
 ## Try the complete flow
 
 1. Open the app and complete setup: upload the supplied CSV format or explicitly choose Tidewell. Uploaded rows must reconcile; the sample does not declare its currency.
@@ -540,8 +569,8 @@ financial work automatically; there is no second goal setup or required timing q
 **Update goal** on Overview edits the same company objective and prepares a new version in
 one transaction. Amount, financing history and investor mandate remain unknown unless supplied.
 
-The schedule uses labeled, editable suggestions (30 minutes per day; half-hour financial,
-investor and brief reviews; one hour for rehearsal). These are planning templates, not measured
+The schedule uses labeled, editable suggestions (2 hours per day; 2-hour financial,
+investor and brief reviews; 4 hours for rehearsal and feedback). These are planning templates, not measured
 velocity. **Review suggested plan** opens the outcome and a single confirmation; timing fields
 are under **Adjust timing & effort · optional**. Financial evidence is never changed by timing.
 

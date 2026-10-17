@@ -32,8 +32,13 @@ export function PreparationSchedule({
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const projection = projectSchedule(data, pace);
-  const timing = projection.suggested ? null : data.schedule;
+  const now = new Date();
+  const projection = projectSchedule(data, pace, now);
+  const scenarios = [
+    { label: '25% faster', pace: 1.25 },
+    { label: 'Planned pace', pace: 1 },
+    { label: '25% slower', pace: 0.75 },
+  ].map((scenario) => ({ ...scenario, finish: projectSchedule(data, scenario.pace, now).finish }));
   const nodes = buildJourney(data);
   const next = nodes.find((node) => node.id === projection.next?.id);
   const act = (id: string) => {
@@ -70,7 +75,7 @@ export function PreparationSchedule({
           <span>Preparation target</span>
           <strong>{data.goal?.targetDate ? dateLabel(data.goal.targetDate) : 'Not set'}</strong>
           <small>
-            {data.goal?.round} · {data.goal?.timezone}
+            {data.goal?.round ?? 'Confirm your goal'} · {data.goal?.timezone ?? 'UTC'}
           </small>
         </div>
         <div>
@@ -80,9 +85,11 @@ export function PreparationSchedule({
             {projection.tone === 'complete'
               ? 'Saved completion evidence'
               : pace === 1
-                ? projection.suggested
-                  ? 'June’s suggested estimate · editable'
-                  : 'Your saved planning estimate'
+                ? projection.automatic
+                  ? 'Automatic estimate · edit assumptions'
+                  : projection.workOnly
+                    ? 'Work only · evidence delivery unconfirmed'
+                    : 'Conditional on saved assumptions'
                 : 'What-if scenario · not saved'}
           </small>
         </div>
@@ -119,7 +126,7 @@ export function PreparationSchedule({
             <select
               value={pace}
               onChange={(event) => setPace(Number(event.target.value))}
-              disabled={!projection.current}
+              disabled={data.outdated}
             >
               <option value={1}>Planned availability</option>
               <option value={0.75}>25% slower</option>
@@ -129,6 +136,20 @@ export function PreparationSchedule({
           <button className="text-button" aria-expanded={full} onClick={() => setFull(!full)}>
             {full ? 'Show active work only' : 'Show completed steps'}
           </button>
+        </div>
+        <div
+          className="prep-schedule-scenarios"
+          aria-label="Preparation date scenarios"
+          aria-live="polite"
+        >
+          {scenarios.map((scenario) => (
+            <div key={scenario.label}>
+              <span>{scenario.label}</span>
+              <strong>
+                {scenario.finish ? dateLabel(scenario.finish) : 'Refresh changed evidence'}
+              </strong>
+            </div>
+          ))}
         </div>
         <div
           className="prep-schedule-table-scroll"
@@ -160,7 +181,9 @@ export function PreparationSchedule({
             </thead>
             <tbody>
               {projection.rows
-                .filter((row) => full || row.status !== 'complete')
+                .filter(
+                  (row) => full || projection.tone === 'complete' || row.status !== 'complete',
+                )
                 .map((row) => (
                   <tr key={row.id}>
                     <th scope="row">
@@ -220,7 +243,7 @@ export function PreparationSchedule({
             <small>
               {projection.reviewed} current artifact review{projection.reviewed === 1 ? '' : 's'}{' '}
               accepted in 7 days · {projection.capacity} h/day{' '}
-              {projection.suggested ? 'suggested' : 'planned'}. Cash evidence remains unverified.
+              {projection.automatic ? 'suggested' : 'planned'}. Cash evidence remains unverified.
             </small>
           </div>
           <div>
@@ -272,7 +295,7 @@ export function PreparationSchedule({
           missing cash evidence stays an open question.
         </p>
         <form
-          key={timing?.id ?? 'new'}
+          key={data.schedule?.id ?? 'new'}
           className="prep-goal-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -314,7 +337,7 @@ export function PreparationSchedule({
                   min="0.25"
                   max="12"
                   step="0.25"
-                  defaultValue={timing?.dailyHours ?? 0.5}
+                  defaultValue={projection.estimates.dailyHours}
                 />
               </label>
               <label>
@@ -323,7 +346,7 @@ export function PreparationSchedule({
                   name="cashExpectedDate"
                   type="date"
                   min={projection.today}
-                  defaultValue={timing?.cashExpectedDate ?? ''}
+                  defaultValue={projection.estimates.cashExpectedDate ?? ''}
                 />
               </label>
               {(['financial', 'investor', 'brief', 'rehearse'] as const).map((id) => (
@@ -336,7 +359,7 @@ export function PreparationSchedule({
                     min="0.25"
                     max="80"
                     step="0.25"
-                    defaultValue={timing?.hours[id] ?? (id === 'rehearse' ? 1 : 0.5)}
+                    defaultValue={projection.estimates.hours[id]}
                   />
                 </label>
               ))}
@@ -345,8 +368,9 @@ export function PreparationSchedule({
               Enter estimates for remaining work. Reviewed milestones consume no future time.
               Founder work is modeled sequentially, every calendar day; the brief waits for the
               assumed cash delivery. Total fractional days round up. Changing pace is a temporary
-              scenario and does not save availability or verify receipt. Changed plans use June’s
-              suggested estimates until you customize them.
+              scenario and does not save availability or verify receipt. Saved estimates carry
+              forward for the same goal. Without a delivery date, the graph estimates founder work
+              only and excludes external waiting time.
             </p>
           </details>
           {error && (
@@ -354,7 +378,15 @@ export function PreparationSchedule({
               {error}
             </p>
           )}
-          <button className="button prep-full" disabled={busy || data.outdated}>
+          {!data.goal && (
+            <p className="muted prep-full">
+              Confirm your goal below before saving custom assumptions.
+            </p>
+          )}
+          <button
+            className="button prep-full"
+            disabled={busy || data.outdated || !data.goal || !data.plan}
+          >
             Use this preparation plan
           </button>
         </form>

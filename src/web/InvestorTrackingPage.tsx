@@ -1,3 +1,4 @@
+import { InvestorPreparationRecommendationPanel } from './InvestorPreparationRecommendations.js';
 import { useState } from 'react';
 import { InvestorSuggestions } from './InvestorSuggestions.js';
 import { InvestorModal } from './InvestorModal.js';
@@ -121,6 +122,7 @@ export function InvestorTrackingPage({
           the API and worker. Saved profiles will use live public-source research.
         </p>
       )}
+      <InvestorPreparationRecommendationPanel revision={state.workspace.revision} />
       <InvestorSuggestions state={state} onRefresh={onRefresh} />
       <div className="investor-section-heading">
         <div>

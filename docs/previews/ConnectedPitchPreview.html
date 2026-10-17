@@ -1,0 +1,1495 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>June — Connected preparation in the current workspace</title>
+    <!-- The prototype deliberately uses the application's real styles and navigation. -->
+    <link rel="stylesheet" href="../../src/web/Styles.css" />
+    <link rel="stylesheet" href="../../src/web/Dashboard.css" />
+    <link rel="stylesheet" href="../../src/web/PreparationPlan.css" />
+    <link rel="stylesheet" href="../../src/web/PreparationSchedule.css" />
+    <link rel="stylesheet" href="../../src/web/FinancialPerformanceStatement.css" />
+    <link rel="stylesheet" href="../../src/web/MeetingBriefs.css" />
+    <link rel="stylesheet" href="../../src/web/ScenarioPractice.css" />
+    <link rel="stylesheet" href="../../src/web/Followups.css" />
+    <style>
+      .preview-tools {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 15px;
+        padding: 9px 20px;
+        border-bottom: 1px solid var(--line);
+        background: #efeee9;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .preview-tools div {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .preview-tools button {
+        font: inherit;
+        background: none;
+        color: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      .preview-note {
+        font-size: 11px;
+        color: #8b643f;
+      }
+      .proposed {
+        background: #e9edf6;
+        color: #4c6083;
+        font-size: 10px;
+        padding: 3px 7px;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        letter-spacing: 0;
+        text-transform: none;
+        font-weight: 500;
+      }
+      .connection-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        border-block: 1px solid var(--line);
+        margin: 14px 0 18px;
+      }
+      .connection-strip button {
+        text-align: left;
+        background: transparent;
+        padding: 13px 15px;
+        color: var(--muted);
+        font-size: 12px;
+        border-right: 1px solid var(--line);
+      }
+      .connection-strip button:first-child {
+        padding-left: 0;
+      }
+      .connection-strip button:last-child {
+        border: 0;
+      }
+      .connection-strip strong {
+        color: var(--ink);
+        margin-right: 8px;
+      }
+      .connection-strip small {
+        display: block;
+        font-size: 10px;
+        margin: 4px 0 0 22px;
+      }
+      .connection-strip .ready {
+        color: #52734b;
+      }
+      .task-list {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: white;
+        margin-top: 20px;
+      }
+      .task-row {
+        display: flex;
+        gap: 15px;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .task-row:last-child {
+        border: 0;
+      }
+      .task-row strong {
+        font-size: 13px;
+      }
+      .task-row small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .task-row .button {
+        padding: 8px 12px;
+      }
+      .task-row .stepnum {
+        display: grid;
+        place-items: center;
+        width: 27px;
+        height: 27px;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+      .task-label {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        padding: 3px 7px;
+        border-radius: 4px;
+        background: #eef0e8;
+        color: #567047;
+      }
+      .badge.warn {
+        background: #f7eddd;
+        color: #90642c;
+      }
+      .badge.old {
+        background: #efeeeb;
+        color: #747474;
+      }
+      .sheet {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+        margin: 20px 0;
+      }
+      .sheet h3 {
+        margin-bottom: 10px;
+      }
+      .sheet p {
+        font-size: 13px;
+      }
+      .connection {
+        background: #eff1f7;
+        border-left: 3px solid #798bab;
+        font-size: 12px;
+        padding: 12px 16px;
+        margin: 16px 0;
+      }
+      .connection strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .row-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .row-actions .text-button {
+        font-size: 12px;
+      }
+      .investor-grid {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 22px;
+        margin-top: 22px;
+      }
+      .investor-menu {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+      }
+      .investor-menu button {
+        text-align: left;
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+        color: var(--ink);
+      }
+      .investor-menu button.selected {
+        border-color: #7c889b;
+        background: #f0f1f5;
+      }
+      .investor-menu small {
+        display: block;
+        margin-top: 5px;
+        color: var(--muted);
+      }
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        background: white;
+        font-size: 12px;
+      }
+      .data-table th {
+        background: #f2f3ef;
+        color: var(--muted);
+        font-size: 11px;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 500;
+      }
+      .data-table td {
+        padding: 15px 16px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      .data-table tr:last-child td {
+        border: 0;
+      }
+      .data-table td p {
+        margin: 5px 0 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .data-table button.row-link {
+        background: none;
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        text-align: left;
+        padding: 0;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      .table-scroll {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .compare-table {
+        min-width: 750px;
+      }
+      .compare-table td {
+        width: 25%;
+      }
+      .compare-table td:first-child {
+        width: 19%;
+        color: var(--muted);
+      }
+      .compare-table .chosen {
+        background: #f2f4ee;
+      }
+      .drawer {
+        position: fixed;
+        inset: 0 0 0 auto;
+        margin: 0;
+        width: min(960px, 92vw);
+        max-width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        padding: 0;
+        border: 0;
+        border-left: 1px solid var(--line);
+        border-radius: 0;
+        background: #fafaf6;
+        color: var(--ink);
+        box-shadow: -20px 0 80px #292f4020;
+        overflow: hidden;
+      }
+      .drawer[open] {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+      }
+      .drawer::backdrop {
+        background: #292f4050;
+      }
+      .drawer-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+        padding: 22px 28px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      .drawer-head h2 {
+        font-size: 25px;
+        margin: 5px 0;
+      }
+      .drawer-body {
+        padding: 24px 28px;
+        overflow: auto;
+        min-height: 0;
+      }
+      .drawer-footer {
+        padding: 16px 28px;
+        border-top: 1px solid var(--line);
+        background: white;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      .drawer-footer small {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1.15fr;
+        gap: 22px;
+      }
+      .split > .sheet {
+        margin: 0;
+      }
+      .small-title {
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 12px;
+        display: block;
+      }
+      .draft-text {
+        font-size: 15px !important;
+        line-height: 1.8;
+      }
+      .draft-editor {
+        width: 100%;
+        min-height: 230px;
+        resize: vertical;
+        padding: 14px;
+        border: 1px solid #bcc3ca;
+        border-radius: 6px;
+        color: var(--ink);
+        font:
+          13px/1.8 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        background: #fff;
+      }
+      .why {
+        border-left: 3px solid #a6b58a;
+        background: #f1f4ec;
+        padding: 12px 15px;
+        font-size: 12px;
+        margin: 17px 0;
+      }
+      .why p {
+        margin: 5px 0 0;
+      }
+      .citation {
+        font-size: 11px;
+        color: #5e7053;
+        background: none;
+        padding: 0;
+        text-decoration: underline;
+      }
+      .dialog-tabs {
+        display: flex;
+        gap: 22px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 12px;
+        margin-bottom: 22px;
+        font-size: 12px;
+      }
+      .dialog-tabs strong {
+        border-bottom: 2px solid var(--ink);
+        padding-bottom: 12px;
+      }
+      .lineage {
+        font:
+          11px/1.6 ui-monospace,
+          SFMono-Regular,
+          monospace;
+        background: #f0f1ed;
+        border: 1px solid var(--line);
+        padding: 10px 13px;
+        border-radius: 5px;
+        margin: 14px 0;
+        overflow-wrap: anywhere;
+      }
+      .graph {
+        font:
+          12px/1.8 ui-monospace,
+          SFMono-Regular,
+          monospace;
+        white-space: pre;
+        overflow: auto;
+        background: #f0f1ed;
+        padding: 20px;
+        border-radius: 6px;
+      }
+      .transcript {
+        display: grid;
+        gap: 12px;
+      }
+      .turn {
+        padding: 15px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .turn strong {
+        display: block;
+        font-size: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin-bottom: 7px;
+      }
+      .turn.founder {
+        background: #f0f3eb;
+      }
+      .report-section {
+        border-bottom: 1px solid var(--line);
+        padding: 18px 0;
+      }
+      .report-section h3 {
+        font-size: 15px;
+      }
+      .report-section p {
+        font-size: 13px;
+      }
+      .review-room {
+        display: grid;
+        grid-template-columns: 1fr 350px;
+        gap: 22px;
+      }
+      .room-simulation {
+        min-height: 200px;
+        background: #edeef0;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 20px;
+      }
+      .room-simulation .orb {
+        border-radius: 50%;
+        width: 65px;
+        height: 65px;
+        margin: 0 auto 20px;
+        background: #c7d0b7;
+        box-shadow: 0 0 0 12px #dee3d6;
+      }
+      .room-controls {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin: 15px 0;
+      }
+      .preview-message {
+        font-size: 12px;
+        min-height: 20px;
+        color: #52734b;
+        margin: 10px 0;
+      }
+      .compact-form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .compact-form label {
+        display: grid;
+        gap: 7px;
+        font-size: 12px;
+      }
+      .compact-form input,
+      .compact-form select {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: white;
+        color: inherit;
+      }
+      .mini-bars {
+        display: grid;
+        gap: 5px;
+        font-size: 11px;
+        margin: 15px 0;
+      }
+      .mini-bars span {
+        display: inline-block;
+        height: 8px;
+        background: #83926c;
+        border-radius: 2px;
+        margin-right: 10px;
+      }
+      .timeline-label {
+        font-size: 11px;
+        color: #707983;
+      }
+      .timeline-bar {
+        height: 24px;
+        background: #dfe6d4;
+        border: 1px solid #c5d2b8;
+        border-radius: 3px;
+        position: relative;
+        color: #526045;
+        font-size: 10px;
+        padding: 3px 8px;
+        text-align: left;
+      }
+      .timeline-bar.gray {
+        background: #e5e7ea;
+        border-color: #d3d7dc;
+        color: #7b7f86;
+      }
+      .tiny {
+        font-size: 11px !important;
+        color: var(--muted);
+      }
+      .facts-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .facts-table td {
+        padding: 11px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .facts-table td:last-child {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .source-mark {
+        background: #f7edcc;
+      }
+      .preview-status-footer {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 20px;
+      }
+      .status-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 15px;
+      }
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .button svg {
+        width: 14px;
+        height: 14px;
+      }
+      summary {
+        cursor: pointer;
+      }
+      .prep-next .row-actions {
+        margin: 0;
+      }
+      .prep-schedule-table th:first-child {
+        width: 35%;
+      }
+      @media (max-width: 1000px) {
+        .review-room,
+        .split {
+          grid-template-columns: 1fr;
+        }
+        .investor-grid {
+          grid-template-columns: 200px minmax(0, 1fr);
+        }
+      }
+      @media (max-width: 760px) {
+        .investor-grid {
+          grid-template-columns: 1fr;
+        }
+        .investor-menu {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .investor-menu button {
+          padding: 10px;
+          font-size: 11px;
+        }
+        .connection-strip {
+          grid-template-columns: 1fr;
+        }
+        .connection-strip button {
+          border: 0;
+          border-bottom: 1px solid var(--line);
+          padding: 9px 0;
+        }
+        .connection-strip small {
+          display: none;
+        }
+        .task-row {
+          flex-wrap: wrap;
+        }
+        .drawer {
+          width: 100vw;
+        }
+        .drawer-head,
+        .drawer-body,
+        .drawer-footer {
+          padding: 18px;
+        }
+        .compact-form {
+          grid-template-columns: 1fr;
+        }
+        .preview-tools {
+          align-items: start;
+        }
+        .preview-tools > span {
+          max-width: 170px;
+        }
+        .prep-schedule-position-strip {
+          grid-template-columns: 1fr 1fr;
+        }
+        .meeting-table {
+          min-width: 650px;
+        }
+        .sheet {
+          padding: 16px;
+        }
+        .room-controls {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout dashboard-layout">
+      <aside class="workspace-sidebar" aria-label="Workspace sidebar">
+        <button class="brand brand-home" aria-label="June home" data-action="nav:overview">
+          j<small class="brand-wordmark">une</small><span></span>
+        </button>
+        <nav class="workspace-nav" aria-label="Workspace" id="nav"></nav>
+        <div class="workspace-status">
+          <span class="workspace-research-status" aria-label="Fictional research" tabindex="0"
+            >◉<span class="sidebar-label">Fictional research</span></span
+          ><button
+            class="notification-button"
+            aria-label="Notifications"
+            data-action="notifications"
+          >
+            ♧<span class="sidebar-label">Notifications</span>
+          </button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="preview-tools">
+          <span>Design preview · current main UI + proposed connections</span>
+          <div>
+            <span class="preview-note">Fictional evidence & sample reviews</span
+            ><button data-action="flow">1 → 2 → 3 flow map</button
+            ><button data-action="reset">Reset preview</button>
+          </div>
+        </div>
+        <div class="content" id="content" tabindex="-1"></div>
+      </main>
+    </div>
+    <dialog class="drawer" id="drawer" aria-labelledby="drawer-title">
+      <div class="drawer-head">
+        <div>
+          <span class="eyebrow" id="drawer-kicker"></span>
+          <h2 id="drawer-title"></h2>
+        </div>
+        <button class="button secondary" data-action="close">Close</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+      <div class="drawer-footer" id="drawer-footer"></div>
+    </dialog>
+    <script>
+      const key = 'june-current-ui-connected-preview-v2';
+      const base =
+        'In July 2026, revenue was 100,853. Operating income was −59,797. A reported credit of 182,300 brought net income to 122,503. Positive net income does not establish operating profitability.';
+      const caveat =
+        ' The statement does not establish when the credit becomes cash, whether it recurs, or our cash runway. Cash-balance and cash-flow evidence are still needed.';
+      const firms = [
+        {
+          id: 'harbor',
+          name: 'Harbor Capital',
+          type: 'Software seed fund',
+          stage: 'Seed',
+          sector: 'B2B software',
+          geo: 'Canada',
+          benefit: 'Stated sector and stage overlap',
+          tradeoff: 'Current check size unconfirmed',
+          focus: 'Operating performance and capital efficiency',
+          question: 'What evidence would you need to assess our operating plan?',
+          quote: 'We back Canadian B2B software founders at the seed stage.',
+          origin: 'Stated fictional thesis',
+          contact: 'Not confirmed',
+        },
+        {
+          id: 'summit',
+          name: 'Summit Ventures',
+          type: 'Growth-stage investor',
+          stage: 'Series B+',
+          sector: 'Software',
+          geo: 'North America',
+          benefit: 'Sector and geography overlap',
+          tradeoff: 'Stated stage differs from our seed goal',
+          focus: 'Repeatable revenue growth',
+          question: 'What growth milestones would make a later conversation useful?',
+          quote: 'We focus on North American software businesses at Series B and later.',
+          origin: 'Stated fictional mandate',
+          contact: 'Fictional application page',
+        },
+        {
+          id: 'north',
+          name: 'Northline Angels',
+          type: 'Angel collective',
+          stage: 'Unknown',
+          sector: 'Historical software deal',
+          geo: 'Unknown',
+          benefit: 'Historical software experience',
+          tradeoff: 'Current mandate and participation unknown',
+          focus: 'Confirm fit before assuming priorities',
+          question: 'Are you currently considering seed software companies?',
+          quote: 'Northline participated in a software financing in 2025.',
+          origin: 'Historical fictional deal',
+          contact: 'Not confirmed',
+        },
+      ];
+      const paths = {
+        overview: ['Overview', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
+        meetings: ['Meetings', 'M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4'],
+        radar: ['Investor radar', 'M12 3a9 9 0 1 0 9 9 M12 7a5 5 0 1 0 5 5 M12 12l8-8'],
+        investors: ['Investor research', 'M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M15 15l6 6'],
+        financials: ['Financials', 'M3 3v18h18 M7 16v-4 M12 16V8 M17 16V5'],
+        brief: ['Meeting brief', 'M5 3h10l4 4v14H5z M14 3v6h5 M8 13h8 M8 17h6'],
+        practice: ['Practice scenario', 'M3 4h18v13H8l-5 4z M7 9h10 M7 13h6'],
+        followups: ['Follow-ups', 'M12 3a9 9 0 1 0 .01 0 M12 7a5 5 0 1 0 .01 0 M12 10v4 M10 12h4'],
+      };
+      function initial() {
+        return {
+          page: 'overview',
+          drafts: [
+            {
+              v: 1,
+              text: base,
+              evidence: 1,
+              reason: 'Prepared from the selected Tidewell statement.',
+            },
+          ],
+          approved: null,
+          decisions: [],
+          selected: null,
+          inspected: 'harbor',
+          briefs: [],
+          scenario: null,
+          sessions: [],
+          evidence: 1,
+          answer: '',
+          buffer: null,
+          proposal: false,
+          view: 'briefs',
+          mode: 'written',
+          notice: '',
+          pending: false,
+        };
+      }
+      let s = initial();
+      try {
+        const stored = JSON.parse(localStorage.getItem(key) || 'null');
+        if (
+          stored &&
+          stored.schema === 2 &&
+          Array.isArray(stored.value?.drafts) &&
+          stored.value.drafts.length &&
+          Array.isArray(stored.value.sessions) &&
+          paths[stored.value.page === 'room' ? 'practice' : stored.value.page]
+        )
+          s = { ...initial(), ...stored.value, pending: false };
+      } catch {}
+      const content = document.getElementById('content'),
+        drawer = document.getElementById('drawer');
+      let timeout;
+      let returnFocus;
+      const esc = (v) =>
+        String(v).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      const cur = () => s.drafts.at(-1),
+        firm = () => firms.find((i) => i.id === s.selected),
+        approved = () => s.approved === cur().v && cur().evidence === s.evidence;
+      const brief = () =>
+        s.briefs.findLast(
+          (b) => b.pitch === cur().v && b.investor === s.selected && b.evidence === s.evidence,
+        );
+      const ready = () => approved() && !!brief();
+      const latest = () => s.sessions.at(-1);
+      const badge = (text, tone = '') => `<span class="badge ${tone}">${text}</span>`;
+      const proposed = () => '<span class="proposed">Proposed connection</span>';
+      const icon = (p) =>
+        `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="${p}" /></svg>`;
+      const btn = (label, action, secondary = false, disabled = false) =>
+        `<button class="button${secondary ? ' secondary' : ''}" data-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+      const textbtn = (label, action) =>
+        `<button class="text-button" data-action="${action}">${label}</button>`;
+      function persist() {
+        try {
+          localStorage.setItem(key, JSON.stringify({ schema: 2, value: s }));
+        } catch {}
+      }
+      function heading(eyebrow, title, description, actions = '') {
+        return `<header class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p class="muted">${description}</p></div><div class="row-actions">${actions}</div></header>`;
+      }
+      function next() {
+        if (cur().evidence !== s.evidence)
+          return ['Review updated financial evidence', 'financial-review'];
+        if (!approved()) return ['Review your operating-performance explanation', 'pitch'];
+        if (!s.selected) return ['Compare investors for your next conversation', 'compare'];
+        if (!brief()) return ['Review your tailored investor brief', 'open-brief'];
+        if (!s.scenario || s.scenario.pitch !== cur().v || s.scenario.investor !== s.selected)
+          return ['Prepare a scenario from your approved brief', 'to-scenario'];
+        if (
+          latest()?.pitch === cur().v &&
+          latest()?.outcome === 'gap' &&
+          !s.decisions.some((d) => d.kind === 'declined' && d.session === latest().id)
+        )
+          return ['Review June’s proposed pitch revision', 'review-latest'];
+        return ['Rehearse your approved pitch', 'to-scenario'];
+      }
+      function linkstrip() {
+        return `<div class="connection-strip" aria-label="Three connected features"><button data-action="pitch"><strong>1</strong>Review your financial story<small>${approved() ? 'Approved v' + cur().v : 'Prepared for review'} · Overview drawer</small></button><button data-action="compare"><strong>2</strong>Choose investor & tailor brief<small>${firm()?.name || 'Select investor'} · Research → Meeting brief</small></button><button data-action="to-scenario"><strong>3</strong>Practise & improve the same story<small>Practice scenario → Follow-ups → revised draft</small></button></div>`;
+      }
+      function overview() {
+        const n = next();
+        const steps = [
+          ['Review financial story', approved(), 'pitch', '0%', '23%'],
+          ['Compare & select investor', !!s.selected, 'compare', '23%', '22%'],
+          ['Approve tailored brief', ready(), 'open-brief', '45%', '22%'],
+          [
+            'Rehearse & review',
+            latest()?.pitch === cur().v &&
+              latest()?.evidence === s.evidence &&
+              latest()?.investor === s.selected &&
+              latest()?.outcome !== 'failed',
+            'to-scenario',
+            '67%',
+            '23%',
+          ],
+        ];
+        return (
+          heading(
+            'Your founder workspace',
+            'Make your next conversation count.',
+            'Tidewell · Financial evidence, a clear story, and a little practice.',
+            btn('Edit context', 'goal', true),
+          ) +
+          `<section class="prep-plan"><div class="prep-heading"><div><span class="eyebrow">June · Your preparation plan</span><h2>Your position. Your path forward.</h2></div><span class="prep-agent is-on">Fictional saved-evidence preview</span></div><div class="prep-target prep-target-compact"><span><strong>Seed conversation</strong> · Raise amount unconfirmed · currency unconfirmed</span>${textbtn('Edit goal', 'goal')}</div>${linkstrip()}<div class="preparation-schedule"><div class="prep-schedule-position-strip"><div><span>Current operating result</span><strong>−59,797</strong><small>July 2026 · currency unconfirmed</small></div><div><span>Preparation target</span><strong>23 Oct 2026</strong><small>Founder target · fictional</small></div><div><span>Current pitch</span><strong>Version ${cur().v}</strong><small>${approved() ? 'Approved for current evidence' : 'Review needed'} · evidence ${s.evidence}</small></div><div><span>Evidence still missing</span><strong>Cash & runway</strong><small>Income statements do not establish runway.</small></div></div><div class="prep-schedule-card"><div class="prep-schedule-top"><div><h3>Preparation schedule</h3><p>You’re here: ${n[0]}</p></div>${textbtn('Financial review ↗', 'financial-review')}</div><div class="prep-schedule-tools"><span>Fictional demo evidence</span>${textbtn('Assumptions & expected outcome ↗', 'assumptions')}<span>Conditional plan · not a funding forecast</span></div><div class="prep-schedule-table-scroll"><table class="prep-schedule-table"><caption>Current timeline layout · authored planning illustration</caption><thead><tr><th>Workstream / current status</th><th><div class="prep-schedule-dates"><span>17 Oct</span><span>19 Oct</span><span>21 Oct</span><span>23 Oct</span></div></th></tr></thead><tbody>${steps.map(([name, done, action, left, width]) => `<tr><th><button data-action="${action}">${name} ↗</button><small>${done ? 'Saved in this walkthrough' : 'Review / action available'}</small></th><td><div class="prep-schedule-track">${done ? '<span class="prep-schedule-reviewed">Reviewed</span>' : `<button class="timeline-bar" style="left:${left};width:${width}" data-action="${action}">Planned</button>`}</div></td></tr>`).join('')}</tbody></table></div><div class="prep-schedule-pace"><div><strong>${cur().evidence === s.evidence ? 'Continue the preparation loop' : 'Saved evidence changed — review needed'}</strong><p>Plans use assumed dates; practice results and original sources stay saved.</p></div><span>${steps.filter((x) => x[1]).length} / 4 steps reviewed</span></div></div></div><div class="prep-next"><div><span class="eyebrow">Recommended next action</span><h3>${n[0]}</h3></div><div class="row-actions">${btn('Review prepared work →', n[1])}${textbtn('Investor research', 'nav:investors')}</div></div><details class="prep-supporting" style="margin-top:20px"><summary>Prepared materials, feedback & history</summary><div class="task-list"><div class="task-row"><div><strong>Financial explanation · v${cur().v}</strong><small>Tidewell.csv · July 2026 · row 23</small></div>${btn('Review explanation', 'pitch', true)}</div><div class="task-row"><div><strong>${firm() ? firm().name + ' — investor brief' : 'Investor brief'}</strong><small>${brief() ? 'Approved from pitch v' + brief().pitch : 'Select an investor and review the tailored draft.'}</small></div>${btn('Open meeting brief', 'nav:brief', true)}</div><div class="task-row"><div><strong>${s.sessions.length} saved practice review${s.sessions.length === 1 ? '' : 's'}</strong><small>Feedback stays linked to the pitch used in that conversation.</small></div>${btn('Open follow-ups', 'nav:followups', true)}</div></div>${textbtn('Version history ↗', 'history')}</details></section><details class="dashboard-supporting"><summary>More workspace details · meetings, financials & activity</summary><div class="task-list"><div class="task-row"><div><strong>Your next conversation</strong><small>${firm()?.name || 'No investor selected'} · date to confirm</small></div>${btn('Meetings', 'nav:meetings', true)}</div><div class="task-row"><div><strong>Your financial position</strong><small>Original uploaded rows remain unchanged.</small></div>${btn('View financials', 'nav:financials', true)}</div></div></details>`
+        );
+      }
+      function research() {
+        const i = firms.find((x) => x.id === s.inspected) || firms[0];
+        return (
+          heading(
+            'Investor research',
+            'Discover investors for your next round',
+            'Find relevant firms and angels, then choose which investors to follow.',
+            btn('Compare 3 investors', 'compare'),
+          ) +
+          `<div class="investor-loop tiny">01 Set your preferences &nbsp; → &nbsp; 02 Discover investors &nbsp; → &nbsp; 03 Choose who to track</div><div class="sheet"><div class="status-heading"><div><h3>Suggested investors</h3><p class="muted">Three fictional saved candidates for the confirmed company context.</p></div>${textbtn('Preferences ↗', 'goal')}</div><div class="row-actions">${firms.map((f) => badge(f.name + (s.selected === f.id ? ' · selected' : ''))).join('')}</div></div><div class="status-heading"><h2>Your investors</h2><div>${proposed()} ${textbtn('Compare & prepare for a conversation →', 'compare')}</div></div><div class="investor-grid"><div class="investor-menu">${firms.map((f) => `<button class="${s.inspected === f.id ? 'selected' : ''}" data-action="inspect:${f.id}"><strong>${f.name}</strong><small>${f.type}</small><small>Daily checks · fictional</small></button>`).join('')}</div><section class="sheet" style="margin:0"><div class="status-heading"><h2>${i.name}</h2>${badge('Fictional source')}</div><p class="muted">${i.type} · saved source · 17 October</p><blockquote>${i.quote}</blockquote><p>Stage: ${i.stage} · Sector: ${i.sector} · Geography: ${i.geo}</p><div class="why"><strong>What remains unknown</strong><p>${i.tradeoff}. Historical activity is not a verified mandate.</p></div><div class="row-actions">${textbtn('Inspect source passage ↗', 'source:' + i.id)}${btn('Prepare pitch for this investor →', 'select:' + i.id, false, !approved())}</div>${!approved() ? '<p class="tiny" style="margin-top:12px">Review the financial explanation on Overview before preparing a tailored brief.</p>' : ''}</section></div>`
+        );
+      }
+      function briefPage() {
+        return (
+          heading(
+            'Prepare, practise, reflect',
+            'Meeting briefs',
+            'Your meeting context and saved conversations, with the evidence close at hand.',
+            btn('Open current brief', 'open-brief', true, !s.selected),
+          ) +
+          `<div class="meeting-table-toolbar"><div class="meeting-view-switch"><button data-action="view:briefs" aria-pressed="${s.view === 'briefs'}">Meeting briefs <span>${s.briefs.length + (s.selected && !brief() ? 1 : 0)}</span></button><button data-action="view:practice" aria-pressed="${s.view === 'practice'}">Practice conversations <span>${s.sessions.length}</span></button></div><span class="hint">Select a record to open the existing review drawer.</span></div>${s.view === 'practice' ? sessionTable() : s.selected ? `<div class="meeting-table-scroll"><table class="meeting-table"><thead><tr><th>Meeting brief</th><th>Investor</th><th>Pitch version</th><th>Status</th></tr></thead><tbody>${[...(brief() ? [] : [{ pitch: cur().v, name: firm().name, pending: true }]), ...s.briefs.slice().reverse()].map((b, index) => `<tr><td><button class="meeting-row-title" data-action="${index === 0 ? 'open-brief' : 'history'}">Explain July’s operating performance ↗</button><p class="tiny">Selected evidence + financial story + investor context</p></td><td>${b.name}</td><td>v${b.pitch}</td><td>${badge(b.pending ? 'Prepared for review' : b.pitch === cur().v && b.evidence === s.evidence ? 'Approved' : 'Earlier brief', b.pending ? 'warn' : '')}</td></tr>`).join('')}</tbody></table></div>` : empty('Select an investor to prepare your first tailored brief.', btn('Open investor research', 'nav:investors'))}`
+        );
+      }
+      function empty(text, action) {
+        return `<div class="meeting-table-empty"><p>${text}</p>${action}</div>`;
+      }
+      function scenarioPage() {
+        return (
+          heading(
+            'Practice scenario',
+            'Choose your next conversation.',
+            'Generate a scenario, explore the details, and take it into the practice room.',
+            btn('Back to brief', 'nav:brief', true),
+          ) +
+          `<section class="scenario-workspace"><div class="scenario-heading"><div><div class="eyebrow">From research to rehearsal</div><h2>Practice scenario</h2><p class="muted">A focused conversation, built from the information you have.</p></div>${badge('Fictional template')}</div><div class="scenario-controls"><label>Investor<select id="scenario-investor" disabled><option>${firm()?.name || 'Choose investor first'}</option></select></label><label>Objective<input readonly value="Explain operating performance, credit and cash limitations" /></label>${btn('Review generation sources', 'scenario-review', false, !ready())}</div><div class="connection"><strong>${proposed()} Approved brief → scenario sources</strong>${ready() ? 'The source review includes pitch v' + cur().v + ', the approved investor brief and exact financial rows.' : 'Approve your financial explanation and tailored brief first.'}</div>${s.scenario ? `<div class="meeting-table-scroll"><table class="meeting-table"><thead><tr><th>Scenario</th><th>Investor</th><th>Source pitch</th><th>Status</th></tr></thead><tbody><tr><td><button class="meeting-row-title" data-action="scenario-detail">Explain July’s operating result ↗</button><p class="tiny">Opening question + focused follow-ups</p></td><td>${s.scenario.name}</td><td>v${s.scenario.pitch} · evidence ${s.scenario.evidence}</td><td>${badge(s.scenario.pitch === cur().v && s.scenario.evidence === s.evidence && s.scenario.investor === s.selected ? 'Ready' : 'Outdated', 'warn')}</td></tr></tbody></table></div>` : empty('No saved scenario for the current brief yet.', btn('Review sources & prepare scenario', 'scenario-review', false, !ready()))}</section>`
+        );
+      }
+      function room() {
+        const valid =
+          ready() &&
+          s.scenario?.pitch === cur().v &&
+          s.scenario?.investor === s.selected &&
+          s.scenario?.evidence === s.evidence;
+        if (!valid)
+          return (
+            heading(
+              'June · Practice room',
+              'This preparation needs a fresh review.',
+              'Your earlier scenarios and practice remain saved.',
+            ) + btn('Back to scenarios', 'nav:practice')
+          );
+        return (
+          heading(
+            'June · Practice room',
+            'Make the next conversation count.',
+            'Rehearse with June using your selected scenario and saved context.',
+            btn('Back to scenarios', 'nav:practice', true),
+          ) +
+          `<section class="scenario-room-brief panel"><div class="eyebrow">Practice with ${firm().name}</div><h2>Explain July’s operating result</h2><p>Distinguish operating performance, the reported credit and cash limitations.</p><div class="lineage">Pitch v${cur().v} → ${firm().name} brief → scenario · evidence ${s.evidence}</div></section><div class="review-room"><section class="sheet"><div class="room-simulation"><div class="orb"></div><h3>June · AI rehearsal coach</h3><p class="tiny">Simulation only · no microphone or provider session</p></div><div class="room-controls">${['written', 'voice', 'video'].map((m) => btn(m[0].toUpperCase() + m.slice(1), 'mode:' + m, s.mode !== m)).join('')}</div>${s.mode !== 'written' ? '<div class="why">The real build reuses the existing ' + s.mode + ' transport. This preview uses a written transcript to demonstrate the same handoff.</div>' : ''}<div class="turn"><strong>June · opening question</strong>July shows positive net income. How much comes from operations, and what does it establish about cash?</div><label class="small-title" for="answer" style="margin-top:20px">Your answer</label><textarea class="draft-editor" id="answer" placeholder="Practise your explanation…" maxlength="3000">${esc(s.answer)}</textarea><div class="row-actions" style="margin-top:15px">${textbtn('Use example answer', 'example')}${btn(s.pending ? 'Review pending…' : 'Finish & preview review →', 'finish', false, s.pending)}</div><details style="margin-top:15px"><summary class="tiny">Preview controls</summary><label class="tiny">Authored review outcome <select id="sample-outcome"><option value="gap">Needs cash caveat</option><option value="covered">Example criteria covered</option><option value="failed">Review fails → retry</option></select></label><p class="tiny">The selection controls the sample result; typed text is not evaluated.</p></details></section><section class="sheet"><h3>Context used in this practice</h3><p class="tiny">Frozen when you submit the simulated conversation.</p><p>${esc(cur().text)}</p><div class="why"><strong>Investor emphasis</strong><p>${firm().focus} · a preparation hypothesis from fictional sources.</p></div>${textbtn('Why this question? ↗', 'question-why')}${textbtn('See financial evidence ↗', 'source:financial')}</section></div>`
+        );
+      }
+      function sessionTable() {
+        return s.sessions.length
+          ? `<div class="meeting-table-scroll"><table class="meeting-table"><thead><tr><th>Practice conversation</th><th>Investor</th><th>Pitch version</th><th>Review</th></tr></thead><tbody>${s.sessions
+              .slice()
+              .reverse()
+              .map(
+                (r) =>
+                  `<tr><td><button class="meeting-row-title" data-action="review:${r.id}">Explain operating performance ↗</button><p class="tiny">${r.mode} · authored transcript review</p></td><td>${r.name}</td><td>v${r.pitch} · evidence ${r.evidence}</td><td>${badge(r.outcome === 'failed' ? 'Review failed' : r.outcome === 'covered' ? 'Sample criteria covered' : 'Needs attention', r.outcome === 'covered' ? '' : 'warn')}</td></tr>`,
+              )
+              .join('')}</tbody></table></div>`
+          : empty(
+              'No saved practice yet. Your first review will appear here.',
+              btn('Open practice scenario', 'nav:practice'),
+            );
+      }
+      function followups() {
+        return (
+          heading(
+            'From conversation to progress',
+            'Your next steps.',
+            'See what needs work, track your practice, and review progress before your next conversation.',
+            btn('Open meeting brief', 'nav:brief', true),
+          ) +
+          `<div class="connection"><strong>${proposed()} Recommended preparation → revised financial story</strong>The report opens the same saved pitch on Overview, with the proposed edit and its reason.</div>${sessionTable()}${latest() && latest().outcome === 'gap' ? `<section class="sheet"><span class="small-title">Recommended prep · latest sample review</span><h3>Separate accounting income from cash availability</h3><p>Keep the accurate figures. Add what the statement cannot establish.</p><div class="row-actions">${btn('Review proposed pitch edit →', 'propose:' + latest().id, false, latest().pitch !== cur().v || latest().evidence !== s.evidence)}${textbtn('Inspect transcript & report', 'review:' + latest().id)}</div></section>` : ''}`
+        );
+      }
+      function financials() {
+        return (
+          heading(
+            'Financials',
+            'Your financial evidence.',
+            'Read the selected statement. Source snapshots and previous uploads stay saved.',
+            btn('Review financial story →', 'pitch'),
+          ) +
+          `<section class="performance-statement"><div class="statement-heading"><div><span class="eyebrow">Selected statement · fictional Tidewell.csv</span><h3>Monthly income statement</h3><p>June–July 2026 · original CSV rows 22–23 · currency unconfirmed</p></div>${badge('Fictional sample')}</div><div class="statement-scroll"><table class="financial-statement"><caption>Actual authored fixture amounts from this repository. No currency inferred from the dollar symbols.</caption><thead><tr><th>Line item</th><th>June 2026<span>CSV row 22</span></th><th>July 2026<span>CSV row 23</span></th><th>Preparation relevance</th></tr></thead><tbody>${[
+            ['Revenue', '106,013', '100,853', 'Explain revenue trend'],
+            ['Cost of revenue', '7,917', '8,172', 'Source context'],
+            ['Gross profit', '98,096', '92,681', 'Source context'],
+            ['Operating expenses', '154,579', '152,478', 'Source context'],
+            ['Operating income', '−56,483', '−59,797', 'Operating loss'],
+            ['Other income / credit', '0', '182,300', 'Credit included in profit'],
+            ['Net income', '−56,483', '122,503', 'Positive income needs explanation'],
+          ]
+            .map(
+              (r) =>
+                `<tr><th><button data-action="source:financial">${r[0]} ↗</button></th><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`,
+            )
+            .join(
+              '',
+            )}</tbody></table></div></section><div class="prep-next"><div><span class="eyebrow">Connected preparation</span><h3>Review the explanation June prepared from these figures</h3></div>${btn('Open prepared explanation →', 'pitch')}</div><div class="row-actions" style="margin-top:20px">${textbtn('Simulate a new source snapshot', 'new-evidence')}${textbtn('Inspect source & provenance', 'source:financial')}</div>`
+        );
+      }
+      function meetings() {
+        return (
+          heading(
+            'Meetings',
+            'Prepare for your next meeting.',
+            'Keep the investor, meeting brief and preparation together.',
+            btn('Edit meeting context', 'goal', true),
+          ) +
+          `<div class="meeting-table-scroll"><table class="meeting-table"><thead><tr><th>Conversation</th><th>Investor</th><th>Brief</th><th>Action</th></tr></thead><tbody><tr><td>Fundraising preparation<p class="tiny">Date not confirmed · fictional example</p></td><td>${firm()?.name || 'Select investor'}</td><td>${brief() ? 'Approved pitch v' + cur().v : 'Needs preparation'}</td><td>${textbtn('Review brief →', 'open-brief')}</td></tr></tbody></table></div>`
+        );
+      }
+      function radar() {
+        return (
+          heading(
+            'Investor radar',
+            'Research worth reviewing.',
+            'New and changed source observations from the investors you follow.',
+            btn('Investor research', 'nav:investors'),
+          ) +
+          `<section class="sheet"><span class="small-title">Saved update · fictional</span><h2>Harbor Capital: software focus</h2><blockquote>${firms[0].quote}</blockquote><p class="tiny">17 October 2026 · source H-01 · identity and current mandate unverified</p><div class="row-actions">${textbtn('Inspect source', 'source:harbor')}${btn('Compare before preparing a pitch →', 'compare', true)}</div></section><p class="hint">In the real app, this feed is supplied by the existing research worker. This preview performs no research.</p>`
+        );
+      }
+      const pages = {
+        overview,
+        investors: research,
+        brief: briefPage,
+        practice: scenarioPage,
+        room,
+        followups,
+        financials,
+        meetings,
+        radar,
+      };
+      function render() {
+        const active = s.page === 'room' ? 'practice' : s.page;
+        document.getElementById('nav').innerHTML = Object.entries(paths)
+          .map(
+            ([id, [label, path]]) =>
+              `<button aria-label="${label}" title="${label}" ${active === id ? 'aria-current="page"' : ''} class="${active === id ? 'active' : ''}" data-action="nav:${id}">${icon(path)}<span class="sidebar-label" aria-hidden="true">${label}</span></button>`,
+          )
+          .join('');
+        content.innerHTML =
+          pages[s.page]() +
+          `<p class="preview-message" role="status">${esc(s.notice)}</p><div class="preview-status-footer">Fictional design preview · uses the current app’s CSS, sidebar and screen structure. Blue labels mark proposed connections. Local browser state only.</div>`;
+      }
+      function close() {
+        if (drawer.open) drawer.close();
+        returnFocus?.focus();
+      }
+      function nav(page) {
+        close();
+        s.page = page;
+        s.notice = '';
+        persist();
+        render();
+        content.focus();
+        window.scrollTo({ top: 0 });
+      }
+      function open(title, kicker, body, footer = '') {
+        returnFocus = document.activeElement;
+        document.getElementById('drawer-title').textContent = title;
+        document.getElementById('drawer-kicker').textContent = kicker;
+        document.getElementById('drawer-body').innerHTML = body;
+        document.getElementById('drawer-footer').innerHTML =
+          footer || `<small>Fictional design preview</small>${btn('Close', 'close', true)}`;
+        if (!drawer.open) drawer.showModal();
+      }
+      function openPitch(proposal = false, sessionId = null) {
+        s.proposal = proposal;
+        const text =
+          s.buffer?.v === cur().v && s.buffer.proposal === proposal
+            ? s.buffer.text
+            : cur().text + (proposal && !cur().text.includes('Cash-balance') ? caveat : '');
+        open(
+          proposal
+            ? 'Review proposed pitch revision'
+            : 'Review your operating-performance explanation',
+          'Overview / Prepared work',
+          `<div class="dialog-tabs"><strong>Prepared explanation</strong><span>Evidence</span><span>Revision history</span></div><div class="row-actions">${badge('Fictional Tidewell evidence', 'warn')}${badge('Pitch v' + cur().v)}${proposed()}</div><div class="split" style="margin-top:20px"><section class="sheet"><span class="small-title">${proposal ? 'Approved version used in practice' : 'Original founder claim · fictional'}</span><p class="draft-text">${proposal ? esc(cur().text) : '“We were profitable in July, so our operating model is working.”'}</p><div class="why"><strong>Why June proposes this</strong><p>${proposal ? 'Your sample practice review asks for an explicit distinction between accounting income and cash availability.' : 'July includes a 182,300 credit. Operations still show a loss of 59,797.'}</p></div>${textbtn('Inspect CSV row 23 ↗', 'source:financial')}<div class="mini-bars"><div><span style="width:28%;background:#b68574"></span>Operating income −59,797</div><div><span style="width:80%"></span>Credit 182,300</div><div><span style="width:55%;background:#9da69a"></span>Net income 122,503</div></div><p class="tiny">Currency unconfirmed. The bars are source amounts, not a cash forecast.</p></section><section class="sheet"><label class="small-title" for="pitch-edit">${proposal ? 'Proposed v' + (cur().v + 1) : 'Suggested explanation · editable'}</label><textarea class="draft-editor" id="pitch-edit" maxlength="3000">${esc(text)}</textarea><div class="why"><strong>What changes</strong><p>${proposal ? 'Add the missing cash caveat. Preserve the source figures and your explanation.' : 'Separate operating loss, credit and reported net income. Keep unsupported runway claims out.'}</p></div><p class="tiny">Saving creates a new version. Approval is founder review; this mock does not validate new claims.</p>${textbtn('Open version history', 'history')}</section></div>`,
+          `<small>Pitch v${cur().v} · evidence ${s.evidence} · old versions preserved</small><div class="row-actions">${proposal ? btn('Keep current pitch', 'decline:' + sessionId, true) : btn('Save draft', 'save-pitch', true)}${btn('Approve & ' + (s.selected ? 'update investor brief' : 'compare investors') + ' →', 'approve-pitch')}</div>`,
+        );
+        persist();
+      }
+      function compare() {
+        open(
+          'Compare investors for this round',
+          'Investor research / Your investors',
+          `<div class="connection"><strong>Step 2 · choose an investor, then prepare its meeting brief</strong>Using your approved financial story ${approved() ? 'v' + cur().v : '(review required)'}. Public-source observations do not establish eligibility.</div><div class="table-scroll"><table class="data-table compare-table"><thead><tr><th>Founder-confirmed seed context</th>${firms.map((f) => `<th>${f.name}<p class="tiny">${f.type}</p></th>`).join('')}</tr></thead><tbody>${[
+            ['Stage', 'stage'],
+            ['Sector', 'sector'],
+            ['Geography', 'geo'],
+            ['Why consider it', 'benefit'],
+            ['Tradeoff / unknown', 'tradeoff'],
+            ['Preparation emphasis', 'focus'],
+            ['Application / contact', 'contact'],
+          ]
+            .map(
+              ([label, k]) =>
+                `<tr><td>${label}</td>${firms.map((f) => `<td class="${s.selected === f.id ? 'chosen' : ''}">${f[k]}</td>`).join('')}</tr>`,
+            )
+            .join(
+              '',
+            )}<tr><td>Saved evidence</td>${firms.map((f) => `<td>${textbtn('View source ↗', 'source:' + f.id)}</td>`).join('')}</tr><tr><td>Select your path</td>${firms.map((f) => `<td>${btn(s.selected === f.id ? 'Open selected brief →' : 'Prepare for this investor →', 'select:' + f.id, false, !approved())}</td>`).join('')}</tr></tbody></table></div>${!approved() ? `<div class="why">The current financial story needs approval first. ${textbtn('Review prepared explanation →', 'pitch')}</div>` : ''}`,
+          `<small>Comparison uses fictional source passages · no funding score</small>${btn('Back to investor research', 'nav:investors', true)}`,
+        );
+      }
+      function openBrief() {
+        if (!s.selected) {
+          nav('investors');
+          compare();
+          return;
+        }
+        if (!approved()) {
+          nav('overview');
+          openPitch();
+          return;
+        }
+        const i = firm();
+        open(
+          'Your brief for ' + i.name,
+          'Meeting brief / Prepared investor conversation',
+          `<div class="dialog-tabs"><strong>Meeting brief</strong><span>Linked practice</span><span>Sources</span></div><div class="row-actions">${badge('Financial story v' + cur().v)}${badge(brief() ? 'Approved brief' : 'Prepared for review', brief() ? '' : 'warn')}${proposed()}</div><div class="lineage">Overview: approved financial story v${cur().v} → Investor research: ${i.name} → this brief</div><div class="split"><section class="sheet"><span class="small-title">Opening & financial explanation</span><h3>${i.focus}</h3><p class="draft-text">${esc(cur().text)}</p><div class="why"><strong>Why this investor emphasis?</strong><p>${i.benefit}. ${i.tradeoff}.</p></div>${textbtn('Review source passage ↗', 'source:' + i.id)}</section><section class="sheet"><h3>Questions to clarify fit</h3><p>${i.question}</p><h3 style="margin-top:25px">Still to confirm</h3><p>${i.tradeoff}. Cash receipt, recurrence and runway are unknown.</p><h3 style="margin-top:25px">Application / contact route</h3><p>${i.contact}. ${i.id === 'summit' ? 'Fictional source C-02; no real destination is opened.' : ''}</p><p class="tiny">This is prepared conversation material, not an outreach message.</p></section></div>`,
+          `<small>Approve this brief before using it in a saved scenario.</small><div class="row-actions">${btn('Compare alternatives', 'compare', true)}${btn('Approve brief & open scenarios →', 'approve-brief')}</div>`,
+        );
+      }
+      function source(id) {
+        if (id === 'financial') {
+          open(
+            'July 2026 · source evidence',
+            'Financials / Tidewell.csv / row 23',
+            `<div class="row-actions">${badge('Fictional repository fixture', 'warn')}${badge('Currency unconfirmed')}</div><table class="facts-table"><tbody>${[
+              ['total_revenue', '100,853'],
+              ['gross_profit', '92,681'],
+              ['total_operating_expenses', '152,478'],
+              ['operating_income', '−59,797'],
+              ['other_income_srred_credit', '182,300'],
+              ['net_income', '122,503'],
+            ]
+              .map(
+                (r) =>
+                  `<tr class="${['operating_income', 'other_income_srred_credit', 'net_income'].includes(r[0]) ? 'source-mark' : ''}"><td>${r[0]}</td><td>${r[1]}</td></tr>`,
+              )
+              .join(
+                '',
+              )}</tbody></table><p class="tiny" style="margin-top:18px">These amounts come from the repository’s fictional Tidewell.csv. Currency is not declared. Cash receipt and recurrence are not established.</p>`,
+            `<small>Inspect original evidence without changing it.</small><div class="row-actions">${btn('Return to explanation', 'pitch', true)}${btn('Open financials', 'nav:financials')}</div>`,
+          );
+          return;
+        }
+        const f = firms.find((i) => i.id === id);
+        open(
+          f.name + ' · source passage',
+          'Investor research / Saved source',
+          `${badge('Fictional source · 17 October 2026', 'warn')}<blockquote class="draft-text">${f.quote}</blockquote><p>${f.origin}. ${f.tradeoff}.</p><p class="tiny">This passage is authored for the mock; no website was fetched. Historical evidence is separate from a current mandate.</p>`,
+          `<small>Source remains linked to the selected investor.</small><div class="row-actions">${btn('Return to comparison', 'compare', true)}${btn('Open investor brief', 'open-brief', false, !s.selected)}</div>`,
+        );
+      }
+      function reviewSources() {
+        if (!ready()) {
+          openBrief();
+          return;
+        }
+        open(
+          'Review sources before generation',
+          'Practice scenario / Existing source-review step',
+          `<div class="connection"><strong>${proposed()} Include the approved pitch, not only an objective</strong>The server will resolve and freeze these references before creating a real scenario.</div><table class="facts-table"><tbody><tr><td>Financial story</td><td>Approved v${cur().v}</td></tr><tr><td>Selected investor brief</td><td>${firm().name} · v${cur().v}</td></tr><tr><td>Company evidence</td><td>Tidewell.csv · row 23 · set ${s.evidence}</td></tr><tr><td>Investor evidence</td><td>${firm().origin}</td></tr><tr><td>Objective</td><td>Explain operations, credit and cash limitations</td></tr></tbody></table><p class="draft-text" style="margin-top:20px">${esc(cur().text)}</p>`,
+          `<small>Prototype generation is authored and makes no paid request.</small>${btn('Create saved scenario →', 'generate')}`,
+        );
+      }
+      function scenarioDetail() {
+        if (!s.scenario) return reviewSources();
+        open(
+          'Explain July’s operating result',
+          'Practice scenario / Saved scenario',
+          `<div class="lineage">Pitch v${s.scenario.pitch} · ${s.scenario.name} · evidence ${s.scenario.evidence}</div><h3>Opening question</h3><p class="draft-text">July shows positive net income. What does that establish about your business?</p><h3>Follow-up branches</h3><ul><li>Distinguish operating loss and credit.</li><li>Explain source period and currency limitations.</li><li>Acknowledge missing cash evidence.</li></ul><div class="why">The real interview and evaluator receive this same saved context. Changing the pitch does not rewrite this scenario.</div>`,
+          `<small>Starting practice opens the existing room.</small>${btn('Start practising →', 'nav:room', false, !ready() || s.scenario.pitch !== cur().v || s.scenario.evidence !== s.evidence || s.scenario.investor !== s.selected)}`,
+        );
+      }
+      function review(id) {
+        const r = s.sessions.find((x) => x.id === Number(id));
+        if (!r) return;
+        if (r.outcome === 'failed') {
+          open(
+            'Review needs a retry',
+            'Follow-ups / Saved practice',
+            `<h3>Your transcript is preserved.</h3><p>The simulated review failed. No successful assessment or pitch improvement has been recorded for this attempt.</p><div class="turn"><strong>Your saved answer</strong>${esc(r.answer)}</div>`,
+            `<small>Retry the sample review without another session.</small>${btn('Retry sample review', 'retry:' + r.id)}`,
+          );
+          return;
+        }
+        open(
+          'Your Pitch Preparation Report',
+          'Meeting brief / Practice conversation / Review',
+          `<div class="lineage">Practice ${r.id} · pitch v${r.pitch} · ${r.name} · evidence ${r.evidence}</div><div class="split"><section><span class="small-title">Saved transcript</span><div class="transcript"><div class="turn"><strong>June</strong>What does July’s positive net income establish about operations and cash?</div><div class="turn founder"><strong>Founder · saved answer</strong>${esc(r.answer)}</div><div class="turn"><strong>Sample follow-up</strong>Does the credit establish available cash or recurring income?</div></div><p class="tiny" style="margin-top:16px">Authored sample assessment, not an evaluation of your typed text.</p></section><section><div class="report-section"><h3>Strengths</h3><p>The authored example separates operating income, the credit and net income.</p></div><div class="report-section"><h3>${r.outcome === 'covered' ? 'Sample criteria covered' : 'Financial blind spot'}</h3><p>${r.outcome === 'covered' ? 'The example includes a caveat about unavailable cash evidence.' : 'Make the cash limitation explicit. Accounting income does not establish credit receipt or runway.'}</p>${textbtn('Inspect financial evidence', 'source:financial')}</div><div class="report-section"><h3>Recommended prep ${proposed()}</h3><p>June has prepared a proposed addition to the same financial story. Review what changes and why before approval.</p>${btn('Review proposed pitch edit →', 'propose:' + r.id, false, r.pitch !== cur().v || r.evidence !== s.evidence || r.outcome === 'covered')}${r.pitch !== cur().v || r.evidence !== s.evidence ? '<p class="tiny">Historical review. Reassess the current version before applying this older suggestion.</p>' : ''}</div></section></div>`,
+          `<small>Review never overwrites the pitch used in this practice.</small><div class="row-actions">${btn('Back to follow-ups', 'nav:followups', true)}${btn('Return to preparation plan', 'nav:overview')}</div>`,
+        );
+      }
+      function savePitch() {
+        const input = document.getElementById('pitch-edit');
+        if (!input || !input.value.trim()) return false;
+        const text = input.value.trim();
+        if (text !== cur().text || cur().evidence !== s.evidence) {
+          s.drafts.push({
+            v: cur().v + 1,
+            text,
+            evidence: s.evidence,
+            reason: s.proposal
+              ? 'Proposed cash-evidence clarification from saved practice.'
+              : 'Founder edit / source review.',
+          });
+          s.approved = null;
+        }
+        s.buffer = null;
+        s.proposal = false;
+        persist();
+        return true;
+      }
+      function finish() {
+        const answer = document.getElementById('answer').value.trim();
+        if (!answer) {
+          s.notice = 'Write an answer or use the example before finishing.';
+          render();
+          return;
+        }
+        const frozen = {
+          id: s.sessions.length + 1,
+          pitch: cur().v,
+          text: cur().text,
+          investor: s.selected,
+          name: firm().name,
+          evidence: s.evidence,
+          answer,
+          mode: s.mode,
+          outcome: document.getElementById('sample-outcome').value,
+        };
+        s.answer = answer;
+        s.pending = true;
+        persist();
+        render();
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          s.sessions.push(frozen);
+          s.pending = false;
+          nav('followups');
+          review(frozen.id);
+        }, 500);
+      }
+      document.getElementById('drawer').addEventListener('cancel', (event) => {
+        event.preventDefault();
+        close();
+      });
+      document.addEventListener('input', (event) => {
+        if (event.target.id === 'pitch-edit') {
+          s.buffer = { v: cur().v, proposal: s.proposal, text: event.target.value };
+          persist();
+        }
+        if (event.target.id === 'answer') {
+          s.answer = event.target.value;
+          persist();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-action]');
+        if (!target || target.disabled) return;
+        const [action, arg] = target.dataset.action.split(':');
+        if (action === 'nav') {
+          nav(arg);
+          return;
+        }
+        if (action === 'inspect') {
+          s.inspected = arg;
+          persist();
+          render();
+          return;
+        }
+        if (action === 'source') {
+          source(arg);
+          return;
+        }
+        if (action === 'select') {
+          if (!approved()) return;
+          s.selected = arg;
+          s.inspected = arg;
+          nav('brief');
+          openBrief();
+          return;
+        }
+        if (action === 'view') {
+          s.view = arg;
+          persist();
+          render();
+          return;
+        }
+        if (action === 'review') {
+          review(arg);
+          return;
+        }
+        if (action === 'mode') {
+          s.mode = arg;
+          persist();
+          render();
+          return;
+        }
+        if (action === 'propose') {
+          const r = s.sessions.find((x) => x.id === Number(arg));
+          if (!r || r.pitch !== cur().v || r.evidence !== s.evidence) return;
+          nav('overview');
+          s.buffer = null;
+          openPitch(true, r.id);
+          return;
+        }
+        if (action === 'decline') {
+          s.decisions.push({ kind: 'declined', session: Number(arg) });
+          s.proposal = false;
+          s.buffer = null;
+          nav('overview');
+          return;
+        }
+        if (action === 'retry') {
+          const r = s.sessions.find((x) => x.id === Number(arg));
+          r.outcome = 'gap';
+          persist();
+          render();
+          review(r.id);
+          return;
+        }
+        switch (action) {
+          case 'close':
+            close();
+            break;
+          case 'pitch':
+            if (s.page !== 'overview') nav('overview');
+            openPitch(s.proposal);
+            break;
+          case 'compare':
+            if (s.page !== 'investors') nav('investors');
+            compare();
+            break;
+          case 'open-brief':
+            if (s.selected && s.page !== 'brief') nav('brief');
+            openBrief();
+            break;
+          case 'financial-review':
+            source('financial');
+            break;
+          case 'save-pitch':
+            if (savePitch()) {
+              render();
+              openPitch();
+            }
+            break;
+          case 'approve-pitch':
+            if (savePitch()) {
+              s.approved = cur().v;
+              s.decisions.push({ kind: 'approved', pitch: cur().v, evidence: s.evidence });
+              persist();
+              if (s.selected) {
+                nav('brief');
+                openBrief();
+              } else {
+                nav('investors');
+                compare();
+              }
+            }
+            break;
+          case 'approve-brief':
+            if (!approved()) return;
+            if (!brief())
+              s.briefs.push({
+                pitch: cur().v,
+                text: cur().text,
+                name: firm().name,
+                investor: s.selected,
+                evidence: s.evidence,
+              });
+            persist();
+            nav('practice');
+            break;
+          case 'to-scenario':
+            nav('practice');
+            break;
+          case 'scenario-review':
+            reviewSources();
+            break;
+          case 'generate':
+            if (!ready()) return;
+            s.scenario = {
+              pitch: cur().v,
+              evidence: s.evidence,
+              investor: s.selected,
+              name: firm().name,
+              text: cur().text,
+            };
+            persist();
+            close();
+            render();
+            scenarioDetail();
+            break;
+          case 'scenario-detail':
+            scenarioDetail();
+            break;
+          case 'example':
+            s.answer = base;
+            persist();
+            render();
+            break;
+          case 'finish':
+            finish();
+            break;
+          case 'review-latest':
+            nav('followups');
+            review(latest()?.id);
+            break;
+          case 'question-why':
+            open(
+              'Why June asks this question',
+              'Practice room / Existing question evidence',
+              `<h3>Positive net income includes a credit.</h3><p>July’s operating result is −59,797. The credit is 182,300. Net income is 122,503.</p><p>The practice objective is to distinguish those amounts and acknowledge missing cash evidence.</p>`,
+              `<small>Same source as the approved pitch.</small>${btn('Return to room', 'nav:room', true)}`,
+            );
+            break;
+          case 'new-evidence':
+            s.evidence++;
+            s.buffer = null;
+            s.proposal = false;
+            nav('overview');
+            s.notice =
+              'A new source snapshot needs review. Previous pitch, brief and practice versions remain saved.';
+            persist();
+            render();
+            break;
+          case 'goal':
+            open(
+              'Your preparation context',
+              'Overview / Existing context editor',
+              `<div class="compact-form"><label>Company<input readonly value="Tidewell · fictional" /></label><label>Intended round<input readonly value="Seed · founder-confirmed mock assumption" /></label><label>Sector<input readonly value="B2B software · mock assumption" /></label><label>Geography<input readonly value="Canada · mock assumption" /></label></div><p class="tiny" style="margin-top:20px">Context fields are shown for orientation. Use the real app to edit company details; this preview changes only its fictional workflow.</p>`,
+            );
+            break;
+          case 'assumptions':
+            open(
+              'Assumptions & expected outcome',
+              'Overview / Existing schedule controls',
+              `<h3>Preparation target: 23 October 2026</h3><p>Timeline bars are authored planning illustrations. They are not a calculation of future funding or observed productivity.</p><p>Review story → choose investor → approve brief → practise → review proposed changes.</p>`,
+            );
+            break;
+          case 'notifications':
+            open(
+              'Notifications',
+              'Workspace / Existing notifications',
+              `<h3>Prepared work is ready for review</h3><p>Your current financial story is v${cur().v}. ${s.sessions.length} sample practice reviews are saved.</p>`,
+              `<small>Fictional in-app notice</small>${btn('Open next action', next()[1])}`,
+            );
+            break;
+          case 'history':
+            open(
+              'Prepared material history',
+              'Overview / Prepared materials, feedback & history',
+              `<h3>Financial story revisions</h3>${s.drafts
+                .slice()
+                .reverse()
+                .map(
+                  (d) =>
+                    `<section class="sheet"><strong>Pitch v${d.v} · evidence ${d.evidence}</strong> ${badge(s.decisions.some((x) => x.kind === 'approved' && x.pitch === d.v) ? 'Founder reviewed' : 'Draft')}<p style="margin-top:10px">${esc(d.text)}</p><p class="tiny">${esc(d.reason)}</p></section>`,
+                )
+                .join(
+                  '',
+                )}<h3>Investor briefs</h3>${s.briefs.map((b) => `<p>${b.name} · pitch v${b.pitch} · evidence ${b.evidence}</p>`).join('') || '<p class="tiny">No approved briefs yet.</p>'}<h3>Practice conversations</h3>${s.sessions.map((r) => `<p>${textbtn('Practice ' + r.id + ' · ' + r.name + ' · pitch v' + r.pitch, 'review:' + r.id)}</p>`).join('') || '<p class="tiny">No practice yet.</p>'}`,
+            );
+            break;
+          case 'flow':
+            open(
+              'How the three features fit the current app',
+              'Screen map / Proposed connections',
+              `<p>Keep the current sidebar. Add the missing handoffs inside the screens you already have.</p><pre class="graph">1  OVERVIEW
+   Preparation schedule
+          |
+          v
+   "Review prepared work" drawer
+   Evidence + edit financial story + approve
+          |
+          v
+2  INVESTOR RESEARCH
+   Current watchlist -> Compare drawer
+          |
+          v
+   MEETING BRIEF
+   Current table -> Tailored brief drawer
+   Approved story + selected investor
+          |
+          v
+3  PRACTICE SCENARIO
+   Review sources -> Saved scenario -> Room
+          |
+          v
+   FOLLOW-UPS / MEETING BRIEF REVIEW
+   Transcript + report + proposed pitch edit
+          |
+          +----> OVERVIEW review drawer
+                 Approve next pitch version
+                         |
+                         +--> Refresh brief
+                              Practise again</pre><p class="tiny">Financials and Investor radar remain supporting evidence screens. Meetings retains meeting context. No new top-level navigation is introduced.</p>`,
+              `<small>Blue tags distinguish proposed functionality from the existing layout.</small>${btn('Start at Overview', 'nav:overview')}`,
+            );
+            break;
+          case 'reset':
+            clearTimeout(timeout);
+            s = initial();
+            persist();
+            nav('overview');
+            break;
+        }
+      });
+      render();
+    </script>
+  </body>
+</html>

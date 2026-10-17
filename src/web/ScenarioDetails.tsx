@@ -55,6 +55,18 @@ export function ScenarioDetails({
       {generation.input.sources.some((source) => source.provenance === 'fictional_demo') && (
         <p className="notice">Includes fictional demo evidence, labeled in the source snapshot.</p>
       )}
+      {generation.input.preparation && (
+        <details className="scenario-source-card">
+          <summary>Approved pitch and brief used in this rehearsal</summary>
+          <p>{generation.input.preparation.pitch}</p>
+          <p>{generation.input.preparation.brief}</p>
+          <a
+            href={`/?preparationStep=practice&preparationCycleId=${encodeURIComponent(generation.input.preparation.cycleId)}`}
+          >
+            Return to the preparation checklist →
+          </a>
+        </details>
+      )}
       <div className="scenario-layout">
         <article className="panel scenario-detail">
           <div className="eyebrow">Full practice scenario</div>

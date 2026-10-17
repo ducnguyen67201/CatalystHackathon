@@ -1,4 +1,5 @@
 import { preparationCsvSource } from '../features/PreparationSource.js';
+import { registerConnectedPreparationRoutes } from './ConnectedPreparationRoutes.js';
 import {
   financialPerformanceQuerySchema,
   financialPerformanceSchema,
@@ -15,6 +16,7 @@ import {
 } from '../contracts/FundraisingPreparation.js';
 
 export function registerPreparationRoutes(app: FastifyInstance, service: WorkspaceService) {
+  registerConnectedPreparationRoutes(app, service);
   app.get('/api/financial-performance', async (request, reply) => {
     const query = financialPerformanceQuerySchema.parse(request.query);
     const state = await service.read();

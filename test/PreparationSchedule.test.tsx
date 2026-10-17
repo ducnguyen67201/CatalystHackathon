@@ -71,11 +71,17 @@ describe('conditional preparation schedule', () => {
     expect(projectSchedule(view, 1, now).finish).toBeNull();
     view.outdated = false;
     view.schedule.cashExpectedDate = '2026-10-16';
-    expect(projectSchedule(view, 1, now).finish).toBeNull();
+    expect(projectSchedule(view, 1, now)).toMatchObject({
+      finish: '2026-10-22',
+      workOnly: true,
+      tone: 'unknown',
+    });
     view.schedule.cashExpectedDate = null;
     expect(projectSchedule(view, 1, now).tone).toBe('unknown');
     view.schedule.planId = 'earlier';
-    expect(projectSchedule(view, 1, now).suggested).toBe(true);
+    expect(projectSchedule(view, 1, now)).toMatchObject({ current: true, reused: true });
+    view.schedule.goalId = randomUUID();
+    expect(projectSchedule(view, 1, now)).toMatchObject({ current: false, automatic: true });
   });
   it('recalculates remaining work, waits for external evidence, and uses the goal timezone', () => {
     const view = fixture();
@@ -118,10 +124,15 @@ describe('conditional preparation schedule', () => {
     });
     expect(projectSchedule(view, 1, now).reviewed).toBe(0);
   });
-  it('suggests an editable plan without asking for hours and renders accessible actions', () => {
+  it('draws provisional estimates automatically and renders accessible action paths', () => {
     const view = fixture();
     view.schedule = null;
-    expect(projectSchedule(view, 1, now)).toMatchObject({ suggested: true, finish: '2026-10-22' });
+    expect(projectSchedule(view, 1, now)).toMatchObject({
+      finish: '2026-10-22',
+      automatic: true,
+      workOnly: true,
+      tone: 'unknown',
+    });
     const html = renderToStaticMarkup(
       <PreparationSchedule
         data={view}
@@ -134,11 +145,36 @@ describe('conditional preparation schedule', () => {
         currency="Unconfirmed"
       />,
     );
-    expect(html).toContain('June’s suggested estimate');
+    expect(html).toContain('Provisional work estimate');
+    expect(html).toContain('Automatic estimate');
+    expect(html).toContain('Preparation date scenarios');
+    expect(html).toContain('25% faster');
+    expect(html).toContain('25% slower');
     expect(html).toContain('scope="row"');
     expect(html).toContain('Review suggested plan');
     expect(html).toContain('Fictional demo evidence');
     view.goal = null;
-    expect(projectSchedule(view, 1, now).finish).toBeNull();
+    expect(projectSchedule(view, 1, now).finish).not.toBeNull();
+  });
+  it('draws the initial work timeline before a goal exists without inventing a target or cash date', () => {
+    const view = fixture();
+    view.goal = null;
+    view.plan = null;
+    view.schedule = null;
+    const before = structuredClone(view);
+    const planned = projectSchedule(view, 1, now);
+    expect(planned.finish).toBe('2026-10-22');
+    expect(planned.buffer).toBeNull();
+    expect(planned.estimates.cashExpectedDate).toBeNull();
+    expect(projectSchedule(view, 0.75, now).finish).toBe('2026-10-24');
+    expect(projectSchedule(view, 1.25, now).finish).toBe('2026-10-21');
+    expect(view).toEqual(before);
+  });
+  it('does not wait again for evidence on an already reviewed brief', () => {
+    const view = fixture();
+    if (!view.schedule) throw new Error('Missing schedule');
+    view.schedule.cashExpectedDate = '2026-11-20';
+    for (const item of view.milestones) if (item.id !== 'rehearse') item.status = 'complete';
+    expect(projectSchedule(view, 1, now).finish).toBe('2026-10-19');
   });
 });

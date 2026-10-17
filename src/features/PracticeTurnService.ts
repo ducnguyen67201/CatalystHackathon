@@ -1,3 +1,4 @@
+import { assertCurrentPreparedPractice } from './ConnectedPreparation.js';
 import { randomUUID } from 'node:crypto';
 import {
   guidedAnswerRequestSchema,
@@ -79,6 +80,7 @@ export class PracticeTurnService {
           throw new ConflictError('Start key reused with a different selection.');
         return existing.id;
       }
+      assertCurrentPreparedPractice(state, practice);
       if (state.rehearsals.filter((session) => session.status === 'active').length >= 3)
         throw new Error('End an active rehearsal before starting another.');
       const context = assembleEvaluationContext(state, practice);

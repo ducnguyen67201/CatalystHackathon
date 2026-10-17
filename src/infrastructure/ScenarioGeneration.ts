@@ -17,6 +17,76 @@ export class DemoScenarioGenerator implements ScenarioGenerator {
     if (!founder) throw new Error('Founder context unavailable.');
     const research = input.sources.filter((source) => source.kind === 'investor_research');
     const financials = input.sources.find((source) => source.kind === 'financials');
+    if (input.preparation) {
+      const refs = [
+        financials?.id ?? founder.id,
+        ...research.slice(0, 1).map((source) => source.id),
+      ];
+      return Promise.resolve(
+        scenarioOutputSchema.parse({
+          investorProfile: {
+            themes: research.slice(0, 3).map((source) => ({
+              text: source.excerpt,
+              kind: 'observation',
+              sourceIds: [source.id],
+            })),
+            practiceApproach: [
+              {
+                text: 'Rehearse the founder-reviewed financial story while checking its claims against the saved statement. This template is a preparation exercise, not an investor prediction.',
+                kind: 'hypothesis',
+                sourceIds: refs,
+              },
+            ],
+            unknowns: [
+              'Current mandate, private investor priorities and cash runway remain unconfirmed.',
+            ],
+          },
+          scenarios: [
+            {
+              id: 'approved-financial-story',
+              title: 'Explain the approved financial story',
+              situation:
+                'Template rehearsal using the exact approved pitch and selected investor brief.',
+              objective: input.objective,
+              challenge:
+                'Distinguish operating performance, credits and what remains unknown about cash.',
+              rationale: [
+                {
+                  text: 'Practise the approved explanation against its frozen financial sources.',
+                  kind: 'hypothesis',
+                  sourceIds: refs,
+                },
+              ],
+              openingQuestion:
+                'Explain the operating result, credit and net income in your approved financial story. What does the statement establish, and what remains unknown about cash?',
+              branches: [
+                {
+                  condition: 'The founder treats net income as operating profitability',
+                  question:
+                    'How does the reported credit change the net result without establishing operating profitability?',
+                },
+                {
+                  condition: 'The founder makes a cash or runway claim',
+                  question:
+                    'What cash evidence supports that conclusion, and what remains unconfirmed?',
+                },
+              ],
+              successCriteria: [
+                'Use the exact period, figures and currency limitations from saved evidence.',
+                'Separate operating performance from credits and acknowledge missing cash evidence.',
+              ],
+              unknowns: [
+                'Credit recurrence and cash receipt timing are not established by an income statement.',
+              ],
+              clarificationQuestions: [
+                'What is confirmed about this investor’s current participation criteria?',
+              ],
+              personalization: research.length ? 'research_grounded' : 'limited_context',
+            },
+          ],
+        }),
+      );
+    }
     const sourceIds = [founder.id, ...research.slice(0, 1).map((source) => source.id)];
     const rationale = [
       {

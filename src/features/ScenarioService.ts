@@ -1,3 +1,4 @@
+import { preparedPitchContext } from './ConnectedPreparation.js';
 import {
   scenarioOutputSchema,
   type ScenarioInput,
@@ -78,8 +79,13 @@ export class ScenarioService {
     readonly generator: ScenarioGenerator,
   ) {}
 
-  async preview(investorId: string, objective: string) {
-    const input = assembleScenarioInput(await this.readWorkspace(), investorId, objective);
+  async preview(investorId: string, objective: string, preparationCycleId?: string) {
+    const input = assembleScenarioInput(
+      await this.readWorkspace(),
+      investorId,
+      objective,
+      preparationCycleId,
+    );
     const previous = await this.store.listGenerations(investorId);
     input.previousScenarios = previous
       .flatMap((item) => item.output?.scenarios ?? [])
@@ -94,10 +100,17 @@ export class ScenarioService {
     };
   }
 
-  async create(investorId: string, objective: string, key: string, expectedInputHash?: string) {
+  async create(
+    investorId: string,
+    objective: string,
+    key: string,
+    expectedInputHash?: string,
+    preparationCycleId?: string,
+  ) {
     const requestHash = hashValue({
       investorId,
       objective,
+      ...(preparationCycleId ? { preparationCycleId } : {}),
       ...(expectedInputHash ? { expectedInputHash } : {}),
     });
     const existing = await this.store.getGenerationByRequestKey(key);
@@ -106,7 +119,7 @@ export class ScenarioService {
         throw new ConflictError('Request key reused with different scenario inputs.');
       return existing;
     }
-    const preview = await this.preview(investorId, objective);
+    const preview = await this.preview(investorId, objective, preparationCycleId);
     if (expectedInputHash && expectedInputHash !== preview.inputHash)
       throw new ConflictError(
         'Your data changed since review. Refresh the source preview before generating.',
@@ -125,13 +138,28 @@ export class ScenarioService {
     const generation = await this.store.getGeneration(id);
     if (!generation) throw new Error('Scenario unavailable. Choose a saved generation.');
     const state = await this.readWorkspace();
-    const investorExists = state.investors.some((item) => item.id === generation.input.investor.id);
-    const outdated =
-      !investorExists ||
-      scenarioInputHash(
-        assembleScenarioInput(state, generation.input.investor.id, generation.input.objective),
-      ) !== generation.inputHash;
-    return { ...generation, outdated };
+    return { ...generation, outdated: this.isOutdated(state, generation) };
+  }
+
+  private isOutdated(
+    state: Workspace,
+    generation: ScenarioGenerationView | Omit<ScenarioGenerationView, 'outdated'>,
+  ) {
+    try {
+      return (
+        scenarioInputHash(
+          assembleScenarioInput(
+            state,
+            generation.input.investor.id,
+            generation.input.objective,
+            generation.input.preparation?.cycleId,
+          ),
+        ) !== generation.inputHash
+      );
+    } catch (error) {
+      if (generation.input.preparation) return true;
+      throw error;
+    }
   }
 
   async list(investorId: string): Promise<ScenarioGenerationView[]> {
@@ -139,9 +167,7 @@ export class ScenarioService {
     const state = await this.readWorkspace();
     return generations.map((generation) => ({
       ...generation,
-      outdated:
-        scenarioInputHash(assembleScenarioInput(state, investorId, generation.input.objective)) !==
-        generation.inputHash,
+      outdated: this.isOutdated(state, generation),
     }));
   }
 
@@ -168,6 +194,14 @@ export class ScenarioService {
     const scenario = generation?.output?.scenarios.find((item) => item.id === selection.scenarioId);
     if (!generation || generation.status !== 'succeeded' || !scenario || !generation.output)
       throw new Error('Scenario unavailable. Choose a completed scenario.');
+    if (generation.input.preparation) {
+      const current = preparedPitchContext(
+        await this.readWorkspace(),
+        generation.input.preparation.cycleId,
+      );
+      if (hashValue(current) !== hashValue(generation.input.preparation))
+        throw new ConflictError('Prepared pitch changed. Review the sources again.');
+    }
     const founder = generation.input.sources.find((source) => source.kind === 'founder_initial');
     return practiceContextSchema.parse({
       ...createEmptyPracticeContext(),

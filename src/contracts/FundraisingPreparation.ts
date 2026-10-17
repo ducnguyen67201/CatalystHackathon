@@ -1,5 +1,6 @@
 import { preparationManifestSchema, preparationPositionSchema } from './PreparationPosition.js';
 import { z } from 'zod';
+import { connectedPreparationStateSchema } from './ConnectedPreparation.js';
 
 const id = z.string().min(1).max(100);
 const text = z.string().max(3000);
@@ -108,6 +109,7 @@ export type PreparationScheduleInput = z.infer<typeof preparationScheduleInputSc
 export type PreparationSchedule = z.infer<typeof preparationScheduleSchema>;
 
 export const preparationStateSchema = z.strictObject({
+  connected: connectedPreparationStateSchema.optional(),
   version: z.int().nonnegative().default(0),
   automatic: z.boolean().default(false),
   goals: z.array(preparationGoalSchema).default([]),
@@ -130,6 +132,7 @@ export const preparationViewSchema = z.strictObject({
   position: preparationPositionSchema.nullable().default(null),
   intent: z.string().max(1000).default(''),
   profileVersion: z.int().positive().default(1),
+  connectedActive: z.boolean().optional(),
   version: z.int(),
   automatic: z.boolean(),
   goal: preparationGoalSchema.nullable(),
@@ -145,6 +148,9 @@ export const preparationViewSchema = z.strictObject({
         title: z.string(),
         status: z.enum(['complete', 'available', 'blocked', 'needs_review']),
         detail: text,
+        preparationStep: z
+          .enum(['story', 'investor', 'brief', 'practice', 'feedback', 'revision'])
+          .optional(),
       }),
     )
     .length(5),
