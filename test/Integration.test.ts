@@ -4,6 +4,7 @@ import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { fixtureTurnProvider } from './PracticeTurnFixtures.js';
 import { guidedViewSchema } from '../src/contracts/GuidedPractice.js';
 import { evidenceReviewSchema } from '../src/contracts/EvidenceReview.js';
+import { followupsResponseSchema } from '../src/contracts/Followups.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
@@ -1396,6 +1397,7 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
   if (!item) throw new Error('Missing coaching item');
   const reviewApi = await createApi(coached, readEnvironment({ DATABASE_URL: databaseUrl.href }));
   try {
+    expect((await reviewApi.inject({ url: '/api/followups' })).statusCode).toBe(401);
     const evidencePath = `/api/rehearsals/${session.id}/evaluations/${evaluation.id}/evidence`;
     expect((await reviewApi.inject({ url: evidencePath })).statusCode).toBe(401);
     expect(
@@ -1403,6 +1405,29 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
     ).toBe(401);
     const login = await reviewApi.inject({ method: 'POST', url: '/api/session' });
     const headers = { cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join('; ') };
+    const followups = await reviewApi.inject({ url: '/api/followups?limit=20', headers });
+    expect(followups.statusCode).toBe(200);
+    expect(followups.headers['cache-control']).toBe('private, no-store');
+    expect(
+      followupsResponseSchema.parse(followups.json()).sessions.find((s) => s.id === session.id)
+        ?.tasks[0],
+    ).toMatchObject({
+      id: item.id,
+      status: 'open',
+      title: item.suggestion,
+      steps: item.analysis?.preparationSteps,
+    });
+    expect((await reviewApi.inject({ url: '/api/followups?limit=21', headers })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (
+        await reviewApi.inject({
+          url: '/api/followups',
+          headers: { ...headers, origin: 'https://other.example' },
+        })
+      ).statusCode,
+    ).toBe(403);
     const evidenceResponse = await reviewApi.inject({ url: evidencePath, headers });
     expect(evidenceResponse.statusCode).toBe(200);
     expect(evidenceResponse.headers['cache-control']).toBe('private, no-store');
@@ -1474,6 +1499,14 @@ it('atomically evaluates a saved transcript, fences stale workers, and preserves
       result?.turns.find((turn) => turn.role === 'user')?.id,
     ]);
     expect(result?.report?.coaching.comparison?.outcome).toBe('not_comparable');
+    const updatedFollowups = followupsResponseSchema.parse(
+      (await reviewApi.inject({ url: '/api/followups?limit=20', headers })).json(),
+    );
+    expect(updatedFollowups.sessions.find((s) => s.id === session.id)?.tasks[0]).toMatchObject({
+      status: 'not_comparable',
+      retrySessionId: retry.id,
+    });
+    expect(updatedFollowups.sessions.some((s) => s.id === retry.id)).toBe(false);
     expect(
       (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0],
     ).toEqual(completed);

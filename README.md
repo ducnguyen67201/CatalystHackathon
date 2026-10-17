@@ -279,6 +279,25 @@ New sessions freeze evaluation evidence separately from the interviewer's contex
 
 Use **Explain my reasoning** to add context and receive a new review version, or submit a written practice answer to test a specific learning objective without another paid call. Both preserve the original transcript and feedback. Saved response history reopens written retries after reload. A failed evaluation leaves the transcript intact and provides Retry review.
 
+**Follow-ups → Your next steps** automatically shows up to three actions from each saved
+evaluation, including the founder's quoted answer, preparation steps, missing evidence,
+source references and success criteria. Submit a written retry directly from an action;
+its saved evaluation determines whether improvement was observed, evidence is still missing,
+or comparison is unavailable. Submitting an answer does not mark an action complete.
+Dismissals and retry history survive refresh. Older financial milestones remain available
+under **Financial follow-ups from meeting briefs**.
+
+The same page shows up to three recent classified radar updates for that practice's
+investor, observed since the scenario evidence was captured (or the session context for
+open practice). Each update includes its source quote, discovery/publication dates and
+category-specific preparation steps. These are separate research-based suggestions, not
+retroactive changes to the call assessment. Unrelated, dismissed, superseded, historical,
+and stale-profile updates are excluded. Public research stays unverified; demo evidence
+stays labeled fictional. **Prepare an updated scenario** opens that investor's library
+for an explicit generation with reviewed inputs. Opening Follow-ups runs no research or
+additional inference; written retries use the existing evaluator and frozen call evidence.
+The page reads existing saved reviews, so no migration or historical backfill is required.
+
 The first release includes the latest twelve financial periods and explicitly reports missing/omitted data. Oversized inputs are skipped rather than silently truncated. Historical fictional reviews retain their label; new reviews use the model. Investor-specific statements require cited evidence. Older sessions without a frozen evaluation context are not automatically evaluated against current data. Open conversations use empty interviewer context. Selected scenarios supply their saved context to the interviewer and post-call evaluator.
 
 See [Evaluator workflow](docs/EvaluatorWorkflowPlan.md) for the ASCII diagram, actual input/output contracts, prompts, storage/recovery behavior and instructions for adding more data sources.

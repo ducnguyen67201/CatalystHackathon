@@ -232,6 +232,27 @@ opinion; credit recurrence and cash timing remain unknown unless the frozen evid
 
 `EvaluationRoutes.ts` exposes local authenticated review, retry and response endpoints. `EvaluationPanel.tsx` is shared by voice and video history and polls only selected pending reviews while visible. The general state endpoint omits evaluation contexts/reports; selected-session reads retrieve them separately. Storage and history reads still follow the small single-workspace aggregate model; larger histories should move to dedicated tables and paginated queries.
 
+`contracts/Followups.ts` validates the private, no-store `GET /api/followups` projection.
+`features/Followups.ts` derives up to three next steps from persisted coaching for each
+root practice, with frozen claim quotations, facts, cited sources and success criteria.
+Written retry sessions are excluded from the top-level history. Existing evaluation
+responses preserve dismissals and link retries/clarifications to progress; only a saved
+comparison can report improvement. Reads perform no inference and mutate no history.
+The paginated endpoint is covered by the normal local session/origin controls and loads
+the same small workspace aggregate. `web/Followups.tsx` polls while visible and reuses
+the existing response commands and lazily opened evaluation panels.
+
+New investor preparation is a separate section derived from saved classified radar events.
+It matches the frozen investor ID and compares observation time against scenario capture
+time, falling back to evaluation-context capture for open practice. Sources already in
+the review, stale-profile events, historical backfill, dismissed events and superseded
+versions are excluded. Bounded results disclose omitted counts; missing publication
+dates remain unknown. Category-specific preparation templates cite the original signal
+and source, preserve fictional/unverified labels, and link to explicit scenario generation.
+They do not claim that new research was present during the call or re-evaluate old answers.
+No new model, queue kind, persisted task table or migration is needed; legacy financial
+milestones remain accessible separately.
+
 `contracts/EvidenceReview.ts` owns the validated evidence projection; `features/EvidenceReview.ts`
 resolves exact transcript spans, validated frozen financial rows, original CSV locators,
 fact-to-cell links and Decimal.js comparisons. The session-scoped read route
