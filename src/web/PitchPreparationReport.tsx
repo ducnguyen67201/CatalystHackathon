@@ -1,4 +1,5 @@
 import './PeerComparison.css';
+import { EvaluationWorkflows } from './EvaluationWorkflows.js';
 import { ComparisonChart } from './PeerCharts.js';
 import { CheckCircle2, FileCheck2, Target, TriangleAlert } from 'lucide-react';
 import type { EvaluationRecord } from '../contracts/RehearsalEvaluation.js';
@@ -27,6 +28,7 @@ export function PitchPreparationReport({
         <FileCheck2 aria-hidden="true" size={24} />
       </header>
       <p>{coaching.summary}</p>
+      <EvaluationWorkflows report={report} />
       <section className="preparation-report-section" aria-label="Strengths">
         <h4>
           <CheckCircle2 className="report-strength-icon" aria-hidden="true" size={19} />
@@ -99,7 +101,7 @@ export function PitchPreparationReport({
           </p>
         )}
       </section>
-      {report.peerInsights && report.peerInsights.length > 0 && (
+      {!report.workflows && report.peerInsights && report.peerInsights.length > 0 && (
         <section
           className="preparation-report-section peer-insights"
           aria-label="Relevant peer insights"

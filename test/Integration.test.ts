@@ -1,3 +1,4 @@
+import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
 import { liveGuidanceHistorySchema } from '../src/contracts/LiveGuidance.js';
 import { LiveGuidanceService } from '../src/features/LiveGuidance.js';
 import { rehearsalSchema } from '../src/contracts/Workspace.js';
@@ -2467,4 +2468,66 @@ describe('peer comparison evidence lifecycle', () => {
       });
     }
   });
+});
+
+it('checkpoints evaluation children under the current lease and resumes after coaching failure', async () => {
+  let extractionCalls = 0;
+  let coachingCalls = 0;
+  const coached = new WorkspaceService(store, new ResearchFixture(), {
+    ...fixtureEvaluationProvider,
+    extract: async (...args) => {
+      extractionCalls++;
+      return fixtureEvaluationProvider.extract(...args);
+    },
+    coach: async (...args) => {
+      if (++coachingCalls === 1) throw new Error('Temporary test coaching failure');
+      return fixtureEvaluationProvider.coach(...args);
+    },
+  });
+  const brief = (await coached.read()).briefs.at(-1);
+  if (!brief) throw new Error('Missing workflow fixture brief');
+  const session = await coached.createRehearsal(
+    brief.id,
+    'text',
+    null,
+    createEmptyPracticeContext(),
+  );
+  await coached.answer(session.id, 'Our operating income is -48531 CAD for 2026-09.');
+  await coached.finishRehearsal(session.id, [], true);
+  const evaluation = (await coached.read()).rehearsals.find((item) => item.id === session.id)
+    ?.evaluations[0];
+  if (!evaluation) throw new Error('Missing workflow evaluation');
+  let job = await store.claimJob(new Date());
+  for (
+    let attempt = 0;
+    job && job.kind !== `evaluate:${session.id}:${evaluation.id}` && attempt < 100;
+    attempt++
+  ) {
+    await store.finishJob(job, 'Unrelated test job drained.');
+    job = await store.claimJob(new Date());
+  }
+  if (!job || job.kind !== `evaluate:${session.id}:${evaluation.id}`)
+    throw new Error('Missing workflow job');
+  const before = await coached.read();
+  await expect(
+    store.save(before, before.revision, undefined, { ...job, leaseToken: 'obsolete-token' }),
+  ).rejects.toThrow('Workflow lease expired');
+  expect((await coached.read()).revision).toBe(before.revision);
+  await expect(coached.evaluations.run(session.id, evaluation.id, job)).rejects.toThrow();
+  const pending = (await coached.evaluations.get(session.id)).evaluations[0];
+  expect(pending?.status).toBe('queued');
+  expect(pending?.progress?.extraction).toBeDefined();
+  expect(pending?.progress?.peer).toBeDefined();
+  expect(pending?.progress?.investor).toBeDefined();
+  expect(pending?.progress?.answer).toBeUndefined();
+  expect((await store.listJobs()).find((item) => item.id === job.id)?.status).toBe('running');
+  await coached.evaluations.run(session.id, evaluation.id, job);
+  const completed = (await coached.evaluations.get(session.id)).evaluations[0];
+  expect(completed?.status).toBe('completed');
+  expect(completed?.progress).toBeUndefined();
+  expect(completed?.report?.workflows?.version).toBe(1);
+  expect(completed?.report?.workflows?.investor.criteria).toHaveLength(3);
+  expect((await store.listJobs()).find((item) => item.id === job.id)?.status).toBe('succeeded');
+  expect(extractionCalls).toBe(1);
+  expect(coachingCalls).toBe(2);
 });

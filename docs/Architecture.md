@@ -389,3 +389,36 @@ It preserves claim/turn references, the captured comparison and preparation temp
 saved report under the existing worker lease transaction. Missing or unrelated comparisons
 produce an empty list; historical reports remain absent rather than backfilled. Numerical
 context does not establish claim support, causation, investor preference or pitch quality.
+
+## Parent evaluation and child workflows
+
+`EvaluationOrchestrator.ts` runs three focused workflows inside the existing durable
+`evaluate:<session>:<evaluation>` job. `PeerEvaluationWorkflow.ts` projects all frozen peer
+metrics independently of transcript coverage. `InvestorEvaluationWorkflow.ts` compares
+company stage, sector and geography with source-linked observations captured by
+`EvaluationContextAssembler.ts`. `AnswerEvaluationWorkflow.ts` retains existing numerical
+checks and validated model coaching after the parent's single validated extraction step.
+`EvaluationSynthesis.ts` joins existing coaching actions to matching claim-linked peer
+metrics and selected investor observations; it performs no additional inference.
+
+`CombinedEvaluation.ts` validates business results and synthesis. Optional context, progress
+and report fields preserve old records and hashes. `withoutPeerComparison` also removes the
+new structured investor assessment from model inputs; existing attributed investor sources
+continue to inform coaching. Peer arithmetic and investor label matching remain local.
+The investor result is deliberately limited: extracted historical research attributes are not
+confirmed fund criteria, semantic stage/geography matching, check-size assessment or
+qualitative thesis analysis. Manual peer selection and its existing definitions remain in use.
+
+The parent saves extraction, business children and answer output as checkpoints in rehearsal
+JSON. `WorkspaceStore.save` accepts a separate optional checkpoint lease guard; Prisma locks
+the workspace then the current unexpired job in the same transaction without completing it.
+Final publication uses the existing completion lease fence and removes transient progress.
+Generation and input-integrity checks prevent superseded work from publishing. Retries reuse
+validated completed children; provider failure does not turn into an empty successful report.
+Report construction is deterministic and requires no separate model call or migration.
+
+`EvaluationWorkflows.tsx` renders saved business results, source disclosures, missing data
+and connected preparation actions inside `PitchPreparationReport.tsx`. Older reports keep
+their original claim-linked peer layout. Existing coaching items still drive follow-ups and
+written retries; business-only gaps are displayed as preparation guidance without claiming
+that an unasked question was answered poorly. No research runs merely by viewing a report.

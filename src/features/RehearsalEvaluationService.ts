@@ -1,4 +1,4 @@
-import { buildPeerInsights } from './PeerInsights.js';
+import { runEvaluationWorkflows } from './EvaluationOrchestrator.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   evaluationRecordSchema,
@@ -14,8 +14,6 @@ import {
   type EvaluationInput,
   type EvaluationProvider,
 } from './EvaluationProvider.js';
-import { checkClaims, validateCoaching, extractValidatedClaims } from './EvaluationChecks.js';
-import { evaluationStage } from './EvaluationFailure.js';
 import { projectEvidenceReview } from './EvidenceReview.js';
 import type { EvidenceReview } from '../contracts/EvidenceReview.js';
 
@@ -155,10 +153,31 @@ export class RehearsalEvaluationService {
             }
           : null,
     };
-    const extraction = await extractValidatedClaims(provider, input);
-    const checks = checkClaims(extraction, input);
-    const coaching = await evaluationStage('coaching', async () =>
-      validateCoaching(await provider.coach(input, extraction, checks), extraction, input, checks),
+    const report = await runEvaluationWorkflows(
+      provider,
+      input,
+      context,
+      evaluation.progress,
+      async (progress) => {
+        // Serialize before entering the transaction retry loop: the orchestrator continues mutating its local progress.
+        const saved = structuredClone(progress);
+        await this.service.change(
+          (current) => {
+            const target = current.rehearsals
+              .find((item) => item.id === sessionId)
+              ?.evaluations.find((item) => item.id === evaluationId);
+            if (
+              !target ||
+              target.generation !== evaluation.generation ||
+              target.status !== 'queued'
+            )
+              throw new Error('Evaluation changed.');
+            target.progress = saved;
+          },
+          undefined,
+          job,
+        );
+      },
     );
     await this.service.change((current) => {
       const target = current.rehearsals
@@ -166,12 +185,8 @@ export class RehearsalEvaluationService {
         ?.evaluations.find((e) => e.id === evaluationId);
       if (!target || target.generation !== evaluation.generation || target.status !== 'queued')
         throw new Error('Evaluation changed.');
-      target.report = {
-        extraction,
-        checks,
-        coaching,
-        peerInsights: buildPeerInsights(context.peerComparison, extraction),
-      };
+      target.report = report;
+      delete target.progress;
       target.status = 'completed';
       target.completedAt = new Date().toISOString();
     }, job);
