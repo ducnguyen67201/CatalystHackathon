@@ -166,13 +166,6 @@ export class PrismaStore implements WorkspaceStore {
       }),
     );
   }
-  async countResearchAttemptsSince(since: Date): Promise<number> {
-    const result = await this.client.workflowJob.aggregate({
-      where: { workspaceId, kind: 'radar', createdAt: { gte: since } },
-      _sum: { attempts: true },
-    });
-    return result._sum.attempts ?? 0;
-  }
   async claimJob(now: Date): Promise<ClaimedJob | null> {
     const row = await this.client.workflowJob.findFirst({
       where: {

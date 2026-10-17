@@ -1,0 +1,3 @@
+setup:
+  project: june-workspace
+  config: dev

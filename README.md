@@ -2,9 +2,67 @@
 
 A local TypeScript application for connecting financial evidence, investor research, meeting preparation, browser voice practice and tracked follow-ups. Built for the Catalyst 2026 June challenge.
 
-## Start locally
+## Start with Doppler
 
-Requirements: Node.js 24, pnpm 11, and Docker with Compose.
+Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains the local demo settings and empty optional provider fields. `doppler.yaml` records this selection without credentials.
+
+On a new machine, sign in and select this repository's config:
+
+```sh
+doppler login
+doppler setup
+pnpm install
+doppler run -- pnpm setup
+```
+
+For everyday development, run this from the repository directory:
+
+```sh
+doppler run -- pnpm dev
+```
+
+`pnpm dev:doppler` is the same command with signal forwarding enabled explicitly. `pnpm setup:doppler` runs the first-time setup through Doppler.
+
+```text
+Doppler: june-workspace / dev
+  |
+  | inject settings into a new process
+  v
+pnpm dev --> T3 Env + Zod validation
+  |
+  +--> PostgreSQL container (wait until ready)
+  +--> API       :4318  <-- database + provider settings
+  +--> Worker           <-- database + provider settings
+  +--> Frontend  :4317  <-- local ports only
+                           /api requests proxy to the backend
+```
+
+Open http://127.0.0.1:4317. The API and worker receive the same injected configuration. Vite does not load `.env` files or expose custom environment variables to the browser. The frontend makes same-origin `/api` requests. Development ports follow `API_PORT` and `WEB_ORIGIN`, so the Vite proxy stays aligned. Origins remain restricted to localhost HTTP.
+
+`pnpm dev` starts the local PostgreSQL container before the app processes. First-time `pnpm setup` also generates Prisma, deploys migrations and imports the Tidewell sample once. Data remains in the Docker volume. Ctrl+C stops the development processes; PostgreSQL stays available. `docker compose stop postgres` stops it without deleting data.
+
+Doppler supplies environment variables; T3 Env validates them; neither deploys a service. Secrets are fetched for each new `doppler run` process. After changing a setting in Doppler, stop and restart the command. The scheduler keeps running in the worker while the development command is running, even if the browser closes.
+
+Edit credentials in the Doppler dashboard, under `june-workspace` → `dev`. The initial setup imports `.env.example` defaults only; it does not copy keys from other projects or your private `.env`. Add your own provider keys there to enable live features. Staging and production configs have not been populated or deployed.
+
+[Doppler CLI guide](https://docs.doppler.com/docs/cli) explains injection and configuration selection. [T3 Env Core](https://env.t3.gg/docs/core) explains validation of supplied runtime values.
+
+## Local ElevenLabs webhook tunnel
+
+Set `DEV_WEBHOOK_TUNNEL=true` in Doppler to include the webhook relay and ngrok in `pnpm dev`. Install and authenticate ngrok first; it can use its existing local login or an injected `NGROK_AUTHTOKEN`. The example defaults to disabled. The June development config enables it.
+
+```text
+ElevenLabs -> ngrok HTTPS URL
+               -> localhost:4319 webhook-only relay
+                  -> localhost:4318/api/webhooks/elevenlabs
+                     -> signature + conversation verification
+```
+
+The launcher starts both processes and stops them with Ctrl+C. The relay accepts only JSON `POST /api/webhooks/elevenlabs`, forwards the unchanged body and signature to the fixed API endpoint, and rejects every other path or method. Request inspection is disabled in ngrok. The API, UI and database remain bound to localhost. `DEV_WEBHOOK_PORT` defaults to 4319 and must differ from the API and frontend ports.
+
+Use the HTTPS URL printed by ngrok plus `/api/webhooks/elevenlabs` as the ElevenLabs post-call callback. Save the assigned origin as `DEV_WEBHOOK_URL` to request that same endpoint on future launches. If ngrok cannot reserve it, startup fails rather than silently using a different callback. Configure this webhook on the June agent's Security tab with HMAC authentication, then save its generated secret as `ELEVENLABS_WEBHOOK_SECRET` in Doppler and restart development. This callback only works while development and the tunnel are running. The launcher does not change ElevenLabs configuration automatically.
+
+## Local fallback without Doppler
 
 ```sh
 pnpm install
@@ -12,9 +70,9 @@ pnpm setup
 pnpm dev
 ```
 
-Open http://127.0.0.1:4317. The API runs on 4318; the durable worker runs as a separate process. `pnpm setup` creates `.env` from the example only when absent, starts an isolated PostgreSQL container on loopback port 55436, deploys migrations, and imports the provided Tidewell sample once. It preserves existing data. The Docker volume survives restarts.
+Without Doppler metadata, backend entrypoints read `.env` as a fallback, with injected variables taking precedence. Setup creates `.env` from `.env.example` only when absent. Under Doppler, `.env` is neither created nor merged; a missing secret stays missing, preventing stale local keys from silently being used. Existing `.env` files are preserved.
 
-The application begins with fictional research and a paused schedule. It runs without provider credentials. Stage, sector, location and fundraising target are editable demo assumptions; sample financial currency is deliberately unspecified.
+The application begins with fictional research and a paused schedule, and works without provider credentials. Stage, sector, location and fundraising target are editable demo assumptions; sample financial currency is deliberately unspecified.
 
 ## Try the complete flow
 
@@ -29,7 +87,7 @@ Subsequent checks of the same source save a no-change result and do not duplicat
 
 ## Browser voice with ElevenLabs
 
-Configure a **private** ElevenLabs agent and these values in `.env`:
+Configure a **private** ElevenLabs agent and these values in Doppler’s `dev` config (or `.env` for local fallback):
 
 ```text
 ELEVENLABS_API_KEY=
@@ -52,23 +110,23 @@ Context: {{brief_context}}
 Previous rehearsal: {{previous_session_summary}}
 ```
 
-Configure a transcription webhook to `POST /api/webhooks/elevenlabs` and its HMAC secret. The localhost API needs a deliberately configured public relay/tunnel before ElevenLabs can reach it; this repository does not expose it automatically. The backend records the provider's conversation ID when obtaining its token, validates webhook signatures and agent identity, and accepts transcripts only for known sessions. Without a webhook, ended live sessions remain “awaiting transcript”; written practice is fully usable locally. A browser-reported transcript cannot overwrite financial facts.
+Configure a transcription webhook to `POST /api/webhooks/elevenlabs` and its HMAC secret. For local callbacks, enable the webhook-only tunnel described above. The backend records the provider's conversation ID when obtaining its token, validates webhook signatures and agent identity, and accepts transcripts only for known sessions. Without a webhook, ended live sessions remain “awaiting transcript”; written practice is fully usable locally. A browser-reported transcript cannot overwrite financial facts.
 
 Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/libraries/react), [dynamic variables](https://elevenlabs.io/docs/eleven-agents/customization/personalization/dynamic-variables), [transcription webhooks](https://elevenlabs.io/docs/eleven-agents/workflows/post-call-webhooks).
 
 ## Live research
 
-Set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and the desired `RESEARCH_MODEL`. Restart the API and worker after editing settings. Live mode performs up to one Exa query and five bounded extraction calls per radar run. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
+In Doppler, set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and the desired `RESEARCH_MODEL`. Restart the API and worker after editing settings. Live mode performs up to one Exa query and five bounded extraction calls per radar run. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
 
 An exact supporting passage is required for an extracted record. This checks provenance; it does not prove every extracted criterion is correct. Live claims remain labeled as needing verification. Source URL deduplication prevents repeated alerts for the same page; grouping multiple pages describing the same real event is a future improvement.
 
-The default cap is ten research attempts per UTC day (including retries), configurable with `DAILY_RESEARCH_ATTEMPT_LIMIT`. Live requests use the configured paid services. Schedules begin paused; enable one from the UI after configuring the providers and the run limit. No investor outreach or outbound email is implemented.
+Research runs have no application-level daily attempt limit. Live requests use the configured paid services. Schedules begin paused; enable one from the UI after configuring the providers. No investor outreach or outbound email is implemented.
 
 ## Durable jobs and deployment boundary
 
 The default worker uses a PostgreSQL job queue with idempotency keys, claim tokens, six-minute leases, capped retries and delayed retry timestamps. It recovers queued work after restarts. The schedule's next execution is stored in PostgreSQL and uses IANA timezones, including daylight-saving changes.
 
-An optional Trigger.dev task entrypoint is included in `src/jobs/RadarTasks.ts`. Configure `TRIGGER_PROJECT_REF`, the deployment environment and database access before using its CLI. Hosted tasks must reach PostgreSQL; a localhost Docker URL is not remotely reachable. Use either the local worker or the hosted runner for a deployment. No Trigger.dev project or schedule was deployed by this implementation.
+An optional Trigger.dev task entrypoint is included in `src/jobs/RadarTasks.ts`. Configure `TRIGGER_PROJECT_REF`, the deployment environment and database access before using its CLI. Hosted tasks must reach PostgreSQL; a localhost Docker URL is not remotely reachable. Use either the local worker or the hosted runner for a deployment. The local worker already runs these workflows; do not start a hosted runner alongside it for the same deployment. For optional Trigger.dev development, inject `TRIGGER_PROJECT_REF` and `TRIGGER_SECRET_KEY` into its CLI process through `doppler run -- <your Trigger.dev CLI command>`. Hosted deployments need their own remotely reachable database and runtime environment configuration; running a local deployment command through Doppler does not automatically sync secrets into hosted tasks. No Trigger.dev project or schedule was deployed.
 
 This is a **single-user localhost application**, protected by a local session cookie, origin checks, loopback-only listening and rate limits. It does not implement hosted accounts, organizational membership, multi-tenant access or public production deployment. Do not expose the whole app remotely without adding those boundaries. For a webhook relay, expose only the signature-protected webhook route.
 
@@ -84,8 +142,8 @@ pnpm build
 pnpm test:integration
 ```
 
-Integration tests create a temporary PostgreSQL database with a unique generated name, deploy the same migrations, run API/workflow checks and remove that temporary database. They require the local Docker PostgreSQL service and never reset the application database.
+Use `doppler run -- pnpm test:integration` to inject the development database settings. Integration tests create a temporary PostgreSQL database with a unique generated name, deploy the same migrations, run API/workflow checks and remove that temporary database. They require the local Docker PostgreSQL service and never reset the application database.
 
-For a built app, run `pnpm start` and `pnpm worker` in separate processes and open http://127.0.0.1:4318. Keep `WEB_ORIGIN` aligned with the URL used in the browser. For normal development use `pnpm dev`.
+For a built app, run `doppler run -- pnpm start` and `doppler run -- pnpm worker` in separate processes and open http://127.0.0.1:4318. Keep `WEB_ORIGIN` aligned with the URL used in the browser. For normal development use `pnpm dev`.
 
 Read [Architecture](docs/Architecture.md) for component ownership, persistence, workflow semantics and current limits.

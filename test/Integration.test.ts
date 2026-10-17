@@ -1,11 +1,16 @@
-import 'dotenv/config';
+import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
 import { randomUUID, createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { stateResponseSchema, voiceResponseSchema, jobSchema } from '../src/contracts/Workspace.js';
+import {
+  stateResponseSchema,
+  voiceResponseSchema,
+  jobSchema,
+  JobStatus,
+} from '../src/contracts/Workspace.js';
 import { PrismaStore } from '../src/infrastructure/PrismaStore.js';
 import { DemoResearch } from '../src/infrastructure/Research.js';
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
@@ -17,7 +22,8 @@ let store: PrismaStore;
 let service: WorkspaceService;
 let sessionCookie = '';
 const databaseName = 'june_test_' + randomUUID().replaceAll('-', '');
-const adminUrl = process.env.DATABASE_URL ?? 'postgresql://june:june_local@127.0.0.1:55436/june';
+const injectedValues = loadEnvironmentValues(process.env);
+const adminUrl = injectedValues.DATABASE_URL ?? 'postgresql://june:june_local@127.0.0.1:55436/june';
 const databaseUrl = new URL(adminUrl);
 databaseUrl.pathname = '/' + databaseName;
 const admin = new Client({ connectionString: adminUrl });
@@ -25,7 +31,7 @@ beforeAll(async () => {
   await admin.connect();
   await admin.query(`CREATE DATABASE "${databaseName}"`);
   const result = spawnSync('pnpm', ['db:deploy'], {
-    env: { ...process.env, DATABASE_URL: databaseUrl.href },
+    env: { ...injectedValues, DATABASE_URL: databaseUrl.href },
     encoding: 'utf8',
   });
   if (result.status !== 0) {
@@ -94,6 +100,17 @@ describe('PostgreSQL-backed application workflow', () => {
     expect(response.workspace.evidence).toHaveLength(1);
     expect(response.workspace.notices).toHaveLength(1);
     expect(response.workspace.briefs.at(-1)?.finding.netIncome).toBe('122503');
+  });
+  it('completes research runs beyond the former daily limit', async () => {
+    const jobIds = new Set<string>();
+    for (let run = 0; run < 12; run += 1) {
+      const job = await service.store.enqueue(randomUUID(), 'radar');
+      jobIds.add(job.id);
+      expect(await runWorkerTick(service)).toBe(true);
+    }
+    const jobs = (await service.store.listJobs()).filter((job) => jobIds.has(job.id));
+    expect(jobs).toHaveLength(12);
+    expect(jobs.every((job) => job.status === JobStatus.SUCCEEDED)).toBe(true);
   });
   it('saves a written rehearsal, creates a brief revision and tracks a source-backed follow-up', async () => {
     const initial = await state();

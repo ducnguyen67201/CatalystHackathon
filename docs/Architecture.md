@@ -28,6 +28,18 @@ React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL
 - `src/server/Worker.ts` owns queue execution and due schedules. `src/jobs/RadarTasks.ts` optionally invokes the same work from Trigger.dev.
 - `src/web` owns all browser state, rendering and ElevenLabs React controls.
 
+## Environment and process ownership
+
+Doppler owns the `june-workspace` project and its development settings. `doppler.yaml` selects `dev` for `doppler setup`; no tokens are committed. `doppler run` injects a configuration snapshot into the launched process. Restarting refreshes that snapshot.
+
+`src/server/Env.ts` owns T3 Env/Zod validation. Its functions require caller-supplied values and do not read or mutate global process state. Separate validators cover server, database tooling, local development ports and optional hosted workflow project settings. Validation errors omit values. Incomplete live research credentials fail validation before services start.
+
+`src/server/LoadEnvironment.ts` selects the input source at process entrypoints. Injected environment values win over local file fallback. When Doppler metadata is present, local files are ignored entirely, so missing hosted secrets cannot accidentally come from `.env`. Prisma, setup, API, worker and optional workflow tasks use this same source policy. Tests inject explicit objects.
+
+`scripts/StartDevelopment.ts` validates settings, starts and waits for the local PostgreSQL container, then supervises API, durable worker and Vite processes. The API and worker inherit the supplied settings. `scripts/DevelopmentEnvironment.ts` restricts Vite to OS launch settings and validated local ports. Vite disables dotenv loading and custom client environment exports. Provider and database credentials stay out of the frontend process and browser bundle. On macOS/Linux, shutdown signals reach each child process group, including watchers; a service exit shuts down its siblings. The database container persists independently. When explicitly enabled with `DEV_WEBHOOK_TUNNEL`, the launcher also starts a separate webhook relay and ngrok, and stops both during shutdown.
+
+The local worker owns development workflows. Trigger.dev remains an optional adapter with explicitly supplied project/runtime settings, and is not started by the development launcher. Doppler injection into a local CLI does not provision remote services or synchronize a hosted task environment automatically.
+
 ## Storage and consistency
 
 One local workspace is currently supported. Financial snapshots, evidence, brief versions, rehearsals, milestones, notifications and workflow jobs use separate relational tables linked to it. Versioned domain payloads are schema-validated JSON to keep the initial data model small. Financial amounts are decimal strings in those payloads and computed with Decimal.js; presentation may convert to numbers only for formatting and charts.
@@ -44,7 +56,7 @@ Briefs pin a financial snapshot ID, company profile version and evidence ID. Reh
 
 Manual checks receive a unique request key. Scheduled checks use the saved due timestamp as their idempotency key. The scheduler submits a durable job before advancing the next timestamp, so a crash between those writes results in deduplicated resubmission.
 
-Workers claim jobs with a compare-and-set status/attempt/token update. A six-minute lease permits recovery after a crash. Completion/failure requires the current claim token, preventing an obsolete worker from finalizing a reclaimed job. Provider timeouts bound live runs. Research attempts are capped per UTC day (ten by default), counted in PostgreSQL. Three failed attempts make a job terminal; transient failures retry with delay. New manual runs remain possible.
+Workers claim jobs with a compare-and-set status/attempt/token update. A six-minute lease permits recovery after a crash. Completion/failure requires the current claim token, preventing an obsolete worker from finalizing a reclaimed job. Provider timeouts bound live runs. Research runs have no application-level daily attempt limit. Three failed attempts make a job terminal; transient failures retry with delay. New manual runs remain possible.
 
 Database workspace revisions prevent lost updates; a stale company profile during research causes retry with current inputs. Input changes can mark an existing brief stale until a rebuild. Notifications are persisted in-app with their originating evidence; no email delivery exists.
 
@@ -57,6 +69,12 @@ ElevenLabs is optional. With credentials, the API obtains a WebRTC token and the
 The API accepts final transcripts only through signature-verified webhooks matching a known provider conversation and configured agent. Duplicate completion does not create another reviewed brief. Browser end requests mark a live session awaiting provider evidence; client transcript data does not finalize it. Written practice uses server-stored turns and remains available without provider configuration. The UI offers the scripted example as a separate, labeled mode.
 
 No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. Browser controls include a ten-minute limit; provider-side session limits should also be configured. Disconnects save partial state; summaries and questions persist across new sessions.
+
+## Local webhook ingress
+
+`src/server/WebhookRelay.ts` exposes only JSON POSTs at the exact ElevenLabs callback path. It forwards raw bytes and the signature to a fixed localhost API URL, with a bounded body size and timeout. Other methods and paths, including the local session and state APIs, return 404. Public responses contain status only; provider payloads and upstream errors are not logged or echoed. HMAC validation and known-conversation checks remain owned by the API.
+
+`StartWebhookRelay.ts` reads only the launcher's injected tunnel settings. The relay and ngrok receive OS launch settings and local ports, not provider or database credentials. Only ngrok receives an optional `NGROK_AUTHTOKEN`; otherwise it uses its existing local authentication. Request inspection is disabled. The tunnel URL can be pinned via `DEV_WEBHOOK_URL`, and failure to bind it stops the development services. This is local development ingress, not a production deployment.
 
 ## Current boundaries
 

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import { loadEnvironmentValues } from '../server/LoadEnvironment.js';
 import { schedules, task } from '@trigger.dev/sdk';
 import { readEnvironment } from '../server/Env.js';
 import { createRuntime } from '../server/Runtime.js';
@@ -9,10 +9,10 @@ export const processJuneWork = task({
   queue: { concurrencyLimit: 1 },
   retry: { maxAttempts: 3 },
   run: async () => {
-    const env = readEnvironment();
+    const env = readEnvironment(loadEnvironmentValues(process.env));
     const service = createRuntime(env);
     try {
-      await runWorkerTick(service, env.DAILY_RESEARCH_ATTEMPT_LIMIT);
+      await runWorkerTick(service);
     } finally {
       await service.store.close();
     }

@@ -12,7 +12,6 @@ export interface WorkspaceStore {
   save(workspace: Workspace, expectedRevision: number): Promise<void>;
   enqueue(key: string, kind: string): Promise<Job>;
   listJobs(): Promise<Job[]>;
-  countResearchAttemptsSince(since: Date): Promise<number>;
   claimJob(now: Date): Promise<ClaimedJob | null>;
   finishJob(job: ClaimedJob, result: string): Promise<void>;
   failJob(job: ClaimedJob, error: string): Promise<void>;

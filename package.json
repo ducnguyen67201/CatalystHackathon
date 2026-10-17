@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx scripts/StartDevelopment.ts",
     "dev:api": "tsx watch src/server/StartApi.ts",
-    "dev:web": "vite --host 127.0.0.1",
+    "dev:web": "vite",
     "dev:worker": "tsx watch src/server/StartWorker.ts",
     "setup": "tsx scripts/SetupLocal.ts",
     "db:generate": "prisma generate",
@@ -23,7 +23,9 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude test/Integration.test.ts",
-    "test:integration": "vitest run test/Integration.test.ts"
+    "test:integration": "vitest run test/Integration.test.ts",
+    "dev:doppler": "doppler run --forward-signals -- pnpm dev",
+    "setup:doppler": "doppler run --forward-signals -- pnpm setup"
   },
   "dependencies": {
     "@elevenlabs/react": "1.18.0",
