@@ -356,3 +356,34 @@ Restart `pnpm dev` using this repository's database environment to regenerate Pr
 The background worker records its heartbeat separately from research jobs. Offline means no heartbeat within 60 seconds; scheduled checks require a running worker and an awake computer. Email links point to localhost and work on the computer running June. No remote deployment, SMS, investor outreach, or voice-context integration is enabled.
 
 Investor research keeps forms in dialogs: use **Search preferences** to choose investor types, firm size, example firms and priorities, or **Add investor** to save a public profile. Saved preferences appear in a compact summary and guide the next public search. Discovery scheduling stays in an expandable section.
+
+## Peer performance comparisons
+
+The dashboard shows a monthly total-revenue trend and revenue growth, gross margin and
+operating margin against a founder-selected peer group. Choose **Add peer** to enter two
+monthly statement rows, customer segment, stage, business model, comparison rationale,
+source URL and supporting passage. Source entries remain unverified. Use the same total
+revenue and accounting definitions as the uploaded statement; subscription revenue alone
+is not MRR. Set the statement currency before comparing. Up to 20 active peers are supported;
+**Manage peer group** edits or archives them while preserving prior evidence versions.
+
+Growth compares the latest statement month with its preceding calendar month. Margins use
+the latest month. Calculations use Decimal.js and round percentages to eight decimal places;
+charts display rounded labels with exact inputs in **Values and sources**. Positive revenue,
+matching periods and currencies are required. Missing inputs, zero/negative denominators,
+excluded peers and small sample sizes are explicit. Peer ranges are selected examples, not
+market benchmarks or valuations. Fictional and real evidence are never combined.
+
+New practice sessions freeze the peer comparison alongside their company evidence. New
+saved scenarios capture it at generation time; earlier scenarios do not acquire current peers.
+After the authoritative transcript is evaluated, actual, non-superseded claims with a matching
+metric and reporting month can receive a **Peer context for your answers** section with a
+comparison graph, source details and a preparation action. This is business context, not a
+pitch score, and does not certify the answer or establish why a performance gap exists.
+Unrelated answers and missing comparisons produce no peer insights. Existing reports remain
+unchanged. Peer calculations and insight templates are local; no extra model or research call
+is made, and peer snapshots are excluded from model prompts and practice input budgets.
+
+Restart local development to apply the additive peer-evidence migration. Dashboard loading,
+editing and archiving reuse the existing local-session/origin protections. No provider setup
+or remote deployment is required.

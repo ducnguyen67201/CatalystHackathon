@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { peerComparisonSchema, peerInsightSchema } from './PeerComparison.js';
 
 const id = z.string().min(1).max(200);
 const text = z.string().min(1).max(2000);
@@ -36,6 +37,7 @@ export const metricFactSchema = z.strictObject({
 });
 export const evaluationContextSchema = z.strictObject({
   version: z.literal(1),
+  peerComparison: peerComparisonSchema.optional(),
   capturedAt: z.iso.datetime(),
   workspaceRevision: z.int().nonnegative(),
   companyName: z.string().max(100),
@@ -156,6 +158,7 @@ export const coachingGenerationSchema = coachingSchema.extend({
     .max(3),
 });
 export const evaluationReportSchema = z.strictObject({
+  peerInsights: z.array(peerInsightSchema).max(3).optional(),
   extraction: extractionSchema,
   checks: z.array(evidenceCheckSchema).max(30),
   coaching: coachingSchema,
@@ -211,3 +214,10 @@ export const evaluationResponseSchema = z.strictObject({
 });
 export const evaluationResponseRecordSchema = evaluationResponseSchema.shape.responses.element;
 export type EvaluationResponse = z.infer<typeof evaluationResponseSchema>;
+
+/** Peer comparisons are computed locally, not supplied as model-assessable company facts. */
+export function withoutPeerComparison(context: EvaluationContext): EvaluationContext {
+  const evidence = { ...context };
+  delete evidence.peerComparison;
+  return evidence;
+}

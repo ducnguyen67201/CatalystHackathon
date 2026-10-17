@@ -1,0 +1,120 @@
+.peer-dashboard {
+  margin: 32px 0;
+}
+.peer-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.peer-chart {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+}
+.peer-chart h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.peer-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 16px 0;
+}
+.peer-chart text {
+  fill: var(--ink);
+  font-size: 12px;
+}
+.peer-axis {
+  stroke: #d9ddd7;
+  stroke-width: 1;
+}
+.peer-range {
+  fill: #c4d3b3;
+}
+.peer-dot {
+  fill: #255b48;
+}
+.peer-position,
+.peer-context {
+  font-size: 13px;
+  color: var(--muted);
+}
+.peer-empty {
+  padding: 22px 0;
+  color: var(--muted);
+}
+.peer-source {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.peer-source p,
+.peer-editor p {
+  margin: 8px 0;
+}
+.peer-editor {
+  margin-top: 20px;
+  padding: 22px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.peer-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.peer-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+.peer-editor input,
+.peer-editor textarea,
+.peer-editor select {
+  width: 100%;
+  min-width: 0;
+}
+.peer-editor fieldset {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+}
+.peer-editor .peer-check {
+  flex-direction: row;
+  align-items: center;
+}
+.peer-editor .peer-check input {
+  width: auto;
+}
+.peer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+.peer-insights .peer-chart {
+  margin: 14px 0;
+}
+.peer-chart details {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.peer-dashboard summary,
+.peer-chart summary {
+  cursor: pointer;
+}
+@media (max-width: 700px) {
+  .peer-chart-grid,
+  .peer-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .peer-dashboard .dashboard-section-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

@@ -5,6 +5,7 @@ import {
   evaluationResponseRecordSchema,
 } from './RehearsalEvaluation.js';
 import { z } from 'zod';
+import { peerRecordSchema } from './PeerComparison.js';
 import {
   comparableDealSchema,
   discoveryStateSchema,
@@ -240,6 +241,7 @@ export const workspaceSchema = z.strictObject({
   id: idSchema,
   revision: z.int().nonnegative(),
   profile: profileSchema,
+  peers: z.array(peerRecordSchema).optional(),
   onboarding: onboardingSchema.default(() => onboardingSchema.parse({})),
   schedule: scheduleSchema,
   snapshots: z.array(snapshotSchema),
