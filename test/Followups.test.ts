@@ -259,7 +259,10 @@ describe('transcript and scenario follow-ups', () => {
       createdAt: session.createdAt,
       requestKey: randomUUID(),
     });
-    expect(project().sessions[0]?.tasks[0]?.status).toBe('dismissed');
+    expect(project().sessions[0]?.tasks[0]).toMatchObject({
+      status: 'dismissed',
+      retrySessionId: retry.id,
+    });
     expect(evaluation.report?.coaching.comparison).toBeNull();
   });
 

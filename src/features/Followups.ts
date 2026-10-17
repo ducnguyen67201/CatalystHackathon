@@ -91,7 +91,7 @@ function taskFor(
     facts,
     status,
     comparison: next?.report?.coaching.comparison?.explanation ?? next?.reason ?? null,
-    retrySessionId: retry?.id ?? null,
+    retrySessionId: responses.findLast((saved) => saved.kind === 'practice')?.id ?? null,
   };
 }
 
