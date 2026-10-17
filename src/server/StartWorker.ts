@@ -1,3 +1,4 @@
+import { LogEvent } from '../features/WorkflowLog.js';
 import { loadEnvironmentValues } from './LoadEnvironment.js';
 import { readEnvironment } from './Env.js';
 import { createRuntime } from './Runtime.js';
@@ -7,7 +8,7 @@ try {
   const service = createRuntime(env);
   await service.read();
   const stop = startWorker(service);
-  console.log('June worker ready. Schedules begin paused.');
+  service.logger.write(LogEvent.WORKER_READY, { mode: 'live' });
   const close = () => {
     stop();
     void service.store.close();

@@ -1,4 +1,5 @@
 import { registerEvaluationRoutes } from './EvaluationRoutes.js';
+import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
 import { RehearsalMode } from '../contracts/Workspace.js';
 import { readFile } from 'node:fs/promises';
 import { meetingInputSchema } from '../contracts/Onboarding.js';
@@ -111,7 +112,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Onboarding:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Investor discovery:|Onboarding:)/.test(
         error.message,
       )
     ) {
@@ -169,12 +170,11 @@ export async function createApi(
       jobs: await service.store.listJobs(),
       capabilities: {
         avatarReady: isAvatarConfigured(env),
-        researchMode: env.RESEARCH_MODE,
+        researchMode: 'live',
         voiceReady: Boolean(
           env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID && env.ELEVENLABS_WEBHOOK_SECRET,
         ),
-        researchReady:
-          env.RESEARCH_MODE === 'demo' || Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
+        researchReady: Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
         localOnly: true,
       },
     }),
@@ -229,6 +229,7 @@ export async function createApi(
   });
   registerEvaluationRoutes(app, service);
   registerInvestorRoutes(app, service);
+  registerResearchRunRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };

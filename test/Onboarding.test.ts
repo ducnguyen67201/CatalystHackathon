@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { profileLinksSchema } from '../src/contracts/ProfileLinks.js';
 import { onboardingSchema } from '../src/contracts/Onboarding.js';
 import { profileSchema, Stage } from '../src/contracts/Workspace.js';
-import { DemoResearch, LiveResearch } from '../src/infrastructure/Research.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
 import { evaluateInvestorFit } from '../src/features/InvestorFit.js';
 
 const profile = profileSchema.parse({
@@ -61,7 +62,7 @@ describe('onboarding boundaries', () => {
   });
 
   it('keeps missing segment and raise details unknown in matching', async () => {
-    const evidence = (await new DemoResearch().discover(profile))[0];
+    const evidence = (await new ResearchFixture().discover(profile))[0];
     if (!evidence) {
       throw new Error('Fixture missing');
     }

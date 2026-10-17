@@ -4,6 +4,7 @@ import {
   evaluationResponseRecordSchema,
 } from './RehearsalEvaluation.js';
 import { z } from 'zod';
+import { comparableDealSchema, discoveryStateSchema } from './InvestorDiscovery.js';
 import { onboardingSchema, meetingSchema } from './Onboarding.js';
 import { practiceContextSchema } from './PracticeContext.js';
 import { trackedInvestorSchema } from './InvestorTracking.js';
@@ -96,6 +97,7 @@ export const evidenceSchema = z.strictObject({
   currency: profileSchema.shape.currency,
   explanation: z.string(),
   verified: z.boolean(),
+  comparableDeal: comparableDealSchema.optional(),
 });
 
 export type Evidence = z.infer<typeof evidenceSchema>;
@@ -236,6 +238,7 @@ export const workspaceSchema = z.strictObject({
   milestones: z.array(milestoneSchema),
   notices: z.array(noticeSchema),
   investors: z.array(trackedInvestorSchema).default([]),
+  discovery: discoveryStateSchema.default(() => discoveryStateSchema.parse({})),
 });
 
 export type Workspace = z.infer<typeof workspaceSchema>;
@@ -253,7 +256,7 @@ export const jobSchema = z.strictObject({
 export type Job = z.infer<typeof jobSchema>;
 
 export const capabilitiesSchema = z.strictObject({
-  researchMode: z.enum(ResearchMode),
+  researchMode: z.literal('live'),
   voiceReady: z.boolean(),
   avatarReady: z.boolean().default(false),
   researchReady: z.boolean(),

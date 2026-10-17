@@ -37,7 +37,7 @@ export function readEnvironment(values: EnvironmentValues) {
       API_PORT: apiPortSchema,
       WEB_ORIGIN: webOriginSchema,
       EVALUATION_MODEL: z.string().min(1).default('gpt-6.1-sol'),
-      RESEARCH_MODE: z.enum(['demo', 'live']).default('demo'),
+      LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('debug'),
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),
       RESEARCH_MODEL: z.string().default('gpt-6.1-sol'),
@@ -54,9 +54,6 @@ export function readEnvironment(values: EnvironmentValues) {
     emptyStringAsUndefined: true,
     onValidationError: rejectSettings,
   });
-  if (env.RESEARCH_MODE === 'live' && (!env.EXA_API_KEY || !env.OPENAI_API_KEY)) {
-    rejectSettings();
-  }
   return env;
 }
 

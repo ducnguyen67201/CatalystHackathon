@@ -4,7 +4,7 @@ A local TypeScript application for connecting financial evidence, investor resea
 
 ## Start with Doppler
 
-Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains the local demo settings and empty optional provider fields. `doppler.yaml` records this selection without credentials.
+Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains local settings and provider credentials. `doppler.yaml` records this selection without credentials.
 
 On a new machine, sign in and select this repository's config:
 
@@ -74,7 +74,7 @@ pnpm dev
 
 Without Doppler metadata, backend entrypoints read `.env` as a fallback, with injected variables taking precedence. Setup creates `.env` from `.env.example` only when absent. Under Doppler, `.env` is neither created nor merged; a missing secret stays missing, preventing stale local keys from silently being used. Existing `.env` files are preserved.
 
-The application begins with fictional research and a paused schedule, and works without provider credentials. Stage, sector, location and fundraising target are editable demo assumptions; sample financial currency is deliberately unspecified.
+Research always uses Exa and OpenAI. Add both API keys before running research. Without them the dashboard remains available, but research reports an explicit configuration failure; it never returns fictional results. The original radar schedule begins paused. Confirm company details and sample financial currency before using them.
 
 ## Try the complete flow
 
@@ -83,10 +83,22 @@ The application begins with fictional research and a paused schedule, and works 
 3. Optionally add the investor’s name, firm, next meeting, prior questions, and LinkedIn, X and firm/team URLs. Skip to practise without an investor. Each completed step is saved and resumes after refresh.
 4. The dashboard shows the selected financial snapshot, meeting and rehearsal progress. Use Edit context to revisit setup without deleting history. **Restart onboarding** beside it returns to step 1 and stays there after a reload. Saved financials, investor links, notes and history are kept; the same button is available during setup.
 5. Prepare a meeting brief, inspect its source figures, then open the brief-based written practice. Your meeting notes and profile links stay with that brief version.
-6. In Investor research, run Check now or choose monitoring. Investors added during onboarding begin paused; existing schedules are preserved. Demo mode saves real links but uses fictional research only. Live mode sends all links as public identity hints; login-only profiles may not be available.
+6. In Investor research, run Check now or choose monitoring. Investors added during onboarding begin paused; existing schedules are preserved. Research uses Exa and OpenAI and sends all links as public identity hints; login-only profiles may not be available.
 7. Finish practice and track a follow-up. Updates inform a new brief while earlier brief and rehearsal records remain available.
 
 Before using an existing checkout with this update, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. Migrations add onboarding storage without resetting the application database. Existing workspaces are invited through setup once; their data remains intact.
+
+## Investor watchlist
+
+Open **Investor research** in the sidebar. Paste a LinkedIn profile, X profile, or public firm URL and optionally add a name and firm. New targets get an immediate check, followed by checks every 24 hours. Choose every seven days or paused per investor. **Check now** works while paused; already queued checks may finish. Correct the saved name before retrying an ambiguous identity.
+
+**Find more** searches similar companies’ funding announcements and, when available, co-investments involving your tracked investors. It offers up to three suggestions with source passages, company stage/sector/location, announcement dates and whole-round totals. Round totals are never treated as individual investor checks. Suggestions stay separate from monitoring until you choose **Track**; **Dismiss** remembers the investor name and suppresses repeat suggestions. Exact names are normalized, but aliases may still need review. These are leads to verify, not funding recommendations. Sources show exact quoted passages, publication dates where known, fit criteria, and whether they are new or changed. Check history preserves prior quotes and source IDs. Repeated unchanged sources do not create duplicate notices; failures remain distinct from successful checks with no results.
+
+Discovery runs weekly and when the company profile version changes, after stage, sector and geography are supplied and the initial company profile has been edited. You can pause discovery independently or use Find more manually. A full tray of three suggestions avoids further provider calls until a slot is available. Stale suggestions are hidden after a company profile change; decisions and evidence remain in history. The worker must remain running.
+
+Research requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Existing fictional evidence and past checks remain labeled for historical accuracy; new checks always use live providers. Monitoring requires the worker to remain running. No emails or investor outreach are sent.
+
+For an existing checkout, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
 
 ## Browser voice with ElevenLabs
 
@@ -156,7 +168,7 @@ A stock character is an AI simulation, not the actual investor. Custom likenesse
 
 ## Live research
 
-In Doppler, set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and `RESEARCH_MODEL=gpt-6.1-sol` (the default). Restart the API and worker after editing settings. Live mode performs up to one Exa query and five bounded extraction calls per radar run. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
+In Doppler, set `EXA_API_KEY`, `OPENAI_API_KEY`, and `RESEARCH_MODEL=gpt-6.1-sol` (the default). There is no research mode selector; remove the obsolete `RESEARCH_MODE` setting. Restart the API and worker after editing settings. Live mode performs one Exa query and up to five bounded extraction calls per tracked-investor/radar run. Comparable-company discovery uses up to two Exa queries (segment funding and known-investor co-investments) and extracts at most five distinct pages. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
 
 An exact supporting passage is required for an extracted record. This checks provenance; it does not prove every extracted criterion is correct. Live claims remain labeled as needing verification. Canonical URL, retrieved text and extracted investor identity identify source versions. Repeated pages do not duplicate evidence; changed text creates a preserved new version. Cross-page event grouping remains a future improvement.
 
@@ -199,3 +211,35 @@ Use **Explain my reasoning** to add context and receive a new review version, or
 The first release includes the latest twelve financial periods and explicitly reports missing/omitted data. Oversized inputs are skipped rather than silently truncated. Historical fictional reviews retain their label; new reviews use the model. Investor-specific statements require cited evidence. Older sessions without a frozen evaluation context are not automatically evaluated against current data. LiveAvatar still receives empty interviewer context; local evaluation context does not personalize its questions.
 
 See [Evaluator workflow](docs/EvaluatorWorkflowPlan.md) for the ASCII diagram, actual input/output contracts, prompts, storage/recovery behavior and instructions for adding more data sources.
+
+## Research terminal logs
+
+Run `doppler run -- pnpm dev` and watch that terminal (not the browser console). `LOG_LEVEL=debug` is the default; `info` hides per-source decisions and result counts, and `silent` disables workflow logging. This uses JSON console logging without an extra logging service. T3 Env validates the level. Change it in Doppler and restart to change verbosity.
+
+A manual check logs `workflow_queued`, then the worker logs `workflow_started`, `research_started`, provider events, `investor_check_saved`, and `workflow_succeeded`. Every event inside a job carries its `jobId`, `jobKind` and attempt number. Missing keys log `research_unavailable` at startup and `research_failed` with `reason: configuration_missing` if a check runs. This is a failure, never a successful zero-source check.
+
+Live mode logs Exa/OpenAI request start, HTTP status and duration; search result count; per-source accepted/rejected events; and accepted evidence count. Rejection reasons include no text, identity mismatch, missing exact quote and missing comparable-company evidence. Failures distinguish provider HTTP errors, invalid responses, timeouts and network failures. Discovery logs how many suggestions were saved or that the three-suggestion tray is already full. No repeated empty worker polls are logged.
+
+Logs intentionally omit API keys, headers, cookies, raw errors, source text, names, URLs, prompts, financial records and transcripts. API failure logs include the original error status and request ID to distinguish rate-limit failures from generic server errors. Logs appear in the server/worker terminal; they are not streamed to the frontend.
+
+## Saved research output API
+
+Apply the additive migration with `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. Every live investor check, comparable-company discovery and radar provider attempt automatically saves an immutable ResearchRun JSON record before returning to the worker. No browser save call is required. Captured fields include queries, retrieved source text, source decisions, extracted evidence, profile version, public segment/identity context, model, job ID, attempt number, timestamps and safe failure metadata. Failed extraction preserves sources already retrieved. No credentials, raw provider error bodies, financial rows or meeting notes enter these records.
+
+Authenticated local API endpoints:
+
+- `GET /api/research-runs?investorId=<uuid>&limit=20&offset=0` lists summaries. Optional `kind` (`investor`, `discovery`, `radar`) and `jobId` filters are supported. A non-null `nextOffset` retrieves the next page; limit is at most 50.
+- `GET /api/research-runs/<uuid>` returns the complete JSON, including source text and decisions.
+- `POST /api/research-runs` imports raw results using `importResearchRunSchema` in `src/contracts/ResearchRun.ts`: `id` (a fresh UUID), `kind`, `investorId` (or null), `input`, `searches`, `startedAt`, and `finishedAt`. Each search contains `query`, `retrievedAt` and `sources`; each source contains `title`, `url`, optional `text`, `highlights` and `publishedDate`. Use the schema for exact bounds and input fields. Reposting the same ID and body is idempotent; changing an existing ID returns 409. Imports are always marked `origin: import`, `status: source_only`, with no extracted evidence or job identity. Unknown investor references return 404.
+
+Example from the app browser console (its existing local session cookie is used):
+
+```js
+const list = await fetch('/api/research-runs?limit=5').then((response) => response.json());
+const run = list.items[0]
+  ? await fetch(`/api/research-runs/${list.items[0].id}`).then((response) => response.json())
+  : null;
+console.log(run);
+```
+
+Source text is untrusted evidence, not agent instructions. Future scenario generation can load a run by ID and select its accepted, cited evidence while checking profile version and workflow outcome. A research run's success means provider extraction completed, not that the later workspace write or entire workflow succeeded. Historical records are not retroactively reconstructed. Runs skipped before making a provider call (for example, a full suggestion tray) do not create an archive. An abrupt process termination before final persistence can lose that attempt's in-memory trace; job retries remain independently recorded. No scenario generator or replay engine is implemented here.

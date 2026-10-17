@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { LogEvent } from './WorkflowLog.js';
+import { InvestorDiscoveryService } from './InvestorDiscoveryService.js';
 import { parseInvestorUrl } from '../contracts/ProfileLinks.js';
 import {
   CheckFrequency,
@@ -39,10 +41,14 @@ function saveEvidence(state: Workspace, records: Evidence[]): void {
 
 /** Owns watchlists and research history; voice and brief construction remain separate consumers. */
 export class InvestorTrackingService {
+  readonly discovery: InvestorDiscoveryService;
+
   constructor(
     private readonly workspace: WorkspaceService,
     private readonly research: ResearchProvider,
-  ) {}
+  ) {
+    this.discovery = new InvestorDiscoveryService(workspace, research);
+  }
 
   async add(input: InvestorInput): Promise<TrackedInvestor> {
     const url = parseInvestorUrl(input.url);
@@ -130,50 +136,11 @@ export class InvestorTrackingService {
     }
   }
 
-  async discover(): Promise<string> {
-    const initial = await this.workspace.read();
-    const records = await this.research.discover({ ...initial.profile, watchlist: [] });
-    const count = await this.workspace.change((state) => {
-      if (state.profile.version !== initial.profile.version) {
-        throw new Error('Profile changed during discovery.');
-      }
-      saveEvidence(state, records);
-      let added = 0;
-      for (const evidence of records) {
-        const name = evidence.investor.trim();
-        if (!name || name.length > 100) {
-          continue;
-        }
-        const key = `name:${name.toLowerCase()}`;
-        if (
-          state.investors.some(
-            (item) => item.key === key || item.name.toLowerCase() === name.toLowerCase(),
-          )
-        ) {
-          continue;
-        }
-        const now = new Date().toISOString();
-        state.investors.push({
-          id: randomUUID(),
-          key,
-          name,
-          url: null,
-          profileLinks: [],
-          origin: InvestorOrigin.DISCOVERED,
-          discoveryEvidenceId: evidence.id,
-          createdAt: now,
-          frequency: CheckFrequency.DAILY,
-          nextAt: now,
-          checks: [],
-        });
-        added++;
-      }
-      return added;
-    });
-    return `${count} sourced candidates added for individual research. Suitability and identity need review.`;
+  async discover(jobId: string = randomUUID(), attempt = 1): Promise<string> {
+    return this.discovery.discover(jobId, attempt);
   }
 
-  async check(id: string, jobId: string): Promise<string> {
+  async check(id: string, jobId: string, attempt = 1): Promise<string> {
     const initial = await this.workspace.read();
     const target = initial.investors.find((item) => item.id === id);
     if (!target) {
@@ -182,12 +149,19 @@ export class InvestorTrackingService {
     if (target.checks.some((check) => check.jobId === jobId)) {
       return 'This check is already saved.';
     }
-    const records = await this.research.discover(initial.profile, {
-      name: target.name,
-      url: target.url,
-      profileLinks: target.profileLinks,
-    });
-    return this.workspace.change((state) => {
+    const records = await this.research.discover(
+      initial.profile,
+      {
+        name: target.name,
+        url: target.url,
+        profileLinks: target.profileLinks,
+      },
+      undefined,
+      { jobId, investorId: id, attempt },
+    );
+    let addedCount = 0;
+    let changedCount = 0;
+    const savedNote = await this.workspace.change((state) => {
       if (state.profile.version !== initial.profile.version) {
         throw new Error('Profile changed during investor research.');
       }
@@ -219,12 +193,15 @@ export class InvestorTrackingService {
       saveEvidence(state, unique);
       const note =
         unique.length === 0
-          ? 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable. Demo mode researches only fictional Northline Ventures.'
+          ? 'No supported public evidence found for this identity. Try a full name and firm; login-only profiles may not be searchable.'
           : fresh.length === 0
             ? 'No new source versions found in this check. This is not proof that nothing changed elsewhere.'
             : `${added.length} new sources; ${changed.length} updated source versions. Review identity and the cited passages before acting.`;
+      addedCount = added.length;
+      changedCount = changed.length;
       investor.checks.push({
         jobId,
+        ...(this.research.mode ? { mode: this.research.mode } : {}),
         checkedAt: new Date().toISOString(),
         profileVersion: state.profile.version,
         evidenceIds: unique.map((item) => item.id),
@@ -243,5 +220,12 @@ export class InvestorTrackingService {
       }
       return note;
     });
+    this.workspace.logger.write(LogEvent.INVESTOR_CHECK_SAVED, {
+      jobId,
+      count: new Set(records.map((record) => record.id)).size,
+      addedCount,
+      changedCount,
+    });
+    return savedNote;
   }
 }
