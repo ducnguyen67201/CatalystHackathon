@@ -178,6 +178,23 @@
 .prep-schedule-reviewed {
   color: #375d4f;
 }
+.prep-schedule-scenarios {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dde4dd;
+  background: #f7faf7;
+}
+.prep-schedule-scenarios > div {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.prep-schedule-scenarios span {
+  color: #62716a;
+}
 .prep-schedule-pace {
   align-items: flex-start;
   background: #f7faf7;

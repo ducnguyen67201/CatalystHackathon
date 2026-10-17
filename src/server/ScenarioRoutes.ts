@@ -16,7 +16,7 @@ export function registerScenarioRoutes(app: FastifyInstance, service: WorkspaceS
     if (!service.scenarios)
       return reply.code(503).send({ error: 'Scenario generation is unavailable.' });
     return scenarioPreviewSchema.parse(
-      await service.scenarios.preview(body.investorId, body.objective),
+      await service.scenarios.preview(body.investorId, body.objective, body.preparationCycleId),
     );
   });
   app.post('/api/scenario-generations', async (request, reply) => {
@@ -32,6 +32,7 @@ export function registerScenarioRoutes(app: FastifyInstance, service: WorkspaceS
             body.objective,
             body.key,
             body.expectedInputHash,
+            body.preparationCycleId,
           ),
         ),
       );

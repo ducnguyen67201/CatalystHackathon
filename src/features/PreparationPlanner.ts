@@ -10,6 +10,7 @@ import {
   type PreparationView,
 } from '../contracts/FundraisingPreparation.js';
 import { projectFollowups } from './Followups.js';
+import { connectedSteps, cycleOutdated } from './ConnectedPreparation.js';
 
 export const preparationHash = (input: unknown): string =>
   createHash('sha256').update(JSON.stringify(input)).digest('hex');
@@ -298,6 +299,36 @@ export function projectPreparationPlan(
         : 'Review the explanation, then submit a written rehearsal for assessment.',
     },
   ];
+  const cycle = saved.connected?.cycles.at(-1);
+  if (cycle) {
+    const steps = connectedSteps(state, jobs, null);
+    const status = (items: typeof steps): PreparationView['milestones'][number]['status'] =>
+      items.every((step) => step.status === 'complete')
+        ? 'complete'
+        : items.some((step) => step.status === 'needs_review' || step.status === 'outdated')
+          ? 'needs_review'
+          : items.some((step) => ['ready', 'running', 'failed'].includes(step.status))
+            ? 'available'
+            : 'blocked';
+    for (const milestone of milestones) {
+      const group =
+        milestone.id === 'financial'
+          ? steps.slice(0, 1)
+          : milestone.id === 'investor'
+            ? steps.slice(1, 2)
+            : milestone.id === 'brief'
+              ? steps.slice(2, 3)
+              : milestone.id === 'rehearse'
+                ? steps.slice(3)
+                : [];
+      if (!group.length) continue;
+      const next = group.find((step) => step.status !== 'complete') ?? group.at(-1);
+      milestone.status = status(group);
+      milestone.preparationStep = next?.id;
+      if (milestone.id === 'rehearse' && next) milestone.title = next.title;
+      milestone.detail = `Current preparation cycle · ${group.map((step) => `${step.title}: ${step.status}`).join('; ')}.`;
+    }
+  }
   const sessions = projectFollowups(state, jobs, 0, state.rehearsals.length).sessions;
   const feedback = sessions
     .filter((session) => {
@@ -330,12 +361,13 @@ export function projectPreparationPlan(
     ),
     intent: state.profile.goal,
     profileVersion: state.profile.version,
+    connectedActive: !!saved.connected?.cycles.length,
     version: saved.version,
     automatic: saved.automatic,
     goal,
     schedule: saved.schedules.at(-1) ?? null,
     plan,
-    outdated,
+    outdated: cycle ? cycleOutdated(state, cycle) : outdated,
     heartbeatAt,
     decisions: plan
       ? saved.decisions.filter((item) =>

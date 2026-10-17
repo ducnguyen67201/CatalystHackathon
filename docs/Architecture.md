@@ -578,17 +578,21 @@ or chart-library dependency and preserves all saved financial and rehearsal hist
 current/expected position strip, accessible timeline table, scenario pace and review actions.
 `PreparationScheduleModel.ts` projects founder-confirmed effort and daily capacity using Decimal
 arithmetic and date-only UTC calendar arithmetic after selecting today in the goal timezone.
-Work is sequential and the brief waits for assumed cash delivery; this is a planning model,
-not a cash forecast or funding prediction. Overdue explicit delivery or changed source inputs
-suppress future dates. Missing delivery stays an unresolved cash gap, not a prerequisite for
-preparing a brief that discloses that gap. Targetless plans have no on-track assertion. Review activity counts
+Work is sequential and an unfinished brief waits for a supplied future cash-delivery date;
+this is a planning model, not a cash forecast or funding prediction. Missing/overdue delivery
+produces an explicitly provisional work-only estimate, excluding external waiting. Changed
+sources suppress dates until reviewed. Targetless and provisional plans have no on-track assertion. Review activity counts
 unique current accepted artifacts in seven days and is never extrapolated into velocity.
 
 `POST /api/preparation-plan/schedule` validates bounded estimates with Zod, checks optimistic
 version, current plan and source freshness, then appends an assumption record in the existing
 Prisma-backed preparation aggregate. Reads expose the latest record without writing history.
-Older records and financial snapshots remain unchanged. New plans/goals use labeled suggested estimates until customized;
-temporary slower/faster controls never mutate saved assumptions. Standard workspace/session,
+Older records and financial snapshots remain unchanged. Saved assumptions carry across plan
+updates for the same goal, with a reuse label; a different goal uses starter estimates until
+custom assumptions are saved. The graph is visible before goal confirmation and uses labeled
+defaults (2h/day; 2h financial, 2h investor, 2h brief, 4h rehearsal), without writing invented
+confirmation or delivery dates. All three pace dates recompute from the current checklist
+projection, including closed and newly started cycles. Temporary slower/faster controls never mutate saved assumptions. Standard workspace/session,
 origin and cache controls apply. No provider calls or new worker are introduced.
 
 ### Goal-first preparation and conversation context
@@ -600,7 +604,7 @@ amount or financing history from free text. Existing goal detail and history are
 The worker continues to reconcile saved evidence; this edit starts no provider calls.
 
 `PreparationIntentForm.tsx` exposes a single goal input; detailed round controls stay optional.
-`PreparationScheduleModel.ts` uses disclosed template effort and 0.5 hours/day when no current
+`PreparationScheduleModel.ts` uses disclosed template effort and 2 hours/day when no current
 custom schedule exists. This makes the timeline usable without a required assumption form.
 Current custom plans remain supported. Real accepted-review activity stays separate from
 suggested availability and cash/runway is not inferred.
@@ -648,3 +652,59 @@ manual recovery controls. Dashboard figures use the same preparation projection 
 visibility-aware serialized polling preserves open drafts and announces meaningful changes.
 Network failure retains prior state with explicit stale-view messaging. Provider work is never
 started by rendering or polling; manual investor checks reuse existing protected routes.
+
+## Connected six-step preparation loop
+
+`contracts/ConnectedPreparation.ts` validates versioned pitches, cycles, decisions, source
+lineage, recommendations and the six-step projection. `features/ConnectedPreparation.ts`
+contains source fingerprints, exact-label recommendation comparisons, practice linkage and
+completion rules. `ConnectedPreparationService.ts` owns revision commands and automatic
+proposal reconciliation. Sources changing invalidate active approvals; proposal publication
+requires the exact current pitch and completed full-session evaluation. Partial/failed
+assessments cannot close a cycle. Founder decisions do not establish numerical correctness.
+
+The first implementation adds optional `preparation.connected` inside the existing validated
+Prisma workspace aggregate; it needs no migration. This is a deliberate smaller persistence
+increment than the focused tables proposed in the engineering plan. Pitches append immutable
+versions; cycle progression and command receipts use the existing optimistic transaction.
+History remains append-only across cycle completion or supersession. The bounded read model
+returns ten cycles and their pitches; large histories should migrate to focused tables and
+cursor pagination. `/api/state` continues to exclude the private preparation payload.
+
+`server/ConnectedPreparationRoutes.ts` exposes private/no-store reads and protected commands.
+Every command checks version and idempotency receipts; generation/submission replay is bound
+to exact inputs. No reads start workflows. `Worker.ts` reconciles proposals from already-saved
+validated coaching, only when automatic drafting is enabled, with no additional model call.
+Manual feedback review works while paused. No-gap and closed cycles do not spin work.
+
+Scenario inputs optionally freeze `preparation` with the approved story and brief. Existing
+v1/v2 practice parsing and old input hashes retain their behavior because the new field has no
+default. New scenario prompts consume the approved text as founder-provided context, never as
+financial authority. Evaluations retain it as a separately labeled company source while checking
+financial claims against frozen facts. Generic voice/video/guided session creation rechecks
+current lineage inside the save, preventing a stale scenario from starting a new linked session.
+No active session acquires future edits. Provider configuration remains separately managed.
+
+`PrismaStore.createGeneration` locks the workspace before creating a preparation-linked
+scenario job and atomically saves its cycle pointer and workspace revision. The same cycle
+cannot queue competing active scenario jobs. Standard worker lease fencing controls scenario
+and evaluation publication. Failed generation can be explicitly cleared for reviewed retry;
+previous jobs/results remain historical. Written rehearsal and evaluation-queue intent commit
+in the existing workspace transaction. Accepted revisions append a new cycle and prepare its
+investor brief; approvals and paid scenario/session starts always remain explicit.
+
+`web/ConnectedPreparation.tsx` renders the primary checklist and native review drawer inside
+`PreparationPlan.tsx`; the timeline and pace controls remain above the connected checklist.
+The timeline's five workstreams use the current cycle's saved approvals, feedback and revision
+decision, aggregating practice through cycle completion into the rehearsal workstream. Timeline
+actions open the matching checklist step. Prior cycles remain in history; schedule dates still
+require current effort and availability assumptions. The same sourced
+recommendation table appears in `InvestorTrackingPage.tsx`. Unknown criteria never become a
+verified recommendation, and confirmed prior financing is shown separately from intended round.
+Only the selected investor's saved evidence enters its brief. Investor outreach is not added.
+
+Connected briefs also appear in `ConnectedPreparationBriefs.tsx` on the existing Meeting brief
+page. Scenario details show the approved pitch, and evaluation panels validate the saved
+preparation source before linking back to its checklist step. A historical cycle link opens
+history instead of applying old feedback to the current cycle. Investor research links directly
+to the recommendation-review step. These links navigate only; they never approve or queue work.

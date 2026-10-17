@@ -2,6 +2,11 @@ import { Decimal } from 'decimal.js';
 import type { PreparationView } from '../contracts/FundraisingPreparation.js';
 
 const dayMs = 86400000;
+export const defaultPreparationAssumptions = {
+  dailyHours: 2,
+  cashExpectedDate: null,
+  hours: { financial: 2, investor: 2, brief: 2, rehearse: 4 },
+};
 export function preparationDay(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
@@ -18,49 +23,47 @@ export type ScheduleTone = 'unknown' | 'on_track' | 'ahead' | 'at_risk' | 'behin
 export function projectSchedule(view: PreparationView, pace = 1, now = new Date()) {
   const today = preparationDay(now, view.goal?.timezone ?? 'UTC');
   const start = dayNumber(today);
-  const saved = view.schedule;
-  const savedCurrent = !!saved && saved.goalId === view.goal?.id && saved.planId === view.plan?.id;
-  const suggested = !savedCurrent;
-  const assumption = savedCurrent
-    ? saved
-    : {
-        dailyHours: 0.5,
-        cashExpectedDate: null,
-        hours: { financial: 0.5, investor: 0.5, brief: 0.5, rehearse: 1 },
-      };
-  const current = !!view.goal && !!view.plan && !view.outdated;
+  const assumption = view.schedule;
+  const current = !!assumption && assumption.goalId === view.goal?.id && !view.outdated;
+  const estimates = current ? assumption : defaultPreparationAssumptions;
+  const automatic = !current;
+  const reused = current && assumption.planId !== view.plan?.id;
   const cashDate = current ? assumption.cashExpectedDate : null;
   const validCash = !!cashDate && cashDate >= today;
   const complete = view.milestones.every((item) => item.status === 'complete') && !view.outdated;
-  const reason = view.outdated
-    ? 'Saved evidence changed. Refresh the plan.'
-    : !current
-      ? 'Set your goal to prepare the next steps.'
-      : cashDate !== null && !validCash
-        ? 'Confirm a future cash-evidence delivery date; receipt is not verified.'
-        : null;
-  const capacity = new Decimal(assumption.dailyHours).mul(pace);
+  const reason = complete
+    ? null
+    : view.outdated
+      ? 'Saved evidence changed. Refresh the plan.'
+      : automatic
+        ? 'Automatic work-only estimate: 2 hours/day; financial review 2h, investor selection 2h, brief 2h, practice and feedback 4h. Edit these assumptions to match your availability. Cash-evidence delivery is unconfirmed.'
+        : !validCash
+          ? 'Work-only estimate. Cash-evidence delivery is missing or overdue; external waiting time is excluded. Confirm its date to include it.'
+          : reused
+            ? 'Using your saved effort and availability for the updated plan. Completed work is excluded; review remaining effort when the scope changes.'
+            : null;
+  const capacity = new Decimal(estimates.dailyHours).mul(pace);
   let cursor = new Decimal(start);
   const rows = view.milestones.map((milestone) => {
     const key = milestone.id;
     const hours =
-      current &&
       key !== 'strategy' &&
       (key === 'financial' || key === 'investor' || key === 'brief' || key === 'rehearse')
-        ? assumption.hours[key]
+        ? estimates.hours[key]
         : null;
-    if (key === 'brief' && validCash) cursor = Decimal.max(cursor, dayNumber(cashDate));
+    if (key === 'brief' && milestone.status !== 'complete' && validCash)
+      cursor = Decimal.max(cursor, dayNumber(cashDate));
     const from = cursor.toNumber();
     if (milestone.status !== 'complete' && hours !== null)
       cursor = cursor.plus(new Decimal(hours).div(capacity));
     return { ...milestone, hours, from, to: cursor.toNumber() };
   });
-  const finish = complete ? today : reason ? null : dayString(cursor.ceil().toNumber());
+  const finish = complete ? today : view.outdated ? null : dayString(cursor.ceil().toNumber());
   const buffer =
     finish && view.goal?.targetDate ? dayNumber(view.goal.targetDate) - dayNumber(finish) : null;
   const tone: ScheduleTone = complete
     ? 'complete'
-    : !finish || buffer === null
+    : !finish || buffer === null || automatic || !validCash
       ? 'unknown'
       : buffer < 0
         ? 'behind'
@@ -74,13 +77,15 @@ export function projectSchedule(view: PreparationView, pace = 1, now = new Date(
       ? 'Preparation reviewed'
       : !finish
         ? 'Pace unknown'
-        : buffer === null
-          ? 'Set a preparation target to assess pace'
-          : buffer < 0
-            ? `Behind target · ${-buffer} day${buffer === -1 ? '' : 's'} late`
-            : buffer === 0
-              ? 'At risk · no buffer'
-              : `${pace > 1 ? 'Ahead in this scenario' : 'On track'} · ${buffer} day${buffer === 1 ? '' : 's'} of buffer`;
+        : automatic || !validCash
+          ? 'Provisional work estimate'
+          : buffer === null
+            ? 'Set a preparation target to assess pace'
+            : buffer < 0
+              ? `Behind target · ${-buffer} day${buffer === -1 ? '' : 's'} late`
+              : buffer === 0
+                ? 'At risk · no buffer'
+                : `${pace > 1 ? 'Ahead in this scenario' : 'On track'} · ${buffer} day${buffer === 1 ? '' : 's'} of buffer`;
   // Unique current accepted artifacts only; re-accepting or revoked reviews do not inflate this count.
   const reviewed = new Set(
     view.decisions
@@ -105,7 +110,10 @@ export function projectSchedule(view: PreparationView, pace = 1, now = new Date(
     label,
     reason,
     current,
-    suggested,
+    automatic,
+    reused,
+    estimates,
+    workOnly: !validCash,
     reviewed,
     next,
     capacity: capacity.toString(),

@@ -1,3 +1,5 @@
+import { ConflictError } from './WorkspaceStore.js';
+import { preparedPitchContext } from './ConnectedPreparation.js';
 import { buildPeerComparison } from './PeerComparison.js';
 import { fictionalFinancialHashes } from '../contracts/FinancialProvenance.js';
 import { createHash } from 'node:crypto';
@@ -179,9 +181,12 @@ export function assembleScenarioInput(
   state: Workspace,
   investorId: string,
   objective: string,
+  preparationCycleId?: string,
 ): ScenarioInput {
   const investor = state.investors.find((item) => item.id === investorId);
   if (!investor) throw new Error('Investor unavailable. Choose a saved investor.');
+  if (preparationCycleId && state.preparation?.connected?.cycles.at(-1)?.investorId !== investorId)
+    throw new ConflictError('Prepared investor selection changed.');
   const capturedAt = new Date().toISOString();
   const providers: ScenarioSourceProvider[] = [
     new InitialInfoScenarioSource(),
@@ -196,6 +201,7 @@ export function assembleScenarioInput(
   return scenarioInputSchema.parse({
     schemaVersion: 1,
     capturedAt,
+    ...(preparationCycleId ? { preparation: preparedPitchContext(state, preparationCycleId) } : {}),
     ...(state.peers?.length && currentSnapshot(state)
       ? {
           peerComparison: buildPeerComparison(
@@ -249,8 +255,11 @@ export function assembleScenarioInput(
       },
       ...['pitch', 'forecast'].map((kind) => ({
         kind,
-        status: 'not_supported',
-        detail: 'Not connected to scenario generation yet.',
+        status: kind === 'pitch' && preparationCycleId ? 'available' : 'not_supported',
+        detail:
+          kind === 'pitch' && preparationCycleId
+            ? 'Approved financial story and investor brief are frozen in the preparation context; founder-reviewed, not independently verified.'
+            : 'Not connected to scenario generation yet.',
       })),
     ],
     omittedEvidenceIds: evidenceIds(state, investorId)

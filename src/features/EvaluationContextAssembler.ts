@@ -60,6 +60,20 @@ export function assembleEvaluationContext(
     limitations: [],
   };
   if (scenarioInput) {
+    if (scenarioInput.preparation) {
+      context.sources.push({
+        id: 'approved-preparation',
+        kind: 'company',
+        title: 'Founder-reviewed pitch and investor brief',
+        text: JSON.stringify(scenarioInput.preparation),
+        url: null,
+        recordedAt: null,
+        origin: scenarioInput.preparation.fictional ? 'fictional' : 'founder',
+      });
+      context.limitations.push(
+        'Founder approval does not verify freeform pitch claims. Check financial statements against frozen facts independently.',
+      );
+    }
     context.limitations.push(
       'Scenario evidence is frozen at generation time. Only its selected current financial snapshot is checked; previous snapshots and prior practice are not treated as current facts.',
     );

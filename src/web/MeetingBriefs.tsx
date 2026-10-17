@@ -1,3 +1,4 @@
+import { ConnectedPreparationBriefs } from './ConnectedPreparationBriefs.js';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, RefreshCw, Search, X } from 'lucide-react';
 import type { Brief, Rehearsal, StateResponse } from '../contracts/Workspace.js';
@@ -73,6 +74,7 @@ export function MeetingBriefs({
   );
   const [filter, setFilter] = useState<'brief' | 'practice'>('brief');
   const [query, setQuery] = useState('');
+  const [connectedBriefCount, setConnectedBriefCount] = useState(0);
   const [newestFirst, setNewestFirst] = useState(true);
   const rows =
     filter === 'brief'
@@ -124,10 +126,12 @@ export function MeetingBriefs({
           <RefreshCw size={14} /> Refresh brief
         </button>
       </header>
+      <ConnectedPreparationBriefs state={state} onCount={setConnectedBriefCount} />
       <div className="meeting-table-toolbar">
         <div className="meeting-view-switch" role="group" aria-label="Record type">
           <button aria-pressed={filter === 'brief'} onClick={() => setFilter('brief')}>
-            Meeting briefs <span>{workspace.briefs.length}</span>
+            {connectedBriefCount ? 'Other meeting briefs' : 'Meeting briefs'}{' '}
+            <span>{workspace.briefs.length}</span>
           </button>
           <button aria-pressed={filter === 'practice'} onClick={() => setFilter('practice')}>
             Practice reviews <span>{workspace.rehearsals.length}</span>
@@ -202,19 +206,23 @@ export function MeetingBriefs({
             {query
               ? 'No matching records'
               : filter === 'brief'
-                ? 'Prepare your first brief'
+                ? connectedBriefCount
+                  ? 'No other meeting briefs'
+                  : 'Prepare your first brief'
                 : 'Your conversations will appear here'}
           </h3>
           <p>
             {query
               ? 'Try another investor name or question.'
               : filter === 'brief'
-                ? 'Create a brief from your current financial evidence.'
+                ? connectedBriefCount
+                  ? 'Your checklist briefs and their next actions are shown above.'
+                  : 'Create a brief from your current financial evidence.'
                 : 'Finish a practice to inspect its saved transcript and evaluation.'}
           </p>
           {!query && filter === 'brief' && (
             <button className="button" disabled={busy} onClick={onRefreshBrief}>
-              Create brief
+              {connectedBriefCount ? 'Create another brief' : 'Create brief'}
             </button>
           )}
         </div>

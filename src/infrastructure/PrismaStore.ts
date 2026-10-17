@@ -1,3 +1,4 @@
+import { preparedPitchContext, connectedHash } from '../features/ConnectedPreparation.js';
 import { workerHeartbeatSchema, type WorkerHeartbeat } from '../contracts/RadarDelivery.js';
 import {
   researchRunSchema,
@@ -520,6 +521,27 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
   async createGeneration(requestKey: string, input: NewScenarioGeneration) {
     const id = await this.client
       .$transaction(async (tx) => {
+        const preparation = input.input.preparation;
+        let linkedState: Awaited<ReturnType<PrismaStore['load']>> = null;
+        if (preparation) {
+          await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${workspaceId} FOR UPDATE`;
+          linkedState = await this.load();
+          if (
+            !linkedState ||
+            connectedHash(preparedPitchContext(linkedState, preparation.cycleId)) !==
+              connectedHash(preparation)
+          )
+            throw new ConflictError('Prepared sources changed before generation.');
+          const active = linkedState.preparation?.connected?.cycles.at(-1);
+          if (active?.generationId) {
+            const existing = await tx.scenarioGeneration.findUnique({
+              where: { id: active.generationId },
+              include: { job: true },
+            });
+            if (!existing || existing.job.key !== workspaceId + ':scenario:' + requestKey)
+              throw new ConflictError('This preparation cycle already has a scenario generation.');
+          }
+        }
         const job = await tx.workflowJob.upsert({
           where: { key: workspaceId + ':scenario:' + requestKey },
           update: {},
@@ -544,6 +566,17 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
         });
         if (generation.requestHash !== input.requestHash)
           throw new ConflictError('Request key reused with different scenario inputs.');
+        if (linkedState?.preparation?.connected) {
+          const active = linkedState.preparation.connected.cycles.at(-1);
+          if (active && !active.generationId) {
+            active.generationId = generation.id;
+            linkedState.preparation.connected.version++;
+            await tx.workspace.update({
+              where: { id: workspaceId },
+              data: { preparation: json(linkedState.preparation), revision: { increment: 1 } },
+            });
+          }
+        }
         return generation.id;
       })
       .catch(async (error: unknown) => {

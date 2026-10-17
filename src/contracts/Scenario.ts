@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { preparedPitchContextSchema } from './ConnectedPreparation.js';
 import { peerComparisonSchema } from './PeerComparison.js';
 import { questionWhySchema } from './QuestionWhy.js';
 
@@ -120,6 +121,7 @@ export const coverageSchema = z.strictObject({
 });
 
 export const scenarioInputSchema = z.strictObject({
+  preparation: preparedPitchContextSchema.optional(),
   peerComparison: peerComparisonSchema.optional(),
   schemaVersion: z.literal(1),
   capturedAt: z.iso.datetime(),
@@ -191,6 +193,7 @@ export const scenarioGenerationOutputSchema = scenarioOutputSchema.extend({
 });
 
 export const scenarioRequestSchema = z.strictObject({
+  preparationCycleId: z.uuid().optional(),
   investorId: z.uuid(),
   objective: z.string().trim().max(1000).default(''),
   key: z.uuid(),

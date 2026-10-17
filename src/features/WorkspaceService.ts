@@ -1,4 +1,6 @@
 import { synchronizePreparationIntent } from './PreparationIntent.js';
+import { assertCurrentPreparedPractice } from './ConnectedPreparation.js';
+import { ConnectedPreparationService } from './ConnectedPreparationService.js';
 import { PreparationPlanService } from './PreparationPlanService.js';
 import { radarStateSchema } from '../contracts/RadarDelivery.js';
 import { RadarDeliveryService } from './RadarDeliveryService.js';
@@ -44,6 +46,7 @@ export class WorkspaceService {
   readonly scenarios: ScenarioService | null;
   readonly guided: PracticeTurnService;
   readonly preparation: PreparationPlanService;
+  readonly connected: ConnectedPreparationService;
 
   constructor(
     readonly store: WorkspaceStore,
@@ -66,6 +69,7 @@ export class WorkspaceService {
       : null;
     this.guided = new PracticeTurnService(this, turnProvider);
     this.preparation = new PreparationPlanService(this);
+    this.connected = new ConnectedPreparationService(this);
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
@@ -366,6 +370,7 @@ export class WorkspaceService {
   ): Promise<Rehearsal> {
     const frozenContext = context === null ? null : practiceContextSchema.parse(context);
     return this.change((state) => {
+      assertCurrentPreparedPractice(state, frozenContext);
       const brief = state.briefs.find((item) => item.id === briefId);
       if (
         !brief &&

@@ -1,3 +1,7 @@
+import {
+  preparedPitchContextSchema,
+  type PreparedPitchContext,
+} from '../contracts/ConnectedPreparation.js';
 import { PracticeReviewTranscript } from './PracticeReviewTranscript.js';
 import type { TranscriptTurn } from '../contracts/Workspace.js';
 import './EvaluationPanel.css';
@@ -81,6 +85,20 @@ function SelectedEvaluationPanel({
   const evaluation =
     data?.evaluations.find((item) => item.id === selectedEvaluationId) ?? data?.evaluations.at(-1);
   const job = data?.jobs.find((j) => j.kind.endsWith(`:${evaluation?.id}`));
+  let preparation: PreparedPitchContext | null = null;
+  const preparationSource = data?.context?.sources.find(
+    (source) => source.id === 'approved-preparation',
+  );
+  if (preparationSource) {
+    try {
+      const raw: unknown = JSON.parse(preparationSource.text);
+      const parsed = preparedPitchContextSchema.safeParse(raw);
+      if (parsed.success) preparation = parsed.data;
+    } catch {
+      /* Historical source text is not trusted as navigation metadata. */
+    }
+  }
+
   async function respond(itemId: string, kind: 'clarification' | 'practice' | 'dismissed') {
     if (!evaluation) return;
     setBusy(true);
@@ -315,6 +333,14 @@ function SelectedEvaluationPanel({
                   (data?.context?.sources.some((source) => source.origin === 'fictional') ?? false)
                 }
               />
+              {preparation && (
+                <a
+                  className="button"
+                  href={`/?preparationStep=feedback&preparationCycleId=${encodeURIComponent(preparation.cycleId)}`}
+                >
+                  Continue this preparation cycle →
+                </a>
+              )}
               <a className="button secondary" href="/?followups">
                 View your follow-ups
               </a>
