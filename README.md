@@ -2,6 +2,8 @@
 
 A local TypeScript application for connecting financial evidence, investor research, meeting preparation, browser voice practice and tracked follow-ups. Built for the Catalyst 2026 June challenge.
 
+The proposed next slice is [Investor radar result delivery](docs/InvestorRadarEngineeringSpec.md): reuse classified research in the radar and email meaningful updates to the founder. An [interactive HTML preview](docs/previews/InvestorRadarPreview.html) illustrates the research views. These are design artifacts; email delivery is not implemented yet.
+
 ## Start with Doppler
 
 Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains local settings and provider credentials. `doppler.yaml` records this selection without credentials.
