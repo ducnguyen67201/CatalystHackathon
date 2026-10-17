@@ -468,6 +468,9 @@ export function ConnectedPreparation({
             {view.pitch?.fictional && <p className="loop-tag">Fictional demo evidence</p>}
             {panel === 'story' && (
               <>
+                <p>
+                  <a href="/#deck-claims">Inspect deck claims, calculations and saved drafts →</a>
+                </p>
                 <label className="loop-label" htmlFor="loop-pitch">
                   Financial story · editable revision
                 </label>

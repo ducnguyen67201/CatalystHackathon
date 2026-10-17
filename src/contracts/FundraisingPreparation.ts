@@ -1,6 +1,7 @@
 import { preparationManifestSchema, preparationPositionSchema } from './PreparationPosition.js';
 import { z } from 'zod';
 import { connectedPreparationStateSchema } from './ConnectedPreparation.js';
+import { deckClaimsStateSchema } from './DeckClaims.js';
 
 const id = z.string().min(1).max(100);
 const text = z.string().max(3000);
@@ -109,6 +110,7 @@ export type PreparationScheduleInput = z.infer<typeof preparationScheduleInputSc
 export type PreparationSchedule = z.infer<typeof preparationScheduleSchema>;
 
 export const preparationStateSchema = z.strictObject({
+  deckClaims: deckClaimsStateSchema.optional(),
   connected: connectedPreparationStateSchema.optional(),
   version: z.int().nonnegative().default(0),
   automatic: z.boolean().default(false),

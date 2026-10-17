@@ -88,6 +88,16 @@ Research always uses Exa and OpenAI. Add both API keys before running research. 
 
 ## Connected six-step preparation
 
+Overview includes a **Deck claims and evidence** table above the connected checklist.
+Add an exact quoted claim, deck/pitch location, metric, month, unit and comparison precision.
+**Inspect** opens the pinned statement cells, calculation, finding and editable proposed wording.
+Saving adds a draft version and keeps the original claim and check unchanged. The drawer links
+back to financial-story review. Current checks cover monthly revenue, operating/net income,
+credits, booked gross margin and a separately labeled customer-support margin adjustment.
+ARR, retention, CAC and runway disclose their required missing datasets; forecast claims are
+not compared to historical actuals. Fictional examples are optional and available only for
+recognized bundled Tidewell evidence. No model call or paid practice session starts from this table.
+
 The preparation graph appears immediately after setup, including before a goal is confirmed.
 It starts with clearly labeled, unconfirmed work estimates (2 hours/day; 2 hours each for
 financial review, investor selection and brief review, plus 4 hours for practice and feedback).

@@ -1,0 +1,208 @@
+.deck-claims {
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid #dce1d7;
+  border-radius: 14px;
+  background: #fff;
+  color: #293139;
+}
+.deck-claims-heading,
+.deck-dialog-heading,
+.deck-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.deck-claims h3 {
+  margin: 8px 0;
+}
+.deck-claims-heading > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.deck-claims p {
+  color: #657069;
+  line-height: 1.55;
+}
+.deck-coverage {
+  font-size: 13px;
+}
+.deck-empty {
+  padding: 12px 0;
+}
+.deck-table-scroll {
+  overflow: auto;
+}
+.deck-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 700px;
+  text-align: left;
+  font-size: 14px;
+  table-layout: fixed;
+}
+.deck-table caption {
+  text-align: left;
+  color: #657069;
+  padding: 10px 0;
+}
+.deck-table thead {
+  background: #f3f5ef;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.deck-table th,
+.deck-table td {
+  padding: 16px 12px;
+  border-bottom: 1px solid #e5e8e0;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.deck-table thead th:nth-child(1) {
+  width: 30%;
+}
+.deck-table thead th:nth-child(2) {
+  width: 32%;
+}
+.deck-table thead th:nth-child(3) {
+  width: 24%;
+}
+.deck-table thead th:nth-child(4) {
+  width: 14%;
+}
+.deck-table th[scope='row'] {
+  width: 32%;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.deck-table td:nth-child(2) {
+  width: 34%;
+}
+.deck-table small {
+  display: block;
+  font-size: 12px;
+  color: #657069;
+  margin-top: 7px;
+}
+.deck-tag,
+.deck-status {
+  display: inline-block;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #eef1e9;
+}
+.deck-tag {
+  margin-top: 8px;
+  color: #87563b;
+  background: #f8eee7;
+}
+.deck-status.is-contradicted {
+  color: #8c432d;
+  background: #fbebe5;
+}
+.deck-status.is-supported {
+  color: #356148;
+  background: #e9f1e8;
+}
+.deck-dialog {
+  border: 1px solid #dce1d7;
+  border-radius: 14px;
+  position: fixed;
+  margin: 12px 12px 12px auto;
+  padding: 26px;
+  width: min(660px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  box-sizing: border-box;
+  color: #293139;
+}
+.deck-dialog::backdrop {
+  background: #172b2455;
+}
+.deck-dialog h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.deck-dialog section {
+  padding: 16px 0;
+  border-bottom: 1px solid #e5e8e0;
+}
+.deck-dialog p,
+.deck-dialog blockquote {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.deck-dialog blockquote {
+  margin: 10px 0;
+  padding: 12px;
+  background: #f5f6f1;
+  border-left: 3px solid #829b73;
+}
+.deck-form,
+.deck-draft {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+.deck-form label,
+.deck-draft {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.deck-dialog input,
+.deck-dialog select,
+.deck-dialog textarea {
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #cfd7c9;
+  border-radius: 7px;
+  width: 100%;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+.deck-dialog textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+.deck-dialog details {
+  margin-top: 24px;
+}
+.deck-source {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.deck-source th,
+.deck-source td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #e5e8e0;
+  overflow-wrap: anywhere;
+}
+.deck-warning {
+  background: #fff3df;
+  padding: 12px;
+}
+@media (max-width: 600px) {
+  .deck-claims {
+    padding: 14px;
+  }
+  .deck-claims-heading,
+  .deck-actions {
+    flex-direction: column;
+  }
+  .deck-dialog {
+    padding: 18px;
+  }
+  .deck-source {
+    table-layout: fixed;
+  }
+}
