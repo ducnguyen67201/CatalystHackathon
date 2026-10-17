@@ -281,7 +281,7 @@ export function App() {
   ];
   return (
     <div className="layout dashboard-layout">
-      <header className="workspace-header">
+      <aside className="workspace-sidebar" aria-label="Workspace sidebar">
         <button
           className="brand brand-home"
           aria-label="June home"
@@ -305,7 +305,8 @@ export function App() {
                 setPage(item.id);
               }}
             >
-              {item.label}
+              <item.icon size={18} aria-hidden="true" />
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -324,7 +325,7 @@ export function App() {
             {unread > 0 && <i />}
           </button>
         </div>
-      </header>
+      </aside>
       <main className="main">
         <div className="content">
           {error && (
