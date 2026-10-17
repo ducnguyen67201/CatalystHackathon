@@ -9,6 +9,8 @@ import type { ScenarioSelection } from '../contracts/Scenario.js';
 import { request } from './ApiClient.js';
 import { QuestionExplanation, evaluationWhySources } from './QuestionExplanation.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
+import { practiceAnswerFits } from '../features/PracticeInputBudget.js';
+import type { TranscriptTurn } from '../contracts/Workspace.js';
 import './GuidedPractice.css';
 
 export function GuidedPractice({
@@ -206,6 +208,16 @@ export function GuidedPractice({
     }
   }
   const sources = data ? evaluationWhySources(data.context) : [];
+  const savedTranscript: TranscriptTurn[] =
+    data?.guided.turns.flatMap((turn) => {
+      const answer = data.guided.answers.find((item) => item.questionId === turn.id);
+      return [
+        { role: 'agent' as const, text: `${turn.reply}\n\n${turn.question}` },
+        ...(answer ? [{ role: 'user' as const, text: answer.text }] : []),
+      ];
+    }) ?? [];
+  const fitsBudget =
+    !data || practiceAnswerFits(data.id, data.context, savedTranscript, draft.trim());
   return (
     <section className="guided-practice" aria-label="Guided text practice">
       <header className="guided-toolbar">
@@ -376,7 +388,9 @@ export function GuidedPractice({
                 <button
                   type="submit"
                   className="button"
-                  disabled={!draft.trim() || busy || data.guided.answers.length >= 24}
+                  disabled={
+                    !draft.trim() || busy || !fitsBudget || data.guided.answers.length >= 24
+                  }
                   aria-label="Send answer"
                 >
                   <ArrowUp size={17} />
@@ -385,7 +399,9 @@ export function GuidedPractice({
               <small>
                 {data.guided.answers.length >= 24
                   ? 'Session limit reached. Finish to see your review.'
-                  : 'Your answer is checked against the same saved evidence. No new research runs.'}
+                  : !fitsBudget
+                    ? 'This answer would exceed the session size limit. Shorten it or finish for review.'
+                    : 'Your answer is checked against the same saved evidence. No new research runs.'}
               </small>
             </form>
           )}

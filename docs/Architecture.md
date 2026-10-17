@@ -263,8 +263,11 @@ not calculate new figures. Reference integrity does not certify semantic correct
 
 Bundle publication and job completion share the existing workspace revision and lease fence.
 Session revisions, payload-checked request keys and stable question IDs protect answer
-replays. Retrying increments a pending operation's generation. Finish clears pending work,
-retains the server-accepted text transcript and queues the existing evaluation; no provider
+replays. Retrying increments a pending operation's generation.
+`PracticeInputBudget.ts` checks answer acceptance against the same serialized input
+limit while reserving worst-case JSON space for the next reply/question. The UI uses the
+same budget check; oversize answers leave no pending record or queued job.
+Finish clears pending work, retains the server-accepted text transcript and queues the existing evaluation; no provider
 receipt is fabricated. The current local aggregate stores guided state inside rehearsal JSON
 instead of the separate tables proposed in the draft spec. No migration or default backfill
 is needed; larger histories should move to focused tables. Guided details are excluded from

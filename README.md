@@ -174,7 +174,9 @@ Guided turns require `OPENAI_API_KEY` and use the existing `SCENARIO_MODEL` sett
 They use live inference even when the selected scenario was template-generated; fictional
 evidence remains labeled. No provider configuration is changed. Generation runs only after
 an explicit answer submission; no new research runs per answer. Keep the worker running.
-Each session is limited to 24 answers. Failed turn jobs retain the answer and allow retry;
+Sessions allow up to 24 answers; long sessions may reach the input-size limit sooner.
+Answer submission reserves room for the next reply and post-practice review before saving.
+Shorten an over-budget answer or finish the session for review. Failed turn jobs retain the answer and allow retry;
 **Finish & review** safely stops pending advancement and queues the existing post-practice
 evaluation. Saved guided sessions can be reopened from the session selector.
 

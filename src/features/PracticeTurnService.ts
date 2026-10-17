@@ -13,7 +13,11 @@ import type { PracticeTurnProvider } from './PracticeTurnProvider.js';
 import { assembleEvaluationContext } from './EvaluationContextAssembler.js';
 import { hashEvaluationInput, queueEvaluation } from './RehearsalEvaluationService.js';
 import { validateExtraction, checkClaims } from './EvaluationChecks.js';
-import type { EvaluationInput } from './EvaluationProvider.js';
+import {
+  buildPracticeInput,
+  practiceAnswerFits,
+  PRACTICE_INPUT_LIMIT,
+} from './PracticeInputBudget.js';
 import { validatePracticeTurn } from './PreparationPolicy.js';
 import { PRACTICE_TURN_VERSION } from '../prompts/PracticeTurnPrompt.js';
 import { ConflictError, type ClaimedJob } from './WorkspaceStore.js';
@@ -125,6 +129,11 @@ export class PracticeTurnService {
         resolvedFindingIds: [],
         checks: [],
       });
+      const openingTurns = [
+        { role: 'agent' as const, text: `${opening.reply}\n\n${opening.question}` },
+      ];
+      if (!practiceAnswerFits(id, context, openingTurns, 'x'))
+        throw new Error('This practice source context is too large. Choose a smaller scenario.');
       state.rehearsals.push(
         rehearsalSchema.parse({
           id,
@@ -133,7 +142,7 @@ export class PracticeTurnService {
           status: 'active',
           createdAt: now,
           conversationId: null,
-          turns: [{ role: 'agent', text: `${opening.reply}\n\n${opening.question}` }],
+          turns: openingTurns,
           review: null,
           context: practice,
           evaluationContext: context,
@@ -185,7 +194,7 @@ export class PracticeTurnService {
   async answer(id: string, raw: unknown): Promise<void> {
     const body = guidedAnswerRequestSchema.parse(raw);
     await this.service.change((state) => {
-      const { session, guided } = selectedSession(state.rehearsals, id);
+      const { session, guided, context } = selectedSession(state.rehearsals, id);
       const replay = guided.answers.find((answer) => answer.requestKey === body.requestKey);
       if (replay) {
         if (
@@ -211,6 +220,10 @@ export class PracticeTurnService {
         throw new ConflictError('The question changed. Reload the current session.');
       if (guided.answers.length >= 24)
         throw new Error('Finish this practice before adding more answers.');
+      if (!practiceAnswerFits(id, context, session.turns, body.text))
+        throw new Error(
+          'Finish this practice for review or shorten your answer. The session size limit would be exceeded.',
+        );
       const answerId = randomUUID();
       guided.answers.push({ ...body, id: answerId, createdAt: new Date().toISOString() });
       guided.pending = { answerId, generation: 0 };
@@ -262,14 +275,8 @@ export class PracticeTurnService {
       hashEvaluationInput(context) !== guided.contextHash
     )
       throw new Error('Practice turn configuration or evidence changed.');
-    const evaluation: EvaluationInput = {
-      context,
-      scope: 'partial',
-      clarification: null,
-      previous: null,
-      turns: session.turns.map((turn, index) => ({ ...turn, id: `${id}:turn:${index}` })),
-    };
-    if (JSON.stringify(evaluation).length > 100000)
+    const evaluation = buildPracticeInput(id, context, session.turns);
+    if (JSON.stringify(evaluation).length > PRACTICE_INPUT_LIMIT)
       throw new Error('Practice input exceeds supported size.');
     const extraction = validateExtraction(
       await this.service.evaluations.provider.extract(evaluation),

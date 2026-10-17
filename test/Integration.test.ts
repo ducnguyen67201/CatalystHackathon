@@ -1901,4 +1901,38 @@ describe('guided question and Why workflow', () => {
     expect(session?.turns.map((turn) => turn.role)).toEqual(['agent', 'user']);
     await drainWorker(service);
   });
+  it('rejects oversized answers before persistence and still evaluates the accepted transcript', async () => {
+    const payload = await prepareGuided();
+    const id = await service.guided.start(payload);
+    let rejected = false;
+    for (let index = 0; index < 24; index++) {
+      const before = await service.guided.get(id);
+      const questionId = before.guided.turns.at(-1)?.id;
+      if (!questionId) throw new Error('Missing question');
+      const input = {
+        questionId,
+        text: 'A'.repeat(3000),
+        expectedRevision: before.guided.revision,
+        requestKey: randomUUID(),
+      };
+      try {
+        await service.guided.answer(id, input);
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('size limit')) throw error;
+        const after = await service.guided.get(id);
+        expect(after.guided).toEqual(before.guided);
+        expect(after.guided.pending).toBeNull();
+        rejected = true;
+        break;
+      }
+      await drainWorker(service);
+    }
+    expect(rejected).toBe(true);
+    const beforeFinish = await service.guided.get(id);
+    await service.guided.finish(id, beforeFinish.guided.revision);
+    await drainWorker(service);
+    const session = (await service.read()).rehearsals.find((item) => item.id === id);
+    expect(session?.evaluations[0]?.status).toBe('completed');
+    expect(session?.evaluations[0]?.reason).toBeNull();
+  });
 });
