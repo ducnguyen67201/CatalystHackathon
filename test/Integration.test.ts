@@ -1,3 +1,4 @@
+import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
 import { randomUUID, createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -71,6 +72,38 @@ describe('PostgreSQL-backed application workflow', () => {
         })
       ).statusCode,
     ).toBe(403);
+  });
+  it('rejects a previous API session before writes and accepts a renewed session', async () => {
+    const restartedApi = await createApi(
+      service,
+      readEnvironment({ DATABASE_URL: databaseUrl.href, WEB_ORIGIN: 'http://127.0.0.1:4317' }),
+    );
+    try {
+      const before = await service.read();
+      const rejected = await restartedApi.inject({
+        method: 'PUT',
+        url: '/api/profile',
+        headers: { cookie: sessionCookie },
+        payload: before.profile,
+      });
+      expect(rejected.statusCode).toBe(401);
+      expect(rejected.json<unknown>()).toEqual({
+        code: LocalSessionError.REQUIRED,
+        error: 'Your local session ended. Please try again to reconnect.',
+      });
+      expect(await service.read()).toEqual(before);
+
+      const login = await restartedApi.inject({ method: 'POST', url: '/api/session' });
+      const renewedCookie = login.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+      const restored = await restartedApi.inject({
+        url: '/api/state',
+        headers: { cookie: renewedCookie },
+      });
+      expect(restored.statusCode).toBe(200);
+      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual(before);
+    } finally {
+      await restartedApi.close();
+    }
   });
   it('persists one opportunity and notification across repeated radar executions', async () => {
     const key = randomUUID();

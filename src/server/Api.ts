@@ -1,3 +1,4 @@
+import { LocalSessionError } from '../contracts/LocalSession.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -59,7 +60,10 @@ export async function createApi(service: WorkspaceService, env: Environment) {
       value.length !== localSession.length ||
       !timingSafeEqual(Buffer.from(value), Buffer.from(localSession))
     ) {
-      await reply.code(401).send({ error: 'Open the workspace to start a local session.' });
+      await reply.code(401).send({
+        code: LocalSessionError.REQUIRED,
+        error: 'Your local session ended. Please try again to reconnect.',
+      });
     }
   });
   app.setErrorHandler((error, request, reply) => {
