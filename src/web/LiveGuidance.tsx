@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  liveGuidanceHistorySchema,
   liveGuidanceResponseSchema,
   type LiveGuidanceResponse,
 } from '../contracts/LiveGuidance.js';
@@ -8,15 +9,32 @@ import { request } from './ApiClient.js';
 import { QuestionExplanation, evaluationWhySources } from './QuestionExplanation.js';
 import './LiveGuidance.css';
 
-/** Both transports use the actual caption stream; no independent text session is started. */
+type Entry = { key: string; turnIndex: number | null; data: LiveGuidanceResponse };
+function mergeEntries(current: Entry[], incoming: Entry[]): Entry[] {
+  const merged = [...current];
+  for (const entry of incoming) {
+    if (
+      !merged.some(
+        (item) => item.turnIndex === entry.turnIndex && item.data.question === entry.data.question,
+      )
+    ) {
+      merged.push(entry);
+    }
+  }
+  return merged.sort((a, b) => (a.turnIndex ?? 200) - (b.turnIndex ?? 200));
+}
+
+/** Saved guidance remains separate from the provider's verified transcript. */
 export function LiveGuidance({
   sessionId,
   turns,
   running,
+  onInspect,
 }: {
   sessionId: string;
   turns: TranscriptTurn[];
   running: boolean;
+  onInspect?: ((open: boolean) => void) | undefined;
 }) {
   const lastAgent = turns.findLastIndex((turn) => turn.role === 'agent');
   const recent: TranscriptTurn[] = [];
@@ -27,22 +45,52 @@ export function LiveGuidance({
     recent.unshift(turn);
     length += turn.text.length;
   }
-  const payload = JSON.stringify({ turns: recent });
+  const payload = JSON.stringify({ turns: recent, turnIndex: lastAgent });
   const question = turns[lastAgent]?.text ?? '';
-  const [result, setResult] = useState<{ payload: string; data: LiveGuidanceResponse } | null>(
-    null,
-  );
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [pending, setPending] = useState('');
   const [retry, setRetry] = useState(0);
+  const mounted = useRef(false);
+  const requested = useRef(new Set<string>());
   useEffect(() => {
+    mounted.current = true;
     let alive = true;
-    setError('');
-    setPending(false);
-    if (!running || !question || result?.payload === payload) return;
-    setPending(true);
-    // Coalesce caption bursts; superseded replies can never replace the current prompt.
+    void request(
+      `/rehearsals/${encodeURIComponent(sessionId)}/live-guidance`,
+      liveGuidanceHistorySchema,
+      undefined,
+      'GET',
+    )
+      .then(({ entries: saved, context }) => {
+        if (alive && context)
+          setEntries((current) =>
+            mergeEntries(
+              current,
+              saved.map((entry) => ({
+                key: entry.id,
+                turnIndex: entry.turnIndex,
+                data: { question: entry.question, why: entry.why, factIds: entry.factIds, context },
+              })),
+            ),
+          );
+      })
+      .catch(() => {
+        if (alive)
+          setHistoryError('Saved guidance could not be loaded. Reopen this session to retry.');
+      });
+    return () => {
+      alive = false;
+      mounted.current = false;
+    };
+  }, [sessionId]);
+  useEffect(() => {
+    if (!running || !question || requested.current.has(payload)) return;
     const timer = setTimeout(() => {
+      requested.current.add(payload);
+      setError('');
+      setPending(payload);
       const body: unknown = JSON.parse(payload);
       void request(
         `/rehearsals/${encodeURIComponent(sessionId)}/live-guidance`,
@@ -50,55 +98,61 @@ export function LiveGuidance({
         body,
       )
         .then((data) => {
-          if (alive) setResult({ payload, data });
+          // Keep replies even if a newer caption has arrived while inference was running.
+          if (mounted.current)
+            setEntries((current) =>
+              mergeEntries(current, [{ key: payload, turnIndex: lastAgent, data }]),
+            );
         })
         .catch(() => {
-          if (alive) setError('Guidance is unavailable for this turn. You can keep talking.');
+          requested.current.delete(payload);
+          if (mounted.current)
+            setError(
+              'Guidance could not be saved for a turn. You can keep talking or retry guidance.',
+            );
         })
         .finally(() => {
-          if (alive) setPending(false);
+          if (mounted.current) setPending((current) => (current === payload ? '' : current));
         });
     }, 450);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [sessionId, payload, question, running, retry]);
+    return () => clearTimeout(timer);
+  }, [sessionId, payload, question, lastAgent, running, retry]);
 
-  const data = result?.payload === payload ? result.data : null;
-  if (!running && !data) return null;
+  if (!running && !entries.length && !historyError) return null;
   return (
-    <section className="live-guidance" aria-label="Live answer guidance">
-      <div className="live-guidance-heading">
-        <strong>Answer guidance</strong>
-        {data && (
-          <QuestionExplanation
-            key={payload}
-            question={question}
-            why={data.why}
-            sources={evaluationWhySources(data.context)}
-            facts={data.context.facts.filter((fact) => data.factIds.includes(fact.id))}
-          />
-        )}
-      </div>
-      <div aria-live="polite" aria-atomic="true">
-        {question ? (
-          <blockquote>{question}</blockquote>
-        ) : (
-          <p>Your interviewer’s question and guidance will appear here as you talk.</p>
-        )}
-        {data && (
-          <>
-            <p>{data.why.answerObjective}</p>
-            <small>{data.why.brief}</small>
-            {data.context.sources.some((source) => source.origin === 'fictional') && (
-              <small>Includes fictional demo evidence</small>
-            )}
-          </>
-        )}
-        {pending && <p role="status">Preparing guidance for this turn…</p>}
-        {error && <p role="status">{error}</p>}
-      </div>
+    <section className="live-guidance" aria-label="Answer guidance history">
+      <strong>Answer guidance · saved per turn</strong>
+      <small>Caption-based preparation aid · separate from the verified transcript</small>
+      {entries.map(({ key, data }) => (
+        <article key={key} className="live-guidance-entry">
+          <div className="live-guidance-heading">
+            <blockquote>{data.question}</blockquote>
+            <QuestionExplanation
+              question={data.question}
+              why={data.why}
+              sources={evaluationWhySources(data.context)}
+              facts={data.context.facts.filter((fact) => data.factIds.includes(fact.id))}
+              onOpenChange={onInspect}
+            />
+          </div>
+          <p>{data.why.answerObjective}</p>
+          <small>{data.why.brief}</small>
+          {data.context.sources.some((source) => source.origin === 'fictional') && (
+            <small>Includes fictional demo evidence</small>
+          )}
+        </article>
+      ))}
+      {running && !entries.length && !question && (
+        <p>Your interviewer’s question and guidance will appear here as you talk.</p>
+      )}
+      {running &&
+        question &&
+        !entries.some(
+          (entry) => entry.turnIndex === lastAgent && entry.data.question === question,
+        ) && <blockquote>{question}</blockquote>}
+      {pending && <p role="status">Preparing and saving guidance…</p>}
+      {historyError && <p role="status">{historyError}</p>}
+      {error && <p role="status">{error}</p>}
       {error && running && (
         <button className="text-button" onClick={() => setRetry((value) => value + 1)}>
           Retry guidance

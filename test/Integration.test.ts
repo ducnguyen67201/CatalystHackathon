@@ -1,3 +1,7 @@
+import { liveGuidanceHistorySchema } from '../src/contracts/LiveGuidance.js';
+import { LiveGuidanceService } from '../src/features/LiveGuidance.js';
+import { rehearsalSchema } from '../src/contracts/Workspace.js';
+import { evidenceFixture } from './EvidenceReviewFixtures.js';
 import { radarEvidence } from './fixtures/RadarFixture.js';
 import type { EmailSender } from '../src/features/EmailSender.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
@@ -2140,6 +2144,68 @@ describe('live guidance access boundary', () => {
       headers: { cookie: sessionCookie },
     });
     expect(unavailable.statusCode).toBe(503);
+  });
+});
+
+describe('saved live guidance', () => {
+  it('persists explanations in Prisma without changing authoritative turns and excludes them from polling', async () => {
+    const { context } = evidenceFixture();
+    const session = rehearsalSchema.parse({
+      id: randomUUID(),
+      briefId: null,
+      mode: 'elevenlabs',
+      status: 'active',
+      createdAt: context.capturedAt,
+      conversationId: null,
+      turns: [],
+      review: null,
+      evaluationContext: context,
+    });
+    await service.change((state) => {
+      state.rehearsals.push(session);
+    });
+    const guidance = new LiveGuidanceService(service, {
+      generate: () =>
+        Promise.resolve({
+          why: {
+            brief: 'Explain the evidence.',
+            explanation: 'Separate known facts from assumptions.',
+            answerObjective: 'Identify missing evidence.',
+            sourceIds: [],
+            missingInputs: [],
+          },
+          factIds: [],
+        }),
+    });
+    await guidance.explain(session.id, {
+      turns: [{ role: 'agent', text: 'What evidence is missing?' }],
+      turnIndex: 0,
+    });
+    const saved = (await store.load())?.rehearsals.find((item) => item.id === session.id);
+    expect(saved?.liveGuidance).toHaveLength(1);
+    expect(saved?.liveGuidance?.[0]?.question).toBe('What evidence is missing?');
+    expect(saved?.turns).toEqual([]);
+    expect(saved?.transcriptReceivedAt).toBeNull();
+    await service.change((state) => {
+      const current = state.rehearsals.find((item) => item.id === session.id);
+      if (current) current.status = 'completed';
+    });
+    const history = await app.inject({
+      method: 'GET',
+      url: `/api/rehearsals/${session.id}/live-guidance`,
+      headers: { cookie: sessionCookie },
+    });
+    expect(history.statusCode).toBe(200);
+    expect(liveGuidanceHistorySchema.parse(history.json()).entries).toHaveLength(1);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/state',
+      headers: { cookie: sessionCookie },
+    });
+    const state = stateResponseSchema.parse(response.json());
+    expect(
+      state.workspace.rehearsals.find((item) => item.id === session.id)?.liveGuidance,
+    ).toBeUndefined();
   });
 });
 

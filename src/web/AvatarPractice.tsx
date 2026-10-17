@@ -56,6 +56,11 @@ export function AvatarPractice({
   const [running, setRunning] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const inspectionMuted = useRef(false);
+  const inspectionActive = useRef(false);
+  const inspectionVolume = useRef(false);
+  const inspectionMicrophone = useRef<Promise<void>>(Promise.resolve());
   const [streamReady, setStreamReady] = useState(false);
   const [preview, setPreview] = useState<TranscriptTurn[]>([]);
   const sessions = state.workspace.rehearsals.filter(
@@ -64,6 +69,42 @@ export function AvatarPractice({
   const session = sessions.find((item) => item.id === sessionId);
   const turns = session?.transcriptReceivedAt ? session.turns : preview;
 
+  function inspectExplanation(open: boolean): void {
+    const avatar = client.current;
+    if (!avatar || !activeId.current || status !== SessionState.CONNECTED) return;
+    inspectionActive.current = open;
+    if (open) {
+      inspectionMuted.current = avatar.voiceChat.isMuted;
+      inspectionVolume.current = video.current?.muted ?? false;
+      if (video.current) video.current.muted = true;
+      avatar.interrupt();
+      avatar.stopListening();
+      inspectionMicrophone.current = avatar.voiceChat
+        .mute()
+        .catch(() => onError('Could not pause the microphone. Close the explanation and retry.'));
+    } else {
+      if (video.current) video.current.muted = inspectionVolume.current;
+      avatar.startListening();
+      if (!inspectionMuted.current) {
+        void inspectionMicrophone.current
+          .then(async () => {
+            if (
+              client.current === avatar &&
+              activeId.current &&
+              !closing.current &&
+              !inspectionActive.current
+            )
+              await avatar.voiceChat.unmute();
+          })
+          .catch(() => {
+            setMuted(true);
+            onError('Could not resume the microphone. Use Unmute to retry.');
+          });
+      }
+    }
+    setInspecting(open);
+  }
+
   function isMounted(): boolean {
     return mounted.current;
   }
@@ -71,7 +112,9 @@ export function AvatarPractice({
   function addCaption(role: TranscriptTurn['role'], raw: unknown): void {
     const parsed = captionSchema.safeParse(raw);
     if (mounted.current && activeId.current && !closing.current && parsed.success) {
-      setPreview((current) => [...current, { role, text: parsed.data.text }].slice(-200));
+      setPreview((current) =>
+        current.length < 200 ? [...current, { role, text: parsed.data.text }] : current,
+      );
     }
   }
 
@@ -93,6 +136,7 @@ export function AvatarPractice({
       client.current = null;
       if (mounted.current) {
         setRunning(false);
+        setInspecting(false);
         setSpeaking(false);
         setStreamReady(false);
         setStatus(SessionState.DISCONNECTED);
@@ -122,6 +166,9 @@ export function AvatarPractice({
     setPreview([]);
     setStreamReady(false);
     setMuted(false);
+    setInspecting(false);
+    inspectionActive.current = false;
+    if (video.current) video.current.muted = false;
     let stage = 'microphone';
     try {
       const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -313,11 +360,13 @@ export function AvatarPractice({
               <strong>June · Investor rehearsal</strong>
               <span role="status">
                 {running
-                  ? speaking
-                    ? 'Interviewer speaking'
-                    : status === SessionState.CONNECTED
-                      ? 'Listening to you'
-                      : 'Connecting'
+                  ? inspecting
+                    ? 'Paused while you read'
+                    : speaking
+                      ? 'Interviewer speaking'
+                      : status === SessionState.CONNECTED
+                        ? 'Listening to you'
+                        : 'Connecting'
                   : 'Ready when you are'}
               </span>
             </div>
@@ -327,7 +376,7 @@ export function AvatarPractice({
               <>
                 <button
                   className="button secondary"
-                  disabled={busy || status !== SessionState.CONNECTED}
+                  disabled={busy || inspecting || status !== SessionState.CONNECTED}
                   onClick={() => {
                     const avatar = client.current;
                     if (!avatar) {
@@ -397,7 +446,15 @@ export function AvatarPractice({
               : 'Questions and captions appear as you talk. Answer guidance uses your saved evidence; the provider transcript is retrieved after the interview.'}
           </p>
           {sessionId && (
-            <LiveGuidance key={sessionId} sessionId={sessionId} turns={turns} running={running} />
+            <LiveGuidance
+              key={sessionId}
+              sessionId={sessionId}
+              turns={turns}
+              running={running}
+              onInspect={
+                running && status === SessionState.CONNECTED ? inspectExplanation : undefined
+              }
+            />
           )}
           {turns.map((turn, index) => (
             <div className="turn" key={index}>

@@ -171,15 +171,19 @@ Both show the interviewer's actual question from live captions, followed by a co
 answer cue and **Why?** explanation while the conversation continues. Guidance updates
 with each interviewer turn; it may arrive shortly after the caption. Hover or focus
 **Why?** for the brief explanation, or open it for the objective, missing inputs and
-saved source data, including the financial evidence worksheet.
+saved source data, including the financial evidence worksheet. Opening the inspector pauses
+June and the microphone while you read. Close it to resume with your earlier microphone
+setting. The session time limit continues during this pause.
 
 Guidance uses `OPENAI_API_KEY` and the existing `SCENARIO_MODEL`. Starting a live session
 also enables guidance: recent captions and that session's frozen evaluation evidence are
 sent to OpenAI as each interviewer turn arrives. No second written session or research job
 is started. Missing configuration or failed guidance does not stop audio/video; use
 **Retry guidance** for the current turn. Provider-controlled questions and media are unchanged.
-Browser captions remain unverified previews; only the provider's final transcript is saved.
-Guidance is temporary and is not regenerated when opening past sessions. Existing written
+Browser captions remain unverified previews; only the provider's final transcript is authoritative.
+Each generated explanation is saved separately with its caption question and frozen evidence.
+Earlier turns keep their **Why?** buttons, including after reopening a saved session.
+Older sessions have no reconstructed explanations; history reads never run a model. Existing written
 practice records and their API remain preserved, but Guided text is no longer a format tab.
 
 Open **Practice scenario** or `/scenarios`, choose a saved investor and optionally enter a practice objective. **Generate more scenarios** (or **Generate scenarios** for the first run) opens a source review screen. It shows included company information, selected-investor research, financial CSV rows, relevant completed practice and saved feedback, plus missing or unsupported inputs. **Generate with this data** queues a durable job; the local worker must be running. If inputs change after review, refresh the preview before generating. Additional scenarios preserve earlier generations. Each generated scenario appears as a table row. Click a row to open a right-side panel with the full scenario, **Reverse engineer the investor** profile, uncertainty, and source snapshot. **Start Practicing** opens a separate `/practice` room with that saved scenario and its context. Start voice or video explicitly in the room. Saved generations and session contexts retain their original inputs when new research arrives. Invalid or unavailable scenario links block session creation. `/practice` without a selection and the legacy `/voice` route support open conversations.

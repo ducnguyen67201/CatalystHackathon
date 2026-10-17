@@ -174,6 +174,7 @@ export async function createApi(
         rehearsals: workspace.rehearsals.map((session) => ({
           ...session,
           guided: undefined,
+          liveGuidance: undefined,
           evaluationContext: null,
           evaluations: [],
           evaluationResponses: [],

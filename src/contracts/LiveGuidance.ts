@@ -4,6 +4,7 @@ import { evaluationContextSchema } from './RehearsalEvaluation.js';
 
 export const liveGuidanceRequestSchema = z
   .strictObject({
+    turnIndex: z.int().min(0).max(199).optional(),
     turns: z
       .array(
         z.strictObject({
@@ -31,3 +32,15 @@ export const liveGuidanceResponseSchema = liveGuidanceOutputSchema.extend({
 export type LiveGuidanceRequest = z.infer<typeof liveGuidanceRequestSchema>;
 export type LiveGuidanceOutput = z.infer<typeof liveGuidanceOutputSchema>;
 export type LiveGuidanceResponse = z.infer<typeof liveGuidanceResponseSchema>;
+
+export const savedLiveGuidanceSchema = liveGuidanceOutputSchema.extend({
+  id: z.string().regex(/^[a-f0-9]{64}$/),
+  turnIndex: z.int().min(0).max(199).nullable(),
+  question: z.string().min(1).max(10000),
+  createdAt: z.iso.datetime(),
+});
+export const liveGuidanceHistorySchema = z.strictObject({
+  entries: z.array(savedLiveGuidanceSchema).max(200),
+  context: evaluationContextSchema.nullable(),
+});
+export type SavedLiveGuidance = z.infer<typeof savedLiveGuidanceSchema>;
