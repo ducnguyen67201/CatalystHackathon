@@ -1,3 +1,5 @@
+import { OnboardingPage } from './OnboardingPage.js';
+import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
 import { useEffect, useState, useRef } from 'react';
 import {
   Activity,
@@ -15,7 +17,6 @@ import {
   X,
   Target,
   Clock3,
-  ChevronRight,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Brief, Evidence, Profile, StateResponse } from '../contracts/Workspace.js';
@@ -24,7 +25,10 @@ import { evaluateInvestorFit } from '../features/InvestorFit.js';
 import { command, fetchState, startLocalSession, startRadar } from './ApiClient.js';
 import { InvestorTrackingPage } from './InvestorTrackingPage.js';
 import { VoiceRoom } from './VoiceRoom.js';
+import { VoicePractice } from './VoicePractice.js';
 const Page = {
+  OVERVIEW: 'overview',
+  MEETINGS: 'meetings',
   RADAR: 'radar',
   INVESTORS: 'investors',
   FINANCIALS: 'financials',
@@ -42,8 +46,8 @@ function criterionLabel(key: string): string {
   };
   return labels[key] ?? key;
 }
-const amount = (value: string | undefined): string =>
-  value === undefined
+const amount = (value: string | null | undefined): string =>
+  value === undefined || value === null
     ? '—'
     : new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value));
 const when = (value: string | null): string =>
@@ -130,7 +134,8 @@ function RevenueChart({ state }: { state: StateResponse }) {
 }
 export function App() {
   const [state, setState] = useState<StateResponse | null>(null);
-  const [page, setPage] = useState<Page>(Page.RADAR);
+  const [page, setPage] = useState<Page>(Page.OVERVIEW);
+  const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -173,6 +178,9 @@ export function App() {
         }
       });
     const timer = setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
       void fetchState()
         .then((data) => {
           if (alive) {
@@ -218,7 +226,9 @@ export function App() {
     );
   }
   const workspace = state.workspace;
-  const snapshot = workspace.snapshots.at(-1);
+  const snapshot =
+    workspace.snapshots.find((item) => item.id === workspace.onboarding.snapshotId) ??
+    workspace.snapshots.at(-1);
   const latestRow = snapshot?.rows.at(-1);
   const brief: Brief | undefined =
     workspace.briefs.find((item) => item.id === selectedBrief) ?? workspace.briefs.at(-1);
@@ -231,12 +241,40 @@ export function App() {
   const briefSnapshot = workspace.snapshots.find((item) => item.id === brief?.snapshotId);
   const stale =
     brief &&
-    (brief.profileVersion !== workspace.profile.version || brief.snapshotId !== snapshot?.id);
+    (brief.profileVersion !== workspace.profile.version ||
+      brief.snapshotId !== snapshot?.id ||
+      JSON.stringify(brief.meeting) !== JSON.stringify(workspace.onboarding.meeting));
   const openBrief = (id?: string): void => {
     setSelectedBrief(id ?? null);
     setPage(Page.BRIEF);
   };
+  if (!workspace.onboarding.completedAt || editingOnboarding) {
+    return (
+      <OnboardingPage
+        state={state}
+        editing={editingOnboarding}
+        onRefresh={refresh}
+        onCancel={() => {
+          setEditingOnboarding(false);
+        }}
+        onComplete={async () => {
+          await refresh();
+          setEditingOnboarding(false);
+          setPage(Page.OVERVIEW);
+        }}
+      />
+    );
+  }
+  const prepare = (practice = false): void => {
+    void action(async () => {
+      await command('/briefs');
+      setSelectedBrief(null);
+      setPage(practice ? Page.PRACTICE : Page.BRIEF);
+    });
+  };
   const nav = [
+    { id: Page.OVERVIEW, label: 'Overview', icon: LayoutDashboard },
+    { id: Page.MEETINGS, label: 'Meetings', icon: FileText },
     { id: Page.RADAR, label: 'Investor radar', icon: Radar },
     { id: Page.INVESTORS, label: 'Investor research', icon: Search },
     { id: Page.FINANCIALS, label: 'Financials', icon: LayoutDashboard },
@@ -245,17 +283,19 @@ export function App() {
     { id: Page.FOLLOWUPS, label: 'Follow-ups', icon: Target },
   ];
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="brand" aria-label="June">
+    <div className="layout dashboard-layout">
+      <aside className="workspace-sidebar" aria-label="Workspace sidebar">
+        <button
+          className="brand brand-home"
+          aria-label="June home"
+          onClick={() => {
+            setPage(Page.OVERVIEW);
+          }}
+        >
           june
           <span />
-        </div>
-        <div className="workspace">
-          {workspace.profile.name}
-          <small>Founder workspace</small>
-        </div>
-        <nav className="nav" aria-label="Workspace">
+        </button>
+        <nav className="workspace-nav" aria-label="Workspace">
           {nav.map((item) => (
             <button
               key={item.id}
@@ -268,48 +308,28 @@ export function App() {
                 setPage(item.id);
               }}
             >
-              <item.icon size={18} />
-              {item.label}
-              {item.id === Page.FOLLOWUPS && workspace.milestones.length > 0 && (
-                <span className="nav-count">{workspace.milestones.length}</span>
-              )}
+              <item.icon size={18} aria-hidden="true" />
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="side-bottom">
-          <strong>From signal to next step.</strong>Catalyst 2026
-          <br />
-          <br />
-          <span className="connection-dot" /> PostgreSQL connected
-          <br />
-          Research:{' '}
-          {state.capabilities.researchReady ? 'Exa + evidence extraction' : 'Provider keys needed'}
+        <div className="workspace-status">
+          <span className="demo-badge">
+            {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
+          </span>
+          <button
+            className="notification-button"
+            aria-label={`Notifications, ${unread} unread`}
+            onClick={() => {
+              setModal('notices');
+            }}
+          >
+            <Bell size={17} />
+            {unread > 0 && <i />}
+          </button>
         </div>
       </aside>
       <main className="main">
-        <header className="topbar">
-          <div className="crumb">
-            {workspace.profile.name}
-            <ChevronRight size={12} />
-            <span>Fundraising workspace</span>
-          </div>
-          <div className="top-right">
-            <span className="demo-badge">
-              {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
-            </span>
-            <button
-              className="notification-button"
-              aria-label={`Notifications, ${unread} unread`}
-              onClick={() => {
-                setModal('notices');
-              }}
-            >
-              <Bell size={17} />
-              {unread > 0 && <i />}
-            </button>
-            <div className="avatar">{workspace.profile.name.slice(0, 2).toUpperCase()}</div>
-          </div>
-        </header>
         <div className="content">
           {error && (
             <div className="error" role="alert">
@@ -323,6 +343,45 @@ export function App() {
                 <X size={15} />
               </button>
             </div>
+          )}
+          {page === Page.OVERVIEW && (
+            <DashboardPage
+              state={state}
+              busy={busy}
+              onEdit={() => {
+                setEditingOnboarding(true);
+              }}
+              onRestart={() => {
+                void action(async () => {
+                  await command('/onboarding/restart', {});
+                  setEditingOnboarding(false);
+                });
+              }}
+              onPrepare={() => {
+                prepare();
+              }}
+              onPractice={() => {
+                prepare(true);
+              }}
+              onFinancials={() => {
+                setPage(Page.FINANCIALS);
+              }}
+              onResearch={() => {
+                setPage(Page.INVESTORS);
+              }}
+            />
+          )}
+          {page === Page.MEETINGS && (
+            <MeetingsPage
+              state={state}
+              busy={busy}
+              onEdit={() => {
+                setEditingOnboarding(true);
+              }}
+              onPrepare={() => {
+                prepare();
+              }}
+            />
           )}
           {page === Page.INVESTORS && <InvestorTrackingPage state={state} onRefresh={refresh} />}
           {page === Page.RADAR && (
@@ -765,6 +824,14 @@ export function App() {
                       </div>
                     </article>
                     <aside>
+                      <ResearchLinks meeting={brief.meeting} />
+                      {brief.meeting?.notes && (
+                        <section className="research-links">
+                          <h3>Meeting notes</h3>
+                          <p className="preserve-lines">{brief.meeting.notes}</p>
+                          <small>Founder-provided · saved with this brief</small>
+                        </section>
+                      )}
                       <div className="brief-aside">
                         <div className="eyebrow">Your next step</div>
                         <h2>Make the explanation yours.</h2>
@@ -839,7 +906,9 @@ export function App() {
                 <div>
                   <div className="eyebrow">Practice room</div>
                   <h1>Know your numbers. Tell your story.</h1>
-                  <p className="muted">A conversation grounded in your selected meeting brief.</p>
+                  <p className="muted">
+                    Talk with June and save your transcript. Company context will connect next.
+                  </p>
                 </div>
                 <button
                   className="button secondary"
@@ -850,19 +919,21 @@ export function App() {
                   Back to brief
                 </button>
               </div>
-              {brief ? (
-                <VoiceRoom
-                  key={brief.id}
-                  state={state}
-                  brief={brief}
-                  onRefresh={refresh}
-                  onBrief={() => {
-                    openBrief();
-                  }}
-                  onError={setError}
-                />
-              ) : (
-                <p>Create a brief before starting a rehearsal.</p>
+              <VoicePractice state={state} onRefresh={refresh} onError={setError} />
+              {brief && (
+                <details open style={{ marginTop: '24px' }}>
+                  <summary>Existing written practice with a financial brief</summary>
+                  <VoiceRoom
+                    key={brief.id}
+                    state={state}
+                    brief={brief}
+                    onRefresh={refresh}
+                    onBrief={() => {
+                      openBrief();
+                    }}
+                    onError={setError}
+                  />
+                </details>
               )}
             </>
           )}
@@ -994,9 +1065,9 @@ export function App() {
                   <input
                     type="number"
                     min="1"
-                    value={draft.raiseTarget}
+                    value={draft.raiseTarget ?? ''}
                     onChange={(event) => {
-                      setDraft({ ...draft, raiseTarget: event.target.value });
+                      setDraft({ ...draft, raiseTarget: event.target.value || null });
                     }}
                     required
                   />

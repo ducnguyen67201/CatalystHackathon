@@ -8,6 +8,7 @@ model Workspace {
   id String @id
   revision Int @default(0)
   profile Json
+  onboarding Json @default("{}")
   schedule Json
   discovery Json @default("{}")
   createdAt DateTime @default(now())

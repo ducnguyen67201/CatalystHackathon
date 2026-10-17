@@ -55,3 +55,23 @@ export const publicProfileUrlSchema = z
       return z.NEVER;
     }
   });
+
+export const profileLinksSchema = z.strictObject({
+  linkedin: publicProfileUrlSchema
+    .refine((value) => new URL(value).hostname === 'linkedin.com', 'Use a LinkedIn profile URL.')
+    .nullable()
+    .default(null),
+  x: publicProfileUrlSchema
+    .refine((value) => new URL(value).hostname === 'x.com', 'Use an X profile URL.')
+    .nullable()
+    .default(null),
+  website: publicProfileUrlSchema.nullable().default(null),
+});
+
+export type ProfileLinks = z.infer<typeof profileLinksSchema>;
+
+export function listProfileLinks(links: ProfileLinks): string[] {
+  return [links.linkedin, links.x, links.website].filter(
+    (value): value is string => value !== null,
+  );
+}

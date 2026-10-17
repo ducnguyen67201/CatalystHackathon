@@ -46,6 +46,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       id: record.id,
       revision: record.revision,
       profile: record.profile,
+      onboarding: record.onboarding,
       schedule: record.schedule,
       discovery: record.discovery,
       snapshots: record.snapshots.map((item) => item.payload),
@@ -64,6 +65,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       create: {
         id: workspaceId,
         profile: json(workspace.profile),
+        onboarding: json(workspace.onboarding),
         schedule: json(workspace.schedule),
         discovery: json(workspace.discovery),
       },
@@ -81,6 +83,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
           data: {
             revision: { increment: 1 },
             profile: json(workspace.profile),
+            onboarding: json(workspace.onboarding),
             schedule: json(workspace.schedule),
             discovery: json(workspace.discovery),
             updatedAt: new Date(),

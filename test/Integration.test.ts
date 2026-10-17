@@ -1,30 +1,36 @@
-import { vi } from 'vitest';
-import { LiveResearch } from '../src/infrastructure/Research.js';
-import {
-  importResearchRunSchema,
-  researchRunSchema,
-  researchRunListSchema,
-} from '../src/contracts/ResearchRun.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
+import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
 import { randomUUID, createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
+import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
   stateResponseSchema,
+  profileSchema,
   voiceResponseSchema,
   jobSchema,
   JobStatus,
 } from '../src/contracts/Workspace.js';
 import { PrismaStore } from '../src/infrastructure/PrismaStore.js';
 import { ResearchFixture } from './fixtures/ResearchFixture.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import {
+  importResearchRunSchema,
+  researchRunSchema,
+  researchRunListSchema,
+} from '../src/contracts/ResearchRun.js';
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
 import { readEnvironment } from '../src/server/Env.js';
 import { createApi } from '../src/server/Api.js';
 import { runWorkerTick } from '../src/server/Worker.js';
+import { NoopPracticeContextProvider } from '../src/features/PracticeContextProvider.js';
+import { voiceSessionResponseSchema } from '../src/contracts/VoicePractice.js';
+import type { createVoiceToken } from '../src/infrastructure/Voice.js';
+import type { AvatarProvider } from '../src/features/AvatarProvider.js';
+import { avatarSessionResponseSchema } from '../src/contracts/AvatarPractice.js';
 let app: FastifyInstance;
 let store: PrismaStore;
 let service: WorkspaceService;
@@ -69,6 +75,267 @@ async function state() {
   return stateResponseSchema.parse(response.json());
 }
 describe('PostgreSQL-backed application workflow', () => {
+  it('runs built-in video without ElevenLabs and saves only provider-fetched transcripts', async () => {
+    const avatarId = 'b672e83f-398a-4701-ac89-949fe3b680ea';
+    const createToken = vi
+      .fn<AvatarProvider['createToken']>()
+      .mockResolvedValue({ token: 'video-token', avatarSessionId: avatarId });
+    const stopSession = vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined);
+    const fetchTranscript = vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null);
+    const videoApi = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        LIVEAVATAR_API_KEY: 'avatar-key',
+        LIVEAVATAR_AVATAR_ID: avatarId,
+        LIVEAVATAR_VOICE_ID: avatarId,
+        LIVEAVATAR_CONTEXT_ID: avatarId,
+      }),
+      {
+        contextProvider: new NoopPracticeContextProvider(),
+        createToken: vi.fn<typeof createVoiceToken>(),
+        avatarProvider: { createToken, stopSession, fetchTranscript },
+      },
+    );
+    try {
+      const login = await videoApi.inject({ method: 'POST', url: '/api/session' });
+      const headers = {
+        cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+      };
+      const response = await videoApi.inject({
+        method: 'POST',
+        url: '/api/avatar/sessions',
+        headers,
+        payload: {},
+      });
+      expect(response.statusCode).toBe(200);
+      const started = avatarSessionResponseSchema.parse(response.json());
+      expect(started.session.context?.mode).toBe('empty');
+      expect(started.session.mode).toBe('liveavatar');
+      expect(started.session.conversationId).toBeNull();
+      const before = (await service.read()).briefs.length;
+      expect(
+        (
+          await videoApi.inject({
+            method: 'POST',
+            url: '/api/avatar/sessions',
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(createToken).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await videoApi.inject({
+            method: 'POST',
+            url: `/api/avatar/sessions/${started.session.id}/end`,
+            headers,
+            payload: { completed: true },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(stopSession).toHaveBeenCalledWith('avatar-key', avatarId);
+      expect(
+        (await service.read()).rehearsals.find((item) => item.id === started.session.id)?.status,
+      ).toBe('awaiting_transcript');
+      fetchTranscript.mockResolvedValue([
+        { role: 'agent', text: 'Tell me about your business.' },
+        { role: 'user', text: 'We help teams prepare.' },
+      ]);
+      const path = `/api/avatar/sessions/${started.session.id}/transcript`;
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: { turns: [] } }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: {} })).statusCode,
+      ).toBe(200);
+      expect(fetchTranscript).toHaveBeenLastCalledWith('avatar-key', avatarId);
+      const calls = fetchTranscript.mock.calls.length;
+      await videoApi.inject({ method: 'POST', url: path, headers, payload: {} });
+      expect(fetchTranscript).toHaveBeenCalledTimes(calls);
+      const saved = (await service.read()).rehearsals.find(
+        (item) => item.id === started.session.id,
+      );
+      expect(saved?.turns).toHaveLength(2);
+      expect(saved?.transcriptReceivedAt).not.toBeNull();
+      expect(saved?.status).toBe('completed');
+      expect((await service.read()).briefs).toHaveLength(before);
+      createToken.mockRejectedValueOnce(new Error('Provider unavailable'));
+      expect(
+        (
+          await videoApi.inject({
+            method: 'POST',
+            url: '/api/avatar/sessions',
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(500);
+      expect((await service.read()).rehearsals.at(-1)?.status).toBe('partial');
+    } finally {
+      await videoApi.close();
+    }
+  });
+  it('starts with empty context and persists only a verified transcript without changing briefs', async () => {
+    const tokenProvider = vi.fn<typeof createVoiceToken>().mockResolvedValue({
+      token: 'test-short-lived-token',
+      conversationId: 'standalone-conversation',
+    });
+    const voiceApi = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        ELEVENLABS_API_KEY: 'test-server-key',
+        ELEVENLABS_AGENT_ID: 'test-agent',
+        ELEVENLABS_WEBHOOK_SECRET: 'test-secret',
+      }),
+      { contextProvider: new NoopPracticeContextProvider(), createToken: tokenProvider },
+    );
+    try {
+      const login = await voiceApi.inject({ method: 'POST', url: '/api/session' });
+      const headers = {
+        cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+      };
+      const before = await service.read();
+      expect(
+        (await voiceApi.inject({ method: 'POST', url: '/api/voice/sessions', payload: {} }))
+          .statusCode,
+      ).toBe(401);
+      expect(
+        (
+          await voiceApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: { context: { company: 'fake' } },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(tokenProvider).not.toHaveBeenCalled();
+      const response = await voiceApi.inject({
+        method: 'POST',
+        url: '/api/voice/sessions',
+        headers,
+        payload: {},
+      });
+      expect(response.statusCode).toBe(200);
+      const started = voiceSessionResponseSchema.parse(response.json());
+      expect(started.session.briefId).toBeNull();
+      expect(started.session.context?.mode).toBe('empty');
+      expect(started.dynamicVariables.company_name).toBe('the founder');
+      expect(started.dynamicVariables.brief_context).not.toContain('Tidewell');
+      expect(started.dynamicVariables.previous_session_summary).toBe(
+        'No previous rehearsal supplied.',
+      );
+      expect(tokenProvider).toHaveBeenCalledWith('test-server-key', 'test-agent');
+      expect(
+        (
+          await voiceApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(tokenProvider).toHaveBeenCalledTimes(1);
+
+      await voiceApi.inject({
+        method: 'POST',
+        url: `/api/rehearsals/${started.session.id}/end`,
+        headers,
+        payload: {
+          turns: [{ role: 'user', text: 'Forged browser transcript' }],
+          completed: true,
+        },
+      });
+      const pending = (await service.read()).rehearsals.find(
+        (item) => item.id === started.session.id,
+      );
+      expect(pending?.status).toBe('awaiting_transcript');
+      expect(pending?.turns).toEqual([]);
+
+      async function deliver(conversationId: string, agentId: string, signatureValid = true) {
+        const body = JSON.stringify({
+          type: 'post_call_transcription',
+          data: {
+            conversation_id: conversationId,
+            agent_id: agentId,
+            status: 'done',
+            transcript: [
+              { role: 'agent', message: 'What does your company do?' },
+              { role: 'user', message: 'We help teams prepare for meetings.' },
+            ],
+          },
+        });
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        const signature = createHmac('sha256', 'test-secret')
+          .update(`${timestamp}.${body}`)
+          .digest('hex');
+        return voiceApi.inject({
+          method: 'POST',
+          url: '/api/webhooks/elevenlabs',
+          headers: {
+            'content-type': 'application/json',
+            'elevenlabs-signature': `t=${timestamp},v0=${signatureValid ? signature : 'bad'}`,
+          },
+          payload: body,
+        });
+      }
+      expect((await deliver('standalone-conversation', 'test-agent', false)).statusCode).toBe(401);
+      expect((await deliver('unknown-conversation', 'test-agent')).statusCode).toBe(202);
+      expect((await deliver('standalone-conversation', 'wrong-agent')).statusCode).toBe(403);
+      expect((await deliver('standalone-conversation', 'test-agent')).statusCode).toBe(200);
+      const completed = (await service.read()).rehearsals.find(
+        (item) => item.id === started.session.id,
+      );
+      expect(completed?.status).toBe('completed');
+      expect(completed?.turns).toHaveLength(2);
+      expect(completed?.review).toBeNull();
+      expect(completed?.transcriptReceivedAt).toEqual(expect.any(String));
+      await deliver('standalone-conversation', 'test-agent');
+      await voiceApi.inject({
+        method: 'POST',
+        url: `/api/rehearsals/${started.session.id}/end`,
+        headers,
+        payload: { turns: [], completed: false },
+      });
+      const reloaded = new PrismaStore(databaseUrl.href);
+      try {
+        const persisted = await reloaded.load();
+        expect(persisted?.rehearsals.find((item) => item.id === started.session.id)).toEqual(
+          completed,
+        );
+        expect(persisted?.briefs).toEqual(before.briefs);
+        expect(persisted?.snapshots).toEqual(before.snapshots);
+      } finally {
+        await reloaded.close();
+      }
+    } finally {
+      await voiceApi.close();
+    }
+  });
+
+  it('keeps a verified partial transcript when a delayed browser end arrives', async () => {
+    const context = await new NoopPracticeContextProvider().loadContext();
+    const session = await service.createRehearsal(
+      null,
+      'elevenlabs',
+      'interrupted-conversation',
+      context,
+    );
+    const turns = [{ role: 'agent' as const, text: 'Can you hear me?' }];
+    await service.finishRehearsal(session.id, turns, false, true);
+    await service.finishRehearsal(session.id, [], true);
+    await service.finishRehearsal(session.id, [], false, true);
+    const saved = (await service.read()).rehearsals.find((item) => item.id === session.id);
+    expect(saved?.status).toBe('partial');
+    expect(saved?.turns).toEqual(turns);
+    expect(saved?.transcriptReceivedAt).not.toBeNull();
+    expect(saved?.review).toBeNull();
+  });
   it('rejects missing sessions and cross-origin commands', async () => {
     expect((await app.inject({ url: '/api/state' })).statusCode).toBe(401);
     expect(
@@ -80,6 +347,38 @@ describe('PostgreSQL-backed application workflow', () => {
         })
       ).statusCode,
     ).toBe(403);
+  });
+  it('rejects a previous API session before writes and accepts a renewed session', async () => {
+    const restartedApi = await createApi(
+      service,
+      readEnvironment({ DATABASE_URL: databaseUrl.href, WEB_ORIGIN: 'http://127.0.0.1:4317' }),
+    );
+    try {
+      const before = await service.read();
+      const rejected = await restartedApi.inject({
+        method: 'PUT',
+        url: '/api/profile',
+        headers: { cookie: sessionCookie },
+        payload: before.profile,
+      });
+      expect(rejected.statusCode).toBe(401);
+      expect(rejected.json<unknown>()).toEqual({
+        code: LocalSessionError.REQUIRED,
+        error: 'Your local session ended. Please try again to reconnect.',
+      });
+      expect(await service.read()).toEqual(before);
+
+      const login = await restartedApi.inject({ method: 'POST', url: '/api/session' });
+      const renewedCookie = login.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+      const restored = await restartedApi.inject({
+        url: '/api/state',
+        headers: { cookie: renewedCookie },
+      });
+      expect(restored.statusCode).toBe(200);
+      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual(before);
+    } finally {
+      await restartedApi.close();
+    }
   });
   it('persists one opportunity and notification across repeated radar executions', async () => {
     const key = randomUUID();
@@ -181,6 +480,16 @@ describe('PostgreSQL-backed application workflow', () => {
     );
   });
   it('rejects a live session without credentials and a webhook without configuration', async () => {
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/voice/sessions',
+          headers: { cookie: sessionCookie },
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(503);
     const brief = (await state()).workspace.briefs.at(-1);
     const response = await app.inject({
       method: 'POST',
@@ -371,6 +680,186 @@ describe('durable investor research', () => {
         ?.evidenceIds,
     ).toEqual([]);
   });
+});
+
+describe('saved founder onboarding', () => {
+  it('resumes setup, preserves history, and passes all links to investor research', async () => {
+    const headers = { cookie: sessionCookie };
+    const initial = (await state()).workspace;
+    expect(initial.onboarding.completedAt).toBeNull();
+    const rejected = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/meeting',
+      headers,
+      payload: { meeting: null },
+    });
+    expect(rejected.statusCode).toBe(400);
+    const sample = await app.inject({ method: 'POST', url: '/api/onboarding/sample', headers });
+    expect(sample.statusCode).toBe(200);
+    const selected = (await state()).workspace;
+    expect(selected.onboarding.step).toBe(2);
+    expect(selected.snapshots).toHaveLength(initial.snapshots.length);
+    const profile = profileSchema.omit({ version: true }).parse({
+      name: selected.profile.name,
+      stage: selected.profile.stage,
+      sector: selected.profile.sector,
+      geography: selected.profile.geography,
+      raiseTarget: selected.profile.raiseTarget,
+      currency: selected.profile.currency,
+      goal: selected.profile.goal,
+      watchlist: selected.profile.watchlist,
+    });
+    const company = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/company',
+      headers,
+      payload: { ...profile, stage: 'Not confirmed', sector: '', geography: '', raiseTarget: null },
+    });
+    expect(company.statusCode).toBe(200);
+    const links = {
+      linkedin: 'https://linkedin.com/in/catalyst-example',
+      x: 'https://x.com/catalystdemo',
+      website: 'https://example.com/investors',
+    };
+    const meeting = {
+      name: 'Example investor',
+      firm: 'Example firm',
+      date: null,
+      notes: 'PRIVATE meeting question',
+      links,
+    };
+    const finish = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/meeting',
+      headers,
+      payload: { meeting },
+    });
+    expect(finish.statusCode).toBe(200);
+    const saved = (await state()).workspace;
+    expect(saved.onboarding.completedAt).not.toBeNull();
+    expect(saved.onboarding.meeting?.links).toEqual(links);
+    expect(saved.snapshots).toEqual(selected.snapshots);
+    const brief = saved.briefs.at(-1);
+    expect(brief?.meeting?.notes).toBe(meeting.notes);
+    expect(brief?.evidenceId).toBeNull();
+    expect(saved.briefs.slice(0, initial.briefs.length)).toEqual(initial.briefs);
+    const investor = saved.investors.find(
+      (item) => item.id === saved.onboarding.meeting?.investorId,
+    );
+    expect(investor?.profileLinks).toEqual(Object.values(links));
+    expect(investor?.frequency).toBe('paused');
+    const calls: unknown[] = [];
+    const researchService = new WorkspaceService(store, {
+      discover: (_profile, target) => {
+        calls.push(target);
+        return Promise.resolve([]);
+      },
+    });
+    if (!investor) {
+      throw new Error('Missing onboarding investor');
+    }
+    await researchService.investors.check(investor.id, randomUUID());
+    expect(calls).toEqual([
+      {
+        name: 'Example investor, Example firm',
+        url: links.linkedin,
+        profileLinks: Object.values(links),
+      },
+    ]);
+    expect(JSON.stringify(calls)).not.toContain('PRIVATE');
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.load())?.onboarding).toEqual(saved.onboarding);
+    } finally {
+      await reopened.close();
+    }
+    const edited = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/meeting',
+      headers,
+      payload: { meeting: { ...meeting, notes: 'A new question' } },
+    });
+    expect(edited.statusCode).toBe(200);
+    const current = (await state()).workspace;
+    expect(current.investors).toHaveLength(saved.investors.length);
+    expect(current.briefs.find((item) => item.id === brief?.id)?.meeting?.notes).toBe(
+      'PRIVATE meeting question',
+    );
+    expect(current.briefs.at(-1)?.meeting?.notes).toBe('A new question');
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/meeting',
+      headers,
+      payload: { meeting: { ...meeting, links: { ...links, linkedin: 'https://localhost' } } },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect((await state()).workspace.onboarding).toEqual(current.onboarding);
+    const skipped = await app.inject({
+      method: 'PUT',
+      url: '/api/onboarding/meeting',
+      headers,
+      payload: { meeting: null },
+    });
+    expect(skipped.statusCode).toBe(200);
+    expect((await state()).workspace.onboarding.meeting).toBeNull();
+  });
+});
+
+describe('onboarding restart', () => {
+  it('reopens step one persistently while retaining all saved context and history', async () => {
+    const before = (await state()).workspace;
+    const headers = { cookie: sessionCookie };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/onboarding/restart', payload: {} }))
+        .statusCode,
+    ).toBe(401);
+    for (let count = 0; count < 2; count++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/onboarding/restart',
+        headers,
+        payload: {},
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      const after = await reopened.load();
+      expect(after).toEqual({
+        ...before,
+        revision: before.revision + 2,
+        onboarding: { ...before.onboarding, step: 1, completedAt: null },
+      });
+    } finally {
+      await reopened.close();
+    }
+  });
+});
+
+it('keeps state polling separate from interview control requests', async () => {
+  const limitedApi = await createApi(service, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+  try {
+    const login = await limitedApi.inject({ method: 'POST', url: '/api/session' });
+    const headers = {
+      cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+    };
+    for (let index = 0; index < 120; index += 1) {
+      expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(200);
+    }
+    expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(429);
+    expect(
+      (
+        await limitedApi.inject({
+          method: 'POST',
+          url: '/api/avatar/sessions',
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(503);
+  } finally {
+    await limitedApi.close();
+  }
 });
 
 describe('durable investor suggestions', () => {

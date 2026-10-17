@@ -24,7 +24,7 @@ React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL
 - `src/features/WorkspaceStore.ts` owns the persistence port and concurrency error.
 - `src/infrastructure/PrismaStore.ts` maps validated application records to company-scoped tables. Prisma types do not escape the adapter.
 - `src/infrastructure/Research.ts` contains only the Exa/OpenAI research adapter. Runtime always injects it. Deterministic research fixtures live under test/fixtures and are excluded from application builds.
-- `src/infrastructure/Voice.ts` obtains ElevenLabs conversation tokens, builds brief context and verifies provider webhooks.
+- `src/infrastructure/Voice.ts` obtains ElevenLabs conversation tokens, retains the legacy brief-context builder and verifies provider webhooks. `src/features/PracticeContextProvider.ts` owns the independent context port and its empty implementation.
 - `src/server/Api.ts` owns local session authorization, origin checking, rate limits, validated routes and static production assets. It always binds through the loopback entrypoint.
 - `src/server/Worker.ts` owns queue execution and due schedules. `src/jobs/RadarTasks.ts` optionally invokes the same work from Trigger.dev.
 - `src/web` owns all browser state, rendering and ElevenLabs React controls.
@@ -51,7 +51,7 @@ Financial snapshots are immutable and keyed by CSV-content/currency hash. Import
 
 Radar evidence is deduplicated by canonical URL, retrieved-text and extracted-investor hash. Previously saved fictional records retain their labels and IDs for compatibility. The current extractor requires its quoted passage to appear in the retrieved text, then labels the record unverified. Changed retrieved text creates a new immutable evidence version; per-investor checks record newly observed URLs and changed versions of previously seen URLs. Check histories preserve quoted passages and evidence IDs. Cross-page event deduplication and contradictory claim resolution remain future work.
 
-Briefs pin a financial snapshot ID, company profile version and evidence ID. Rehearsals pin a brief ID. A completed review appends a brief version while retaining the original. The topic reviewer is deterministic and explicitly does not certify financial correctness or speaking quality.
+Briefs pin a financial snapshot ID, company profile version and evidence ID. Legacy rehearsals pin a brief ID. Standalone voice rehearsals have a null brief ID and pin a validated context snapshot instead. A completed legacy review appends a brief version while retaining the original. The topic reviewer is deterministic and explicitly does not certify financial correctness or speaking quality.
 
 ## Workflows
 
@@ -77,11 +77,71 @@ Investor source intake does not automatically build a new meeting brief or mutat
 
 ## Voice and continuity
 
-ElevenLabs is optional. With credentials, the API obtains a WebRTC token and the provider's conversation ID before creating the live rehearsal. Dynamic variables carry the compact brief and a previous-session answer summary. The browser uses microphone audio only after the user starts a session. Long-lived credentials never reach the browser.
+```text
+Future data adapters (not connected)
+  CSV facts / meeting notes / investor research / scenario
+                         |
+                  PracticeContextProvider
+                         |
+Today: Noop provider ---> Zod PracticeContext v1 (empty)
+                         |
+POST /api/voice/sessions -+--> private ElevenLabs token + conversation ID
+                         +--> save frozen context in rehearsal JSON
+                         |
+Browser VoicePractice <--+--- token + context dynamic variables
+         |
+         +-- microphone / WebRTC --> ElevenLabs --> spoken reply
+         |                               |
+         +-- live captions (preview)     +-- signed post-call webhook
+         |                                              |
+         +-- end --> awaiting transcript                v
+                                        verify signature + agent + conversation
+                                                       |
+                                         save turns + transcriptReceivedAt
+                                                       |
+                                         session history / reopen transcript
+```
 
-The API accepts final transcripts only through signature-verified webhooks matching a known provider conversation and configured agent. Duplicate completion does not create another reviewed brief. Browser end requests mark a live session awaiting provider evidence; client transcript data does not finalize it. Written practice uses server-stored turns and remains available without provider configuration. The UI offers the scripted example as a separate, labeled mode.
+`POST /api/voice/sessions` accepts an empty object, not browser-provided facts or prompts. `createApi` injects the context provider and token issuer; the default context provider supplies no company data, CSV facts, notes, investor information, scenario or previous-session summary. The context schema distinguishes empty and provided modes; its future provided shape retains decimal strings, financial source rows, snapshot IDs, note IDs and investor source URLs. The voice path does not run research or financial calculations. Context is validated and saved with each session, so later data changes cannot silently alter its record.
 
-No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. Browser controls include a ten-minute limit; provider-side session limits should also be configured. Disconnects save partial state; summaries and questions persist across new sessions.
+The API obtains a WebRTC token and conversation ID before creating the session. A transactional application check prevents concurrent active voice records. The token goes only to the requesting browser; it is not persisted. `VoicePracticePage.tsx` exposes `/voice` independently of the onboarding gate and uses the same authenticated state API. `VoicePractice.tsx` has its own conversation provider to isolate SDK callbacks from the legacy practice component. It requests microphone permission on Start, offers mute/end, bounds connection startup and duration, stops audio when unmounted, and exposes saved session history. Existing written practice remains independent in the expandable legacy section.
+
+Final transcripts are accepted only through signature-verified webhooks matching the configured agent and a recorded provider conversation. Browser end requests cannot supply authoritative turns. A transcript receipt makes both completed and partial delivery idempotent, including late browser-end requests. Empty and failed conversations are retained as partial records. A missing callback leaves the session awaiting provider evidence; the UI shows temporary live captions separately from the saved transcript and polls the existing state endpoint. After a browser refresh, users can reopen saved turns or close an abandoned active record. This does not remotely terminate audio still running in another tab.
+
+Standalone voice does not run the existing financial topic checker or append a reviewed brief. Evaluation, richer prompting, context assembly and feedback loops are subsequent consumers of the saved context/transcript. Legacy brief-based rehearsals keep their existing behavior. Older rehearsal JSON loads with null context and receipt fields; no historical facts or receipt timestamps are invented and no database migration is needed for these additions.
+
+No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. The main voice entrypoint requires API key, agent ID and webhook secret, but cannot prove callback reachability from their presence. Browser controls enforce a ten-minute limit while mounted; configure provider limits separately. Provider configuration and local startup instructions are in README.md.
+
+## Live video interviewer
+
+The browser TypeScript project (`src/web/tsconfig.json`) uses Vite's bundler resolution, including the LiveAvatar SDK's extensionless type exports. Server, worker and scripts retain NodeNext resolution. Both projects inherit the same strict checks, and `pnpm typecheck` checks both.
+
+```text
+No-op PracticeContextProvider
+        |
+POST /api/avatar/sessions
+        +--> reserve liveavatar rehearsal + frozen empty context
+        +--> LiveAvatar FULL token (avatar + voice + context IDs)
+        +--> pin provider session ID; return temporary token
+                          |
+Browser LiveAvatar SDK <--+
+        | microphone               | streamed video + audio
+        +--------------------------+-- LiveAvatar built-in agent
+                                              |
+Finish / disconnect --> server stop ----------+
+        |
+Server GET stored session's transcript --> validate --> save turns
+        |
+History / bounded retry / reopen transcript
+```
+
+`AvatarProvider.ts` owns token creation, stop and transcript retrieval ports. `LiveAvatar.ts` implements FULL mode with validated responses and request timeouts. `AvatarRoutes.ts` owns authenticated create, stop and transcript-retry endpoints. API keys, avatar, voice and context IDs come from server T3 Env; browsers cannot override them. The provider context is configured once during setup. The adapter currently rejects provided company context rather than silently discarding it; only the no-op slice is connected.
+
+New video sessions use the `liveavatar` rehearsal mode. It shares the active-session exclusion with ElevenLabs voice, freezes its context and stores a provider session ID. Token creation failures leave a partial record. Browser end requests cannot supply authoritative turns. After stopping, the server fetches the transcript for its own stored session ID, validates speaker roles and text, and accepts it only when the provider reports the session inactive. Null, empty and still-active responses remain pending. A saved receipt makes repeated retrieval idempotent. Provider failures do not turn a successful stop into a failed stop. No financial review or brief update is generated for these standalone sessions.
+
+`AvatarPractice.tsx` renders live provider video/audio with an AI simulation label, playback controls, speaking/listening state, mute/end controls and temporary captions. Startup is bounded to 45 seconds; provider and browser duration caps are two minutes. Switching modes requests shutdown. Selected ended sessions retry transcript retrieval five times with a delay and offer manual retry afterward. Unselected sessions do not poll the provider. Browser crashes retain a record that can be stopped from history. No webhook or ElevenLabs credentials are needed for FULL mode.
+
+Legacy connector sessions remain identifiable by their ElevenLabs mode and stored correlation hash. Their signed webhook can still bind a conversation ID using the original nonce verification; it cannot bind a FULL-mode session. The existing JSON storage accepts the additional mode without a database migration. Voice-only behavior remains independent. No automatic avatar creation, likeness scraping, investor voice cloning or financial scoring is implemented.
 
 ## Local webhook ingress
 
@@ -92,6 +152,8 @@ No raw audio is saved by this application. ElevenLabs-side retention must be con
 ## Current boundaries
 
 The application has a local session cookie, CSRF/origin checks, body limits and rate limiting. It is intentionally single-user and binds only to localhost. Hosted identity/membership authorization, remote deployment, full cash-flow modeling, June accounting integration, outbound messages and investor outreach are not implemented.
+
+Local session cookies are invalidated when the API restarts. The authorization hook returns `LOCAL_SESSION_REQUIRED` before executing a protected operation. `ApiClient.ts` renews that local session and replays the same request once, sharing pending renewal across concurrent requests. This preserves mounted form drafts without a reload. Other authorization errors, network failures and server failures are not replayed, since an uncertain write outcome must not cause duplicate operations. Origin checks still apply to session creation and every retried request. Dashboard and standalone voice state polling pauses in hidden tabs so idle tabs do not exhaust the local rate limit; it resumes on the next visible polling tick. State reads have a separate rate-limit group at the same request limit, so polling does not consume the write/stop budget.
 
 Every financial explanation preserves the distinction between operating results and other income. Cash runway, currency and founder-segment facts remain unknown until supported. The sample file's July credit is recorded as other income and is not proof that cash was received then.
 
@@ -120,3 +182,15 @@ Provider boundaries report request status/timing, extraction acceptance/rejectio
 Prisma owns the separate ResearchRun table with immutable JSON payload, a content hash for idempotency, and workspace/investor/job indexes. It is excluded from `/api/state` and aggregate workspace writes so source text is not transmitted on every UI poll. The additive migration preserves previous data. Reads always scope to the local workspace. Same-ID/same-payload writes return the original; conflicting replacement is rejected. Retries are separate attempts, while the existing saved-job guard prevents duplicate checks from running again.
 
 `server/ResearchRunRoutes.ts` exposes session-protected summary/detail reads and raw imports. Imports cannot claim workflow origin, job identity, model extraction, accepted evidence or success; these fields are server-controlled. Archives do not automatically promote facts into the Evidence table, a brief or a scenario. API bodies and stored data are validated; arbitrary provider fields and error bodies are not stored. Public source text is retained as untrusted content and must never be interpolated as instructions by future consumers. Research status describes extraction only; the linked workflow and profile version determine whether results were applied and remain current. Partial traces survive caught errors, but not process termination before final save. Setup and endpoint usage remain in README.
+
+## Founder onboarding and dashboard
+
+`src/contracts/Onboarding.ts` owns the three-step setup and current meeting context. `ProfileLinks.ts` owns canonical HTTPS identity URLs, rejecting credentials, local/IP hosts and social post/search URLs. LinkedIn and X fields require their respective profile hosts; the firm URL can identify a public team page. These are search hints, not fetched directly or treated as verified evidence.
+
+The additive onboarding migration adds a JSON column to Workspace. Existing rows load as incomplete setup without deleting or reinterpreting financials, investors, briefs or rehearsals. Each Continue action saves a completed step; unfinished text edits stay in the form. The sample route reuses the original fixture by content hash. Financial selection explicitly identifies an existing snapshot. Uploads retain all previous snapshots. Company stage, sector, geography and raise amount can be unknown, and matching returns unknown for those criteria.
+
+Completion atomically saves meeting notes and identity links, upserts one tracked investor, and creates a sourced financial brief. Newly added onboarding investors start paused. Existing tracked investors retain their monitoring setting. Research checks receive the investor name and all saved canonical links; company financials and private meeting notes are excluded from research queries. Editing the same investor preserves its ID and check history. A brief pins the meeting revision, notes and profile links along with its financial snapshot. Older briefs load with null meeting context. Named meetings only attach evidence from that investor’s checks or discovery record, preventing unrelated radar evidence from entering the meeting brief.
+
+`OnboardingPage.tsx` is the first-visit gate at `/`; it supports uploads, sample selection, unknown company details, an optional investor, validation errors, resume and editing. `DashboardPage.tsx` owns the returning overview, meeting context and profile links. Its numbers, activity and practice status come from saved state. The existing financial, investor research, brief, practice and follow-up screens remain reachable from the left sidebar, with page content on the right. Small screens use a horizontally scrollable navigation row. Standalone `/voice` remains independent; the brief-based practice section carries the selected financial brief and meeting notes. No new paid research or voice session starts merely by completing onboarding.
+
+`POST /api/onboarding/restart` reopens setup by setting its step to 1 and clearing its completion timestamp in the normal revision-checked transaction. It retains the selected snapshot, company profile, meeting notes, investor links and all history. Dashboard and setup-header controls invoke this same endpoint. Repeated restarts are safe and the pending setup persists after reload.
