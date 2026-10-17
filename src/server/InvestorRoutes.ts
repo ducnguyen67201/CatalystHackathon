@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { DiscoveryFrequency, SuggestionStatus } from '../contracts/InvestorDiscovery.js';
 import { CheckFrequency, investorInputSchema } from '../contracts/InvestorTracking.js';
 import { radarRequestSchema } from '../contracts/Workspace.js';
 import { InvestorJob } from '../features/InvestorTrackingService.js';
@@ -34,6 +35,23 @@ export function registerInvestorRoutes(app: FastifyInstance, service: WorkspaceS
     const { id } = paramsSchema.parse(request.params);
     const { key } = radarRequestSchema.parse(request.body);
     return reply.code(202).send(await service.investors.enqueueCheck(id, key));
+  });
+
+  app.put('/api/investors/discovery/schedule', async (request) => {
+    const { frequency } = z
+      .strictObject({ frequency: z.enum(DiscoveryFrequency) })
+      .parse(request.body);
+    await service.investors.discovery.setFrequency(frequency);
+    return { ok: true };
+  });
+
+  app.post('/api/investors/suggestions/:id/decision', async (request) => {
+    const { id } = paramsSchema.parse(request.params);
+    const { decision } = z
+      .strictObject({ decision: z.enum([SuggestionStatus.TRACKED, SuggestionStatus.DISMISSED]) })
+      .parse(request.body);
+    await service.investors.discovery.decide(id, decision);
+    return { ok: true };
   });
 
   app.post('/api/investors/discover', async (request, reply) => {

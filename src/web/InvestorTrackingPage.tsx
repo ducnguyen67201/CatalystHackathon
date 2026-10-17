@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { InvestorSuggestions } from './InvestorSuggestions.js';
 import { Plus, Search, RefreshCw, ExternalLink, ArrowRight } from 'lucide-react';
 import { z } from 'zod';
 import {
@@ -63,16 +64,16 @@ export function InvestorTrackingPage({
   const [message, setMessage] = useState('');
   const investors = state.workspace.investors;
   const selected = investors.find((item) => item.id === selectedId) ?? investors[0];
-  const discovery = state.jobs.find((job) => job.kind === 'discover-investors');
-  const discoveryPending =
-    discovery?.status === JobStatus.QUEUED || discovery?.status === JobStatus.RUNNING;
   const latestCheck = selected?.checks.at(-1);
   const selectedJob = state.jobs.find((job) => job.kind === `${checkPrefix}${selected?.id ?? ''}`);
   const selectedPending =
     selectedJob?.status === JobStatus.QUEUED || selectedJob?.status === JobStatus.RUNNING;
-  const evidenceIds =
-    latestCheck?.evidenceIds ??
-    (selected?.discoveryEvidenceId ? [selected.discoveryEvidenceId] : []);
+  const evidenceIds = [
+    ...new Set([
+      ...(latestCheck?.evidenceIds ?? []),
+      ...(selected?.discoveryEvidenceId ? [selected.discoveryEvidenceId] : []),
+    ]),
+  ];
   const sources = evidenceIds.flatMap((id) => {
     const source = state.workspace.evidence.find((item) => item.id === id);
     return source ? [source] : [];
@@ -112,8 +113,8 @@ export function InvestorTrackingPage({
       </div>
       {state.capabilities.researchMode === 'demo' && (
         <p className="investor-demo">
-          Demo mode: saves real profile links, but makes no live searches. “Find candidates”
-          demonstrates the loop with fictional Northline Ventures.
+          Demo mode: saves real profile links, but makes no live searches. “Find more” demonstrates
+          suggestions with fictional companies and investors.
         </p>
       )}
       <form
@@ -175,41 +176,6 @@ export function InvestorTrackingPage({
       {message && (
         <p className="investor-message" role="status">
           {message}
-        </p>
-      )}
-      <div className="investor-discovery">
-        <div>
-          <strong>Who else is worth researching?</strong>
-          <p className="muted">
-            Find candidates for {state.workspace.profile.stage} · {state.workspace.profile.sector} ·{' '}
-            {state.workspace.profile.geography}. Every new candidate gets an individual check and
-            daily monitoring.
-          </p>
-        </div>
-        <button
-          className="button secondary"
-          disabled={busy || discoveryPending}
-          onClick={() => {
-            void act(async () => {
-              await request('/investors/discover', jobSchema, { key: crypto.randomUUID() });
-              setMessage(
-                'Discovery queued. Check results will appear here as the worker finishes.',
-              );
-            });
-          }}
-        >
-          <Search size={16} />
-          {discoveryPending ? 'Finding candidates…' : 'Find candidates'}
-        </button>
-      </div>
-      {discovery?.error && (
-        <p role="status" className="muted">
-          Discovery {discovery.status}: {discovery.error}
-        </p>
-      )}
-      {discovery?.result && (
-        <p className="muted" role="status">
-          {discovery.result}
         </p>
       )}
       <div className="investor-grid">
@@ -425,6 +391,7 @@ export function InvestorTrackingPage({
           )}
         </div>
       </div>
+      <InvestorSuggestions state={state} onRefresh={onRefresh} />
     </section>
   );
 }

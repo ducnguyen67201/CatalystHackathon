@@ -2,6 +2,7 @@ import { InvestorJob } from '../features/InvestorTrackingService.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
 export async function runWorkerTick(service: WorkspaceService): Promise<boolean> {
   await service.investors.tick(new Date());
+  await service.investors.discovery.tick(new Date());
   await service.tickSchedule(new Date());
   await service.reviewDueMilestones(new Date());
   const job = await service.store.claimJob(new Date());
@@ -16,7 +17,7 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
         job.id,
       );
     } else if (job.kind === InvestorJob.DISCOVER) {
-      result = await service.investors.discover();
+      result = await service.investors.discover(job.id);
     } else if (job.kind === 'radar') {
       result = await service.runRadar();
     } else if (job.kind === 'rebuild') {

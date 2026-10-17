@@ -42,6 +42,7 @@ beforeAll(async () => {
   service = new WorkspaceService(store, new DemoResearch());
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
+  await service.investors.discovery.setFrequency('paused');
   app = await createApi(
     service,
     readEnvironment({ DATABASE_URL: databaseUrl.href, WEB_ORIGIN: 'http://127.0.0.1:4317' }),
@@ -362,5 +363,61 @@ describe('durable investor research', () => {
       (await service.read()).investors.find((item) => item.id === investor.id)?.checks[0]
         ?.evidenceIds,
     ).toEqual([]);
+  });
+});
+
+describe('durable investor suggestions', () => {
+  it('deduplicates discovery jobs and persists explicit Track and Dismiss decisions', async () => {
+    await service.change((workspace) => {
+      workspace.profile.stage = 'Seed';
+      workspace.profile.sector = 'B2B software';
+      workspace.profile.geography = 'Canada';
+      workspace.profile.version++;
+    });
+    const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        app.inject({
+          method: 'POST',
+          url: '/api/investors/discover',
+          headers,
+          payload: { key: randomUUID() },
+        }),
+      ),
+    );
+    expect(responses.every((response) => response.statusCode === 202)).toBe(true);
+    expect(new Set(responses.map((response) => jobSchema.parse(response.json()).id)).size).toBe(1);
+    const before = (await service.read()).investors.length;
+    await runWorkerTick(service);
+    const suggestions = (await service.read()).discovery.suggestions;
+    expect(suggestions).toHaveLength(3);
+    expect((await service.read()).investors).toHaveLength(before);
+    const [track, dismiss] = suggestions;
+    if (!track || !dismiss) {
+      throw new Error('Missing suggestions');
+    }
+    for (const [suggestion, decision] of [
+      [track, 'tracked'],
+      [dismiss, 'dismissed'],
+    ] as const) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/investors/suggestions/${suggestion.id}/decision`,
+        headers,
+        payload: { decision },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    const fresh = new PrismaStore(databaseUrl.href);
+    try {
+      const saved = await fresh.load();
+      expect(saved?.investors).toHaveLength(before + 1);
+      expect(saved?.discovery.suggestions.find((item) => item.id === dismiss.id)?.status).toBe(
+        'dismissed',
+      );
+      expect(saved?.investors.find((item) => item.name === track.name)?.frequency).toBe('daily');
+    } finally {
+      await fresh.close();
+    }
   });
 });

@@ -77,7 +77,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Investor discovery:)/.test(
         error.message,
       )
     ) {

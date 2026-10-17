@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { discoveryStateSchema } from '../contracts/InvestorDiscovery.js';
 import { InvestorTrackingService } from './InvestorTrackingService.js';
 import { Decimal } from 'decimal.js';
 import {
@@ -75,6 +76,7 @@ export class WorkspaceService {
       milestones: [],
       notices: [],
       investors: [],
+      discovery: discoveryStateSchema.parse({}),
     });
   }
   async updateProfile(profile: Omit<Profile, 'version'>): Promise<void> {

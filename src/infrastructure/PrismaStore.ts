@@ -39,6 +39,7 @@ export class PrismaStore implements WorkspaceStore {
       revision: record.revision,
       profile: record.profile,
       schedule: record.schedule,
+      discovery: record.discovery,
       snapshots: record.snapshots.map((item) => item.payload),
       evidence: record.evidence.map((item) => item.payload),
       briefs: record.briefs.map((item) => item.payload),
@@ -56,6 +57,7 @@ export class PrismaStore implements WorkspaceStore {
         id: workspaceId,
         profile: json(workspace.profile),
         schedule: json(workspace.schedule),
+        discovery: json(workspace.discovery),
       },
     });
     const existing = await this.load();
@@ -72,6 +74,7 @@ export class PrismaStore implements WorkspaceStore {
             revision: { increment: 1 },
             profile: json(workspace.profile),
             schedule: json(workspace.schedule),
+            discovery: json(workspace.discovery),
             updatedAt: new Date(),
           },
         });
@@ -147,9 +150,10 @@ export class PrismaStore implements WorkspaceStore {
       kind,
       status: { in: [JobStatus.QUEUED, JobStatus.RUNNING] },
     };
-    const active = kind.startsWith('investor:')
-      ? await this.client.workflowJob.findFirst({ where: activeWhere })
-      : null;
+    const active =
+      kind.startsWith('investor:') || kind === 'discover-investors'
+        ? await this.client.workflowJob.findFirst({ where: activeWhere })
+        : null;
     const row =
       active ??
       (await this.client.workflowJob
@@ -161,7 +165,11 @@ export class PrismaStore implements WorkspaceStore {
         .catch(async (error: unknown) => {
           // The partial unique index resolves simultaneous manual/scheduled checks.
           const code = z.object({ code: z.string() }).safeParse(error);
-          if (kind.startsWith('investor:') && code.success && code.data.code === 'P2002') {
+          if (
+            (kind.startsWith('investor:') || kind === 'discover-investors') &&
+            code.success &&
+            code.data.code === 'P2002'
+          ) {
             const pending = await this.client.workflowJob.findFirst({ where: activeWhere });
             if (pending) {
               return pending;

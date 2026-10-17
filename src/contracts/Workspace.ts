@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { comparableDealSchema, discoveryStateSchema } from './InvestorDiscovery.js';
 import { trackedInvestorSchema } from './InvestorTracking.js';
 
 export const ResearchMode = {
@@ -88,6 +89,7 @@ export const evidenceSchema = z.strictObject({
   currency: profileSchema.shape.currency,
   explanation: z.string(),
   verified: z.boolean(),
+  comparableDeal: comparableDealSchema.optional(),
 });
 
 export type Evidence = z.infer<typeof evidenceSchema>;
@@ -208,6 +210,7 @@ export const workspaceSchema = z.strictObject({
   milestones: z.array(milestoneSchema),
   notices: z.array(noticeSchema),
   investors: z.array(trackedInvestorSchema).default([]),
+  discovery: discoveryStateSchema.default(() => discoveryStateSchema.parse({})),
 });
 
 export type Workspace = z.infer<typeof workspaceSchema>;
