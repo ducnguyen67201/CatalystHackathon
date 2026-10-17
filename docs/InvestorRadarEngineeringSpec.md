@@ -1,6 +1,6 @@
 # Investor radar result delivery
 
-Status: agreed product scope; engineering proposal, not implemented by this documentation change.
+Status: implemented with the transaction and provider refinements recorded in [Architecture](Architecture.md#radar-delivery-implementation). The sections below retain the design contract; actual persistence uses one atomic check/event/outbox transaction rather than a separate publication-consumer queue.
 
 Baseline: remote `main` at `45374a0`, including the merged investor-research work. This spec supersedes any broader implementation scope implied by the [interactive preview](previews/InvestorRadarPreview.html) or its [exploration notes](InvestorRadarPreview.md).
 
@@ -140,7 +140,7 @@ The provider adapter must support a stable delivery idempotency key and a way to
 
 Email contains a bounded headline, investor/candidate name, summary, source-backed relevance explanation, event date if known, uncertainty label, source links, and a radar deep link. Exclude financial rows, meeting notes, transcripts, credentials, and raw search payloads. Email must remain useful without opening localhost. A local radar link works only on the computer running June; do not expose the app or invent a hosted URL for mobile access.
 
-Keep recipient settings and delivery logs out of public operational logs. Use a provider abstraction and a fake sink in tests. Provider selection, credential setup, sender-domain configuration, and actual email sends are separate authorized operational steps; this documentation PR performs none of them.
+Keep recipient settings and delivery logs out of public operational logs. Use a provider abstraction and a fake sink in tests. Resend is the selected adapter. Credential setup, sender-domain configuration, and actual email sends remain separate operational steps; implementation verification uses a fake sink.
 
 ## Investor Radar UI
 
@@ -219,4 +219,4 @@ The application still serves one local workspace. Adding hosted operation requir
 
 Implement contract/publication support first, then radar persistence/UI, then disabled-by-default email delivery and preferences. Backfill saved events with email suppressed. Test with fictional fixtures and a fake email adapter; run integration tests against the repository's temporary PostgreSQL database. Complete `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm test:integration` before handing off implementation.
 
-Release gate: confirm the producer's category/relevance contract and commit boundary, select an email adapter meeting the idempotency/reconciliation requirements, and implement recipient confirmation before enabling outbound delivery. Shipping this spec and preview does not activate that delivery path.
+The implementation includes the producer's category/relevance contract, an atomic check/event/outbox commit, Resend idempotency, and recipient confirmation. Deployment still requires the additive migration and optional sender configuration described in README. Email remains disabled until the founder confirms their recipient address and explicitly enables alerts.

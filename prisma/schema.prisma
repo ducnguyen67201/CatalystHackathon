@@ -11,6 +11,11 @@ model Workspace {
   onboarding Json @default("{}")
   schedule Json
   discovery Json @default("{}")
+  notificationSettings Json @default("{}")
+  radarBackfilledAt DateTime?
+  radarEvents RadarEvent[]
+  deliveries NotificationDelivery[]
+  heartbeat WorkerHeartbeat?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   snapshots FinancialSnapshot[]
@@ -119,4 +124,30 @@ model ResearchRun {
   @@index([workspaceId, createdAt, id])
   @@index([workspaceId, investorId, createdAt])
   @@index([workspaceId, jobId])
+}
+
+model RadarEvent {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  dedupeKey String
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, dedupeKey])
+  @@index([workspaceId, createdAt, id])
+}
+model NotificationDelivery {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  eventId String?
+  recipientRevision Int
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, eventId, recipientRevision])
+}
+model WorkerHeartbeat {
+  workspaceId String @id
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  payload Json
 }

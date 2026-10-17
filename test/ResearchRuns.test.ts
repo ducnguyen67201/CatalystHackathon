@@ -162,3 +162,52 @@ describe('research output archives', () => {
     expect(save).toHaveBeenCalledTimes(1);
   });
 });
+
+it('keeps classification in the existing extraction call and requires its exact supporting quote', async () => {
+  const { research } = fixture();
+  const signal = {
+    category: 'investment',
+    headline: 'Fictional Acme backs ExampleCo',
+    summary: 'Fictional example.',
+    whyItMatters: 'Same sector.',
+    supportingQuote: claim.quote,
+    notificationEligible: true,
+    needsReview: false,
+    canonicalEventKey: null,
+  };
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json({ results: [page] }))
+    .mockResolvedValueOnce(
+      Response.json({ choices: [{ message: { content: JSON.stringify({ ...claim, signal }) } }] }),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const records = await research.discover(
+    profile,
+    { name: 'Acme VC', url: 'https://example.com/team' },
+    undefined,
+    { jobId: 'classified' },
+  );
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(records[0]?.signal?.category).toBe('investment');
+  expect(records[0]?.researchRunId).toBeDefined();
+  fetcher.mockResolvedValueOnce(Response.json({ results: [page] })).mockResolvedValueOnce(
+    Response.json({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              ...claim,
+              signal: { ...signal, supportingQuote: 'INVENTED PASSAGE' },
+            }),
+          },
+        },
+      ],
+    }),
+  );
+  const rejected = await research.discover(profile, {
+    name: 'Acme VC',
+    url: 'https://example.com/team',
+  });
+  expect(rejected[0]?.signal).toBeNull();
+});

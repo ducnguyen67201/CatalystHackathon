@@ -1,3 +1,4 @@
+import { publishRadarResult } from './RadarResults.js';
 import { randomUUID } from 'node:crypto';
 import { LogEvent } from './WorkflowLog.js';
 import { InvestorDiscoveryService } from './InvestorDiscoveryService.js';
@@ -209,6 +210,8 @@ export class InvestorTrackingService {
         changedIds: [...changedIds],
         note,
       });
+      for (const record of fresh)
+        publishRadarResult(state, record, { investorId: id, suggestionId: null }, jobId);
       if (fresh.length) {
         state.notices.push({
           id: randomUUID(),

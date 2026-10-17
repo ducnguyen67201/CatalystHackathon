@@ -1,3 +1,4 @@
+import { RadarUpdates } from './RadarUpdates.js';
 import { OnboardingPage } from './OnboardingPage.js';
 import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
 import { useEffect, useState, useRef } from 'react';
@@ -134,7 +135,9 @@ function RevenueChart({ state }: { state: StateResponse }) {
 }
 export function App() {
   const [state, setState] = useState<StateResponse | null>(null);
-  const [page, setPage] = useState<Page>(Page.OVERVIEW);
+  const [page, setPage] = useState<Page>(
+    new URLSearchParams(window.location.search).has('radarEvent') ? Page.RADAR : Page.OVERVIEW,
+  );
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -386,271 +389,275 @@ export function App() {
           {page === Page.INVESTORS && <InvestorTrackingPage state={state} onRefresh={refresh} />}
           {page === Page.RADAR && (
             <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">Your next conversation</div>
-                  <h1>A signal worth acting on.</h1>
-                  <p className="muted">Connect your numbers to the right opportunity.</p>
-                </div>
-                <div className="header-actions">
-                  <button
-                    className="button secondary"
-                    onClick={() => {
-                      setDraft({ ...workspace.profile });
-                      setModal('profile');
-                    }}
-                  >
-                    Edit company profile
-                  </button>
-                  <button
-                    className="button"
-                    disabled={busy || activeJobs.length > 0}
-                    onClick={() => {
-                      void action(async () => {
-                        await startRadar();
-                      }, 'Radar check queued. The worker will save its findings.');
-                    }}
-                  >
-                    {activeJobs.length ? (
-                      <LoaderCircle size={14} className="spin" />
-                    ) : (
-                      <RefreshCw size={14} />
-                    )}{' '}
-                    {activeJobs.length ? 'Checking…' : 'Run radar check'}
-                  </button>
-                </div>
-              </div>
-              <div className="schedule-bar">
-                <div>
-                  <h3>
-                    <Clock3 size={15} /> Scheduled monitoring
-                  </h3>
-                  <p>
-                    {workspace.schedule.nextAt
-                      ? `Next check ${when(workspace.schedule.nextAt)} · ${workspace.schedule.timezone}`
-                      : 'Choose a schedule to keep checking while the browser is closed.'}
-                  </p>
-                </div>
-                <div className="schedule-controls">
-                  <select
-                    aria-label="Radar schedule"
-                    value={workspace.schedule.frequency}
-                    disabled={busy}
-                    onChange={(event) => {
-                      void action(
-                        () =>
-                          command(
-                            '/schedule',
-                            {
-                              frequency: event.target.value,
-                              timezone: workspace.schedule.timezone,
-                            },
-                            'PUT',
-                          ),
-                        'Schedule saved to the server.',
-                      );
-                    }}
-                  >
-                    <option value="paused">Paused</option>
-                    <option value="weekdays">Weekdays · 9:00 AM</option>
-                    <option value="weekly">Mondays · 9:00 AM</option>
-                  </select>
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      setPage(Page.FOLLOWUPS);
-                    }}
-                  >
-                    View follow-ups →
-                  </button>
-                </div>
-              </div>
-              <div className="metrics">
-                <div className="metric">
-                  <div className="metric-label">Revenue · {latestRow?.month}</div>
-                  <div className="metric-value">${amount(latestRow?.revenue)}</div>
-                  <div className="metric-note">From uploaded financial data</div>
-                </div>
-                <div className="metric">
-                  <div className="metric-label">Operating result</div>
-                  <div className="metric-value">${amount(latestRow?.operatingIncome)}</div>
-                  <div className="metric-note">{latestRow?.month} · income statement</div>
-                </div>
-                <div className="metric">
-                  <div className="metric-label">Raise target · founder assumption</div>
-                  <div className="metric-value">${amount(workspace.profile.raiseTarget)}</div>
-                  <div className="metric-note">
-                    {workspace.profile.stage} · {workspace.profile.currency}
+              <RadarUpdates state={state} onRefresh={refresh} />
+              <details className="radar-legacy">
+                <summary>Company fit and legacy research schedule</summary>
+                <div className="page-heading">
+                  <div>
+                    <div className="eyebrow">Your next conversation</div>
+                    <h2>A signal worth acting on.</h2>
+                    <p className="muted">Connect your numbers to the right opportunity.</p>
+                  </div>
+                  <div className="header-actions">
+                    <button
+                      className="button secondary"
+                      onClick={() => {
+                        setDraft({ ...workspace.profile });
+                        setModal('profile');
+                      }}
+                    >
+                      Edit company profile
+                    </button>
+                    <button
+                      className="button"
+                      disabled={busy || activeJobs.length > 0}
+                      onClick={() => {
+                        void action(async () => {
+                          await startRadar();
+                        }, 'Radar check queued. The worker will save its findings.');
+                      }}
+                    >
+                      {activeJobs.length ? (
+                        <LoaderCircle size={14} className="spin" />
+                      ) : (
+                        <RefreshCw size={14} />
+                      )}{' '}
+                      {activeJobs.length ? 'Checking…' : 'Run radar check'}
+                    </button>
                   </div>
                 </div>
-                <div className="metric">
-                  <div className="metric-label">Cash runway</div>
-                  <div className="metric-value muted">Unknown</div>
-                  <div className="metric-note">Cash and cash-flow data needed</div>
+                <div className="schedule-bar">
+                  <div>
+                    <h3>
+                      <Clock3 size={15} /> Scheduled monitoring
+                    </h3>
+                    <p>
+                      {workspace.schedule.nextAt
+                        ? `Next check ${when(workspace.schedule.nextAt)} · ${workspace.schedule.timezone}`
+                        : 'Choose a schedule to keep checking while the browser is closed.'}
+                    </p>
+                  </div>
+                  <div className="schedule-controls">
+                    <select
+                      aria-label="Radar schedule"
+                      value={workspace.schedule.frequency}
+                      disabled={busy}
+                      onChange={(event) => {
+                        void action(
+                          () =>
+                            command(
+                              '/schedule',
+                              {
+                                frequency: event.target.value,
+                                timezone: workspace.schedule.timezone,
+                              },
+                              'PUT',
+                            ),
+                          'Schedule saved to the server.',
+                        );
+                      }}
+                    >
+                      <option value="paused">Paused</option>
+                      <option value="weekdays">Weekdays · 9:00 AM</option>
+                      <option value="weekly">Mondays · 9:00 AM</option>
+                    </select>
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        setPage(Page.FOLLOWUPS);
+                      }}
+                    >
+                      View follow-ups →
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="grid">
-                <div>
-                  <article className="panel">
-                    <div className="panel-title">
-                      <h3>Opportunity feed</h3>
-                      <span className="count">{workspace.evidence.length} sources</span>
+                <div className="metrics">
+                  <div className="metric">
+                    <div className="metric-label">Revenue · {latestRow?.month}</div>
+                    <div className="metric-value">${amount(latestRow?.revenue)}</div>
+                    <div className="metric-note">From uploaded financial data</div>
+                  </div>
+                  <div className="metric">
+                    <div className="metric-label">Operating result</div>
+                    <div className="metric-value">${amount(latestRow?.operatingIncome)}</div>
+                    <div className="metric-note">{latestRow?.month} · income statement</div>
+                  </div>
+                  <div className="metric">
+                    <div className="metric-label">Raise target · founder assumption</div>
+                    <div className="metric-value">${amount(workspace.profile.raiseTarget)}</div>
+                    <div className="metric-note">
+                      {workspace.profile.stage} · {workspace.profile.currency}
                     </div>
-                    {latestEvidence ? (
-                      <div className="opportunity">
-                        <div className="signal-label">
-                          <span className="dot" />
-                          {latestEvidence.mode === 'demo'
-                            ? 'Fictional fund announcement'
-                            : 'New research evidence'}
+                  </div>
+                  <div className="metric">
+                    <div className="metric-label">Cash runway</div>
+                    <div className="metric-value muted">Unknown</div>
+                    <div className="metric-note">Cash and cash-flow data needed</div>
+                  </div>
+                </div>
+                <div className="grid">
+                  <div>
+                    <article className="panel">
+                      <div className="panel-title">
+                        <h3>Opportunity feed</h3>
+                        <span className="count">{workspace.evidence.length} sources</span>
+                      </div>
+                      {latestEvidence ? (
+                        <div className="opportunity">
+                          <div className="signal-label">
+                            <span className="dot" />
+                            {latestEvidence.mode === 'demo'
+                              ? 'Fictional fund announcement'
+                              : 'New research evidence'}
+                          </div>
+                          <h2>
+                            {evaluateInvestorFit(workspace.profile, latestEvidence).suitable
+                              ? 'A new fund. A reason to investigate.'
+                              : 'New evidence. Reconsider the fit.'}
+                          </h2>
+                          <p className="signal-body">{latestEvidence.explanation}</p>
+                          <div className="tags">
+                            {Object.entries(evaluateInvestorFit(workspace.profile, latestEvidence))
+                              .filter(([key]) => key !== 'suitable')
+                              .map(([key, value]) => (
+                                <span className="tag" key={key}>
+                                  {criterionLabel(key)}: {String(value)}
+                                </span>
+                              ))}
+                          </div>
+                          <div className="signal-footer">
+                            <button
+                              className="text-button"
+                              onClick={() => {
+                                setSource(latestEvidence);
+                              }}
+                            >
+                              Inspect source & fit →
+                            </button>
+                            <button
+                              className="button"
+                              onClick={() => {
+                                openBrief();
+                              }}
+                            >
+                              Prepare me <ArrowRight size={14} />
+                            </button>
+                          </div>
                         </div>
-                        <h2>
-                          {evaluateInvestorFit(workspace.profile, latestEvidence).suitable
-                            ? 'A new fund. A reason to investigate.'
-                            : 'New evidence. Reconsider the fit.'}
-                        </h2>
-                        <p className="signal-body">{latestEvidence.explanation}</p>
-                        <div className="tags">
-                          {Object.entries(evaluateInvestorFit(workspace.profile, latestEvidence))
-                            .filter(([key]) => key !== 'suitable')
-                            .map(([key, value]) => (
-                              <span className="tag" key={key}>
-                                {criterionLabel(key)}: {String(value)}
-                              </span>
-                            ))}
+                      ) : (
+                        <div className="empty-signal">
+                          <Radar size={34} strokeWidth={1} />
+                          <h2>Your next signal starts here.</h2>
+                          <p className="signal-body">
+                            Set your founder profile, then run a radar check. June connects investor
+                            evidence with your financial preparation.
+                          </p>
+                          <p className="source-label">
+                            Research searches public sources with Exa and checks supporting
+                            passages. Results depend on publicly accessible information.
+                          </p>
                         </div>
-                        <div className="signal-footer">
+                      )}
+                      <div className="workflow">
+                        <strong>01 Notice the change</strong>
+                        <span>→</span>
+                        <span>02 Understand the fit</span>
+                        <span>→</span>
+                        <span>03 Be ready</span>
+                      </div>
+                    </article>
+                    {brief && (
+                      <article className="panel financial-flag">
+                        <div className="flag-icon">!</div>
+                        <div>
+                          <h3>There’s a question hiding in the numbers.</h3>
+                          <p>{brief.finding.question}</p>
                           <button
                             className="text-button"
-                            onClick={() => {
-                              setSource(latestEvidence);
-                            }}
-                          >
-                            Inspect source & fit →
-                          </button>
-                          <button
-                            className="button"
                             onClick={() => {
                               openBrief();
                             }}
                           >
-                            Prepare me <ArrowRight size={14} />
+                            See the financial evidence →
                           </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="empty-signal">
-                        <Radar size={34} strokeWidth={1} />
-                        <h2>Your next signal starts here.</h2>
-                        <p className="signal-body">
-                          Set your founder profile, then run a radar check. June connects investor
-                          evidence with your financial preparation.
-                        </p>
-                        <p className="source-label">
-                          Research searches public sources with Exa and checks supporting passages.
-                          Results depend on publicly accessible information.
-                        </p>
-                      </div>
+                      </article>
                     )}
-                    <div className="workflow">
-                      <strong>01 Notice the change</strong>
-                      <span>→</span>
-                      <span>02 Understand the fit</span>
-                      <span>→</span>
-                      <span>03 Be ready</span>
-                    </div>
-                  </article>
-                  {brief && (
-                    <article className="panel financial-flag">
-                      <div className="flag-icon">!</div>
-                      <div>
-                        <h3>There’s a question hiding in the numbers.</h3>
-                        <p>{brief.finding.question}</p>
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            openBrief();
-                          }}
-                        >
-                          See the financial evidence →
-                        </button>
+                    <p className="footnote">
+                      Confirm your stage, sector, location and raise goal before researching
+                      investors. Financial currency stays unspecified until you confirm it. Investor
+                      matching is a research lead, not a funding prediction.
+                    </p>
+                  </div>
+                  <div>
+                    <article className="panel">
+                      <div className="panel-title">
+                        <h3>Your investor radar</h3>
+                        <span className="count">Evidence first</span>
                       </div>
-                    </article>
-                  )}
-                  <p className="footnote">
-                    Confirm your stage, sector, location and raise goal before researching
-                    investors. Financial currency stays unspecified until you confirm it. Investor
-                    matching is a research lead, not a funding prediction.
-                  </p>
-                </div>
-                <div>
-                  <article className="panel">
-                    <div className="panel-title">
-                      <h3>Your investor radar</h3>
-                      <span className="count">Evidence first</span>
-                    </div>
-                    {workspace.evidence.length ? (
-                      workspace.evidence.map((evidence) => (
-                        <button
-                          className="investor investor-button"
-                          key={evidence.id}
-                          onClick={() => {
-                            setSource(evidence);
-                          }}
-                        >
-                          <div className="investor-head">
-                            <div className="investor-logo">{evidence.investor.slice(0, 1)}</div>
-                            <div>
-                              <div className="investor-name">{evidence.investor}</div>
-                              <div className="investor-type">
-                                {evidence.stage ?? 'Stage unknown'} ·{' '}
-                                {evidence.mode === 'demo'
-                                  ? 'Fictional example'
-                                  : 'Source-backed claims'}
+                      {workspace.evidence.length ? (
+                        workspace.evidence.map((evidence) => (
+                          <button
+                            className="investor investor-button"
+                            key={evidence.id}
+                            onClick={() => {
+                              setSource(evidence);
+                            }}
+                          >
+                            <div className="investor-head">
+                              <div className="investor-logo">{evidence.investor.slice(0, 1)}</div>
+                              <div>
+                                <div className="investor-name">{evidence.investor}</div>
+                                <div className="investor-type">
+                                  {evidence.stage ?? 'Stage unknown'} ·{' '}
+                                  {evidence.mode === 'demo'
+                                    ? 'Fictional example'
+                                    : 'Source-backed claims'}
+                                </div>
                               </div>
+                              <ArrowRight size={13} />
                             </div>
-                            <ArrowRight size={13} />
-                          </div>
-                          <p>{evidence.title}</p>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="investor">
-                        <h3>No investors researched yet.</h3>
-                        <p>
-                          Add up to five names to your profile’s watchlist or start with your
-                          founder segment.
-                        </p>
-                      </div>
-                    )}
-                  </article>
-                  <RevenueChart state={state} />
-                  <div className="research-note">
-                    <strong>Fit has reasons, not a magic score.</strong>Unknown criteria stay
-                    visible. Source passages support investigation; extracted claims still need
-                    verification.
+                            <p>{evidence.title}</p>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="investor">
+                          <h3>No investors researched yet.</h3>
+                          <p>
+                            Add up to five names to your profile’s watchlist or start with your
+                            founder segment.
+                          </p>
+                        </div>
+                      )}
+                    </article>
+                    <RevenueChart state={state} />
+                    <div className="research-note">
+                      <strong>Fit has reasons, not a magic score.</strong>Unknown criteria stay
+                      visible. Source passages support investigation; extracted claims still need
+                      verification.
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="runs">
-                <div className="runs-title">
-                  <Activity size={14} /> Recent checks <span>Worker polls every 2 seconds</span>
-                </div>
-                {state.jobs.slice(0, 3).map((job) => (
-                  <div className="run-row" key={job.id}>
-                    <span className={`run-dot ${job.status}`} />
-                    <strong>
-                      {job.kind === 'rebuild'
-                        ? 'Brief refresh'
-                        : job.kind === 'discover-investors'
-                          ? 'Investor discovery'
-                          : 'Investor research'}
-                    </strong>
-                    <span>{job.result ?? job.error ?? job.status}</span>
-                    <small>{when(job.createdAt)}</small>
+                <div className="runs">
+                  <div className="runs-title">
+                    <Activity size={14} /> Recent checks <span>Worker polls every 2 seconds</span>
                   </div>
-                ))}
-              </div>
+                  {state.jobs.slice(0, 3).map((job) => (
+                    <div className="run-row" key={job.id}>
+                      <span className={`run-dot ${job.status}`} />
+                      <strong>
+                        {job.kind === 'rebuild'
+                          ? 'Brief refresh'
+                          : job.kind === 'discover-investors'
+                            ? 'Investor discovery'
+                            : 'Investor research'}
+                      </strong>
+                      <span>{job.result ?? job.error ?? job.status}</span>
+                      <small>{when(job.createdAt)}</small>
+                    </div>
+                  ))}
+                </div>
+              </details>
             </>
           )}
           {page === Page.FINANCIALS && (

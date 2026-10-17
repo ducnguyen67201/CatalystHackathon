@@ -1,3 +1,4 @@
+import { workerHeartbeatSchema, type WorkerHeartbeat } from '../contracts/RadarDelivery.js';
 import {
   researchRunSchema,
   researchRunListSchema,
@@ -37,6 +38,8 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
         milestones: { orderBy: { createdAt: 'asc' } },
         notices: { orderBy: { createdAt: 'asc' } },
         investors: { orderBy: { createdAt: 'asc' } },
+        radarEvents: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        deliveries: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!record) {
@@ -49,6 +52,12 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       onboarding: record.onboarding,
       schedule: record.schedule,
       discovery: record.discovery,
+      radar: {
+        preferences: record.notificationSettings,
+        backfilledAt: record.radarBackfilledAt?.toISOString() ?? null,
+        events: record.radarEvents.map((item) => item.payload),
+        deliveries: record.deliveries.map((item) => item.payload),
+      },
       snapshots: record.snapshots.map((item) => item.payload),
       evidence: record.evidence.map((item) => item.payload),
       briefs: record.briefs.map((item) => item.payload),
@@ -86,6 +95,10 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
             onboarding: json(workspace.onboarding),
             schedule: json(workspace.schedule),
             discovery: json(workspace.discovery),
+            notificationSettings: json(workspace.radar.preferences),
+            radarBackfilledAt: workspace.radar.backfilledAt
+              ? new Date(workspace.radar.backfilledAt)
+              : null,
             updatedAt: new Date(),
           },
         });
@@ -144,6 +157,32 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
             create: { id: payload.id, workspaceId, key: payload.key, payload: json(payload) },
           });
         }
+        for (const payload of workspace.radar.events) {
+          await tx.radarEvent.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload) },
+            create: {
+              id: payload.id,
+              workspaceId,
+              dedupeKey: payload.dedupeKey,
+              payload: json(payload),
+              createdAt: new Date(payload.committedAt),
+            },
+          });
+        }
+        for (const payload of workspace.radar.deliveries) {
+          await tx.notificationDelivery.upsert({
+            where: { id: payload.id },
+            update: { payload: json(payload) },
+            create: {
+              id: payload.id,
+              workspaceId,
+              eventId: payload.eventId,
+              recipientRevision: payload.recipientRevision,
+              payload: json(payload),
+            },
+          });
+        }
         for (const payload of workspace.notices) {
           await tx.notice.upsert({
             where: { id: payload.id },
@@ -154,6 +193,17 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       },
       { timeout: 15000 },
     );
+  }
+  async recordHeartbeat(heartbeat: WorkerHeartbeat): Promise<void> {
+    await this.client.workerHeartbeat.upsert({
+      where: { workspaceId },
+      update: { payload: json(heartbeat) },
+      create: { workspaceId, payload: json(heartbeat) },
+    });
+  }
+  async readHeartbeat(): Promise<WorkerHeartbeat | null> {
+    const record = await this.client.workerHeartbeat.findUnique({ where: { workspaceId } });
+    return record ? workerHeartbeatSchema.parse(record.payload) : null;
   }
   async enqueue(key: string, kind: string): Promise<Job> {
     const activeWhere = {

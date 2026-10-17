@@ -1,3 +1,5 @@
+import { radarStateSchema } from '../contracts/RadarDelivery.js';
+import { RadarDeliveryService } from './RadarDeliveryService.js';
 import type { ResearchRunStore } from './ResearchRunStore.js';
 import { randomUUID } from 'node:crypto';
 import { silentWorkflowLog, type WorkflowLog } from './WorkflowLog.js';
@@ -26,6 +28,7 @@ import { practiceContextSchema, type PracticeContext } from '../contracts/Practi
 
 export class WorkspaceService {
   readonly investors: InvestorTrackingService;
+  readonly radar: RadarDeliveryService;
 
   constructor(
     readonly store: WorkspaceStore,
@@ -34,6 +37,7 @@ export class WorkspaceService {
     readonly researchRuns?: ResearchRunStore,
   ) {
     this.investors = new InvestorTrackingService(this, research);
+    this.radar = new RadarDeliveryService(this);
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
@@ -86,6 +90,7 @@ export class WorkspaceService {
       notices: [],
       investors: [],
       discovery: discoveryStateSchema.parse({}),
+      radar: radarStateSchema.parse({}),
     });
   }
   /** Reopens setup without deleting financials, company context, or research history. */

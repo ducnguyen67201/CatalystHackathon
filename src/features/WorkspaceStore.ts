@@ -1,3 +1,4 @@
+import type { WorkerHeartbeat } from '../contracts/RadarDelivery.js';
 import type { Job, Workspace } from '../contracts/Workspace.js';
 export class ConflictError extends Error {}
 export interface ClaimedJob {
@@ -15,5 +16,7 @@ export interface WorkspaceStore {
   claimJob(now: Date): Promise<ClaimedJob | null>;
   finishJob(job: ClaimedJob, result: string): Promise<void>;
   failJob(job: ClaimedJob, error: string): Promise<void>;
+  recordHeartbeat?(heartbeat: WorkerHeartbeat): Promise<void>;
+  readHeartbeat?(): Promise<WorkerHeartbeat | null>;
   close(): Promise<void>;
 }

@@ -1,3 +1,4 @@
+import { ResendEmailSender } from '../infrastructure/EmailNotifications.js';
 import { LogEvent, LogReason } from '../features/WorkflowLog.js';
 import { WorkflowLogger } from '../infrastructure/WorkflowLogger.js';
 import { PrismaStore } from '../infrastructure/PrismaStore.js';
@@ -21,5 +22,12 @@ export function createRuntime(env: Environment) {
       'warn',
     );
   }
-  return new WorkspaceService(store, research, logger, store);
+  const service = new WorkspaceService(store, research, logger, store);
+  if (env.RESEND_API_KEY && env.NOTIFICATION_FROM)
+    service.radar.configure(
+      new ResendEmailSender(env.RESEND_API_KEY),
+      env.NOTIFICATION_FROM,
+      env.WEB_ORIGIN,
+    );
+  return service;
 }

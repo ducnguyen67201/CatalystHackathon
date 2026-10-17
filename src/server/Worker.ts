@@ -4,6 +4,7 @@ import { describeResearchFailure } from '../infrastructure/WorkflowLogger.js';
 import { InvestorJob } from '../features/InvestorTrackingService.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
 export async function runWorkerTick(service: WorkspaceService): Promise<boolean> {
+  await service.radar.backfill();
   await service.investors.tick(new Date());
   await service.investors.discovery.tick(new Date());
   await service.tickSchedule(new Date());
@@ -12,6 +13,7 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
   if (!job) {
     return false;
   }
+  await service.radar.heartbeat('checking', job.id);
   return service.logger.run(
     { jobId: job.id, jobKind: job.kind, attempt: job.attempts },
     async () => {
@@ -35,6 +37,7 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
           throw new Error('Unknown workflow kind.');
         }
         await service.store.finishJob(job, result);
+        await service.radar.heartbeat('waiting', null, true);
         service.logger.write(LogEvent.WORKFLOW_SUCCEEDED, { durationMs: Date.now() - started });
       } catch (error) {
         const category =
@@ -46,6 +49,9 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
               ? 'Workspace changed; retrying.'
               : 'Workflow failed. Check provider configuration or retry after recovery.';
         await service.store.failJob(job, category);
+        await service.radar.heartbeat(
+          error instanceof ResearchConfigurationError || job.attempts >= 3 ? 'blocked' : 'retrying',
+        );
         service.logger.write(
           LogEvent.WORKFLOW_FAILED,
           { ...describeResearchFailure(error), durationMs: Date.now() - started },
@@ -58,6 +64,23 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
 }
 export function startWorker(service: WorkspaceService): () => void {
   let running = false;
+  let delivering = false;
+  const heartbeat = setInterval(() => {
+    void service.radar.heartbeat().catch(() => undefined);
+  }, 15000);
+  void service.radar.heartbeat('waiting').catch(() => undefined);
+  const deliveries = setInterval(() => {
+    if (delivering) return;
+    delivering = true;
+    void service.radar
+      .deliverOne()
+      .catch(() => {
+        service.logger.write(LogEvent.WORKER_TICK_FAILED, {}, 'error');
+      })
+      .finally(() => {
+        delivering = false;
+      });
+  }, 2000);
   const timer = setInterval(() => {
     if (running) {
       return;
@@ -73,5 +96,7 @@ export function startWorker(service: WorkspaceService): () => void {
   }, 2000);
   return () => {
     clearInterval(timer);
+    clearInterval(heartbeat);
+    clearInterval(deliveries);
   };
 }

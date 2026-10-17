@@ -98,7 +98,7 @@ export function InvestorTrackingPage({
       <div className="page-heading">
         <div>
           <div className="eyebrow">Your investor watchlist</div>
-          <h1>Start with who you know.</h1>
+          <h1>Your investor watchlist</h1>
           <p className="muted">
             Follow a person or firm. Keep the evidence behind your next conversation.
           </p>
