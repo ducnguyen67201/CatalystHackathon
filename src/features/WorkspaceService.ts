@@ -1,4 +1,8 @@
+import type { ResearchRunStore } from './ResearchRunStore.js';
 import { randomUUID } from 'node:crypto';
+import { silentWorkflowLog, type WorkflowLog } from './WorkflowLog.js';
+import { discoveryStateSchema } from '../contracts/InvestorDiscovery.js';
+import { RehearsalMode } from '../contracts/Workspace.js';
 import { onboardingSchema, type MeetingInput } from '../contracts/Onboarding.js';
 import { saveMeetingContext } from './Onboarding.js';
 import { InvestorTrackingService } from './InvestorTrackingService.js';
@@ -29,6 +33,8 @@ export class WorkspaceService {
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
+    readonly logger: WorkflowLog = silentWorkflowLog,
+    readonly researchRuns?: ResearchRunStore,
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
   ) {
     this.investors = new InvestorTrackingService(this, research);
@@ -90,6 +96,7 @@ export class WorkspaceService {
       milestones: [],
       notices: [],
       investors: [],
+      discovery: discoveryStateSchema.parse({}),
     });
   }
   /** Reopens setup without deleting financials, company context, or research history. */
@@ -246,9 +253,12 @@ export class WorkspaceService {
       return 'Meeting brief updated from the current evidence and financials.';
     });
   }
-  async runRadar(): Promise<string> {
+  async runRadar(jobId?: string, attempt = 1): Promise<string> {
     const input = await this.read();
-    const candidates = await this.research.discover(input.profile);
+    const candidates = await this.research.discover(input.profile, undefined, undefined, {
+      ...(jobId ? { jobId } : {}),
+      attempt,
+    });
     const result = await this.change((state) => {
       if (state.profile.version !== input.profile.version) {
         throw new ConflictError(
@@ -313,12 +323,23 @@ export class WorkspaceService {
     const frozenContext = context === null ? null : practiceContextSchema.parse(context);
     return this.change((state) => {
       const brief = state.briefs.find((item) => item.id === briefId);
-      if (!brief && !(briefId === null && mode === 'elevenlabs' && frozenContext !== null)) {
+      if (
+        !brief &&
+        !(
+          briefId === null &&
+          (mode === 'elevenlabs' || mode === RehearsalMode.LIVEAVATAR) &&
+          frozenContext !== null
+        )
+      ) {
         throw new Error('Choose an existing brief.');
       }
       if (
-        mode === 'elevenlabs' &&
-        state.rehearsals.some((item) => item.mode === 'elevenlabs' && item.status === 'active')
+        (mode === 'elevenlabs' || mode === RehearsalMode.LIVEAVATAR) &&
+        state.rehearsals.some(
+          (item) =>
+            (item.mode === 'elevenlabs' || item.mode === RehearsalMode.LIVEAVATAR) &&
+            item.status === 'active',
+        )
       ) {
         throw new Error('End an active rehearsal before starting another.');
       }
@@ -340,7 +361,7 @@ export class WorkspaceService {
         avatarSessionId: null,
         avatarCorrelationHash,
       };
-      if (mode !== 'elevenlabs' && brief) {
+      if (mode !== 'elevenlabs' && mode !== RehearsalMode.LIVEAVATAR && brief) {
         session.turns.push({ role: 'agent', text: brief.finding.question });
       }
       state.rehearsals.push(session);
@@ -350,7 +371,11 @@ export class WorkspaceService {
   async attachAvatarSession(sessionId: string, avatarSessionId: string): Promise<void> {
     await this.change((state) => {
       const session = state.rehearsals.find((item) => item.id === sessionId);
-      if (!session || !session.avatarCorrelationHash || session.avatarSessionId) {
+      if (
+        !session ||
+        (!session.avatarCorrelationHash && session.mode !== RehearsalMode.LIVEAVATAR) ||
+        session.avatarSessionId
+      ) {
         throw new Error('Session unavailable.');
       }
       session.avatarSessionId = avatarSessionId;
@@ -367,6 +392,7 @@ export class WorkspaceService {
       const session = state.rehearsals.find((item) => item.id === sessionId);
       if (
         !session ||
+        session.mode !== 'elevenlabs' ||
         session.avatarCorrelationHash !== correlationHash ||
         !session.avatarSessionId ||
         (session.conversationId !== null && session.conversationId !== conversationId) ||
@@ -384,7 +410,12 @@ export class WorkspaceService {
   async answer(sessionId: string, text: string): Promise<void> {
     await this.change((state) => {
       const session = state.rehearsals.find((item) => item.id === sessionId);
-      if (!session || session.status !== 'active' || session.mode === 'elevenlabs') {
+      if (
+        !session ||
+        session.status !== 'active' ||
+        session.mode === 'elevenlabs' ||
+        session.mode === RehearsalMode.LIVEAVATAR
+      ) {
         throw new Error('This practice session is not available for text answers.');
       }
       const brief = state.briefs.find((item) => item.id === session.briefId);
@@ -407,7 +438,7 @@ export class WorkspaceService {
     sessionId: string,
     turns: TranscriptTurn[],
     completed: boolean,
-    fromWebhook = false,
+    fromProvider = false,
   ): Promise<void> {
     await this.change((state) => {
       const session = state.rehearsals.find((item) => item.id === sessionId);
@@ -417,11 +448,14 @@ export class WorkspaceService {
       if (session.status === 'completed' || session.transcriptReceivedAt !== null) {
         return;
       }
-      if (session.mode === 'elevenlabs' && !fromWebhook) {
+      if (
+        (session.mode === 'elevenlabs' || session.mode === RehearsalMode.LIVEAVATAR) &&
+        !fromProvider
+      ) {
         session.status = completed ? 'awaiting_transcript' : 'partial';
         return;
       }
-      if (fromWebhook) {
+      if (fromProvider) {
         session.turns = turns;
         session.transcriptReceivedAt = new Date().toISOString();
       }

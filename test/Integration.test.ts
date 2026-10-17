@@ -15,7 +15,13 @@ import {
   JobStatus,
 } from '../src/contracts/Workspace.js';
 import { PrismaStore } from '../src/infrastructure/PrismaStore.js';
-import { DemoResearch } from '../src/infrastructure/Research.js';
+import { ResearchFixture } from './fixtures/ResearchFixture.js';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import {
+  importResearchRunSchema,
+  researchRunSchema,
+  researchRunListSchema,
+} from '../src/contracts/ResearchRun.js';
 import { WorkspaceService } from '../src/features/WorkspaceService.js';
 import { readEnvironment } from '../src/server/Env.js';
 import { createApi } from '../src/server/Api.js';
@@ -52,12 +58,13 @@ beforeAll(async () => {
     throw new Error('Temporary database migration failed.');
   }
   store = new PrismaStore(databaseUrl.href);
-  service = new WorkspaceService(store, new DemoResearch(), {
+  service = new WorkspaceService(store, new ResearchFixture(), undefined, store, {
     store,
     generator: new DemoScenarioGenerator(),
   });
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
+  await service.investors.discovery.setFrequency('paused');
   app = await createApi(
     service,
     readEnvironment({ DATABASE_URL: databaseUrl.href, WEB_ORIGIN: 'http://127.0.0.1:4317' }),
@@ -77,26 +84,26 @@ async function state() {
   return stateResponseSchema.parse(response.json());
 }
 describe('PostgreSQL-backed application workflow', () => {
-  it('binds video transcripts through signed correlation and stops the stored provider session', async () => {
+  it('runs built-in video without ElevenLabs and saves only provider-fetched transcripts', async () => {
     const avatarId = 'b672e83f-398a-4701-ac89-949fe3b680ea';
     const createToken = vi
       .fn<AvatarProvider['createToken']>()
       .mockResolvedValue({ token: 'video-token', avatarSessionId: avatarId });
     const stopSession = vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined);
+    const fetchTranscript = vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null);
     const videoApi = await createApi(
       service,
       readEnvironment({
         DATABASE_URL: databaseUrl.href,
         LIVEAVATAR_API_KEY: 'avatar-key',
         LIVEAVATAR_AVATAR_ID: avatarId,
-        LIVEAVATAR_ELEVENLABS_SECRET_ID: 'b822515d-d4a5-431c-bbc4-059bfca7b702',
-        ELEVENLABS_AGENT_ID: 'video-agent',
-        ELEVENLABS_WEBHOOK_SECRET: 'video-secret',
+        LIVEAVATAR_VOICE_ID: avatarId,
+        LIVEAVATAR_CONTEXT_ID: avatarId,
       }),
       {
         contextProvider: new NoopPracticeContextProvider(),
         createToken: vi.fn<typeof createVoiceToken>(),
-        avatarProvider: { createToken, stopSession },
+        avatarProvider: { createToken, stopSession, fetchTranscript },
       },
     );
     try {
@@ -113,58 +120,20 @@ describe('PostgreSQL-backed application workflow', () => {
       expect(response.statusCode).toBe(200);
       const started = avatarSessionResponseSchema.parse(response.json());
       expect(started.session.context?.mode).toBe('empty');
+      expect(started.session.mode).toBe('liveavatar');
       expect(started.session.conversationId).toBeNull();
-      const nonce = createToken.mock.calls.at(0)?.[3];
-      expect(nonce).toHaveLength(64);
-      expect(response.body).not.toContain(nonce);
       const before = (await service.read()).briefs.length;
-      async function deliver(
-        correlationNonce: string | undefined,
-        conversationId = 'video-conversation',
-      ) {
-        const body = JSON.stringify({
-          type: 'post_call_transcription',
-          data: {
-            agent_id: 'video-agent',
-            conversation_id: conversationId,
-            status: 'done',
-            conversation_initiation_client_data: {
-              dynamic_variables: {
-                june_session_id: started.session.id,
-                june_session_nonce: correlationNonce,
-              },
-            },
-            transcript: [
-              { role: 'agent', message: 'Tell me about your business.' },
-              { role: 'user', message: 'We help teams prepare.' },
-            ],
-          },
-        });
-        const timestamp = String(Math.floor(Date.now() / 1000));
-        const signature = createHmac('sha256', 'video-secret')
-          .update(`${timestamp}.${body}`)
-          .digest('hex');
-        return videoApi.inject({
-          method: 'POST',
-          url: '/api/webhooks/elevenlabs',
-          headers: {
-            'content-type': 'application/json',
-            'elevenlabs-signature': `t=${timestamp},v0=${signature}`,
-          },
-          payload: body,
-        });
-      }
-      expect((await deliver('0'.repeat(64))).statusCode).toBe(202);
-      expect((await deliver(nonce)).statusCode).toBe(200);
-      expect((await deliver(nonce, 'different-conversation')).statusCode).toBe(202);
-      expect((await deliver(nonce)).statusCode).toBe(200);
-      const saved = (await service.read()).rehearsals.find(
-        (item) => item.id === started.session.id,
-      );
-      expect(saved?.conversationId).toBe('video-conversation');
-      expect(saved?.turns).toHaveLength(2);
-      expect(saved?.status).toBe('completed');
-      expect((await service.read()).briefs).toHaveLength(before);
+      expect(
+        (
+          await videoApi.inject({
+            method: 'POST',
+            url: '/api/avatar/sessions',
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(createToken).toHaveBeenCalledTimes(1);
       expect(
         (
           await videoApi.inject({
@@ -176,6 +145,32 @@ describe('PostgreSQL-backed application workflow', () => {
         ).statusCode,
       ).toBe(200);
       expect(stopSession).toHaveBeenCalledWith('avatar-key', avatarId);
+      expect(
+        (await service.read()).rehearsals.find((item) => item.id === started.session.id)?.status,
+      ).toBe('awaiting_transcript');
+      fetchTranscript.mockResolvedValue([
+        { role: 'agent', text: 'Tell me about your business.' },
+        { role: 'user', text: 'We help teams prepare.' },
+      ]);
+      const path = `/api/avatar/sessions/${started.session.id}/transcript`;
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: { turns: [] } }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: {} })).statusCode,
+      ).toBe(200);
+      expect(fetchTranscript).toHaveBeenLastCalledWith('avatar-key', avatarId);
+      const calls = fetchTranscript.mock.calls.length;
+      await videoApi.inject({ method: 'POST', url: path, headers, payload: {} });
+      expect(fetchTranscript).toHaveBeenCalledTimes(calls);
+      const saved = (await service.read()).rehearsals.find(
+        (item) => item.id === started.session.id,
+      );
+      expect(saved?.turns).toHaveLength(2);
+      expect(saved?.transcriptReceivedAt).not.toBeNull();
+      expect(saved?.status).toBe('completed');
+      expect((await service.read()).briefs).toHaveLength(before);
       createToken.mockRejectedValueOnce(new Error('Provider unavailable'));
       expect(
         (
@@ -1059,13 +1054,15 @@ describe('saved scenario workflow', () => {
         ELEVENLABS_WEBHOOK_SECRET: 'test-secret',
         LIVEAVATAR_API_KEY: 'test-avatar-key',
         LIVEAVATAR_AVATAR_ID: randomUUID(),
-        LIVEAVATAR_ELEVENLABS_SECRET_ID: randomUUID(),
+        LIVEAVATAR_VOICE_ID: randomUUID(),
+        LIVEAVATAR_CONTEXT_ID: randomUUID(),
       }),
       {
         contextProvider: new NoopPracticeContextProvider(),
         createToken,
         avatarProvider: {
           createToken: avatarToken,
+          fetchTranscript: vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null),
           stopSession: vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined),
         },
       },
@@ -1131,6 +1128,261 @@ describe('saved scenario workflow', () => {
       await service.finishRehearsal(empty.session.id, [], false);
     } finally {
       await localApi.close();
+    }
+  });
+});
+
+it('keeps state polling separate from interview control requests', async () => {
+  const limitedApi = await createApi(service, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+  try {
+    const login = await limitedApi.inject({ method: 'POST', url: '/api/session' });
+    const headers = {
+      cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+    };
+    for (let index = 0; index < 120; index += 1) {
+      expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(200);
+    }
+    expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(429);
+    expect(
+      (
+        await limitedApi.inject({
+          method: 'POST',
+          url: '/api/avatar/sessions',
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(503);
+  } finally {
+    await limitedApi.close();
+  }
+});
+
+describe('durable investor suggestions', () => {
+  it('deduplicates discovery jobs and persists explicit Track and Dismiss decisions', async () => {
+    await service.change((workspace) => {
+      workspace.profile.stage = 'Seed';
+      workspace.profile.sector = 'B2B software';
+      workspace.profile.geography = 'Canada';
+      workspace.profile.version++;
+    });
+    const headers = { cookie: sessionCookie, origin: 'http://127.0.0.1:4317' };
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        app.inject({
+          method: 'POST',
+          url: '/api/investors/discover',
+          headers,
+          payload: { key: randomUUID() },
+        }),
+      ),
+    );
+    expect(responses.every((response) => response.statusCode === 202)).toBe(true);
+    expect(new Set(responses.map((response) => jobSchema.parse(response.json()).id)).size).toBe(1);
+    const before = (await service.read()).investors.length;
+    await runWorkerTick(service);
+    const suggestions = (await service.read()).discovery.suggestions;
+    expect(suggestions).toHaveLength(3);
+    expect((await service.read()).investors).toHaveLength(before);
+    const [track, dismiss] = suggestions;
+    if (!track || !dismiss) {
+      throw new Error('Missing suggestions');
+    }
+    for (const [suggestion, decision] of [
+      [track, 'tracked'],
+      [dismiss, 'dismissed'],
+    ] as const) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/investors/suggestions/${suggestion.id}/decision`,
+        headers,
+        payload: { decision },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    const fresh = new PrismaStore(databaseUrl.href);
+    try {
+      const saved = await fresh.load();
+      expect(saved?.investors).toHaveLength(before + 1);
+      expect(saved?.discovery.suggestions.find((item) => item.id === dismiss.id)?.status).toBe(
+        'dismissed',
+      );
+      expect(saved?.investors.find((item) => item.name === track.name)?.frequency).toBe('daily');
+    } finally {
+      await fresh.close();
+    }
+  });
+});
+
+describe('research archive API', () => {
+  it('persists raw imports, enforces sessions, and exposes immutable paged records', async () => {
+    const snapshot = await service.read();
+    const body = importResearchRunSchema.parse({
+      id: randomUUID(),
+      kind: 'investor',
+      investorId: null,
+      input: {
+        profileVersion: snapshot.profile.version,
+        segment: {
+          stage: snapshot.profile.stage,
+          sector: snapshot.profile.sector,
+          geography: snapshot.profile.geography,
+        },
+        target: { name: 'Example investor', url: 'https://example.com/person', profileLinks: [] },
+        discovery: null,
+      },
+      searches: [
+        {
+          query: 'Example investor',
+          retrievedAt: '2026-10-17T00:00:00Z',
+          sources: [
+            {
+              title: 'Public profile',
+              url: 'https://example.com/person',
+              text: 'Unverified public source text.',
+            },
+          ],
+        },
+      ],
+      startedAt: '2026-10-17T00:00:00Z',
+      finishedAt: '2026-10-17T00:00:01Z',
+    });
+    const headers = { cookie: sessionCookie };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/research-runs', payload: body })).statusCode,
+    ).toBe(401);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/research-runs',
+      headers,
+      payload: body,
+    });
+    expect(created.statusCode).toBe(201);
+    expect(researchRunSchema.parse(created.json())).toMatchObject({
+      origin: 'import',
+      status: 'source_only',
+      evidence: [],
+      jobId: null,
+    });
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/research-runs', headers, payload: body }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, kind: 'discovery' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, evidence: [] },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, id: randomUUID(), investorId: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const secondId = randomUUID();
+    await app.inject({
+      method: 'POST',
+      url: '/api/research-runs',
+      headers,
+      payload: { ...body, id: secondId },
+    });
+    const listed = await app.inject({ url: '/api/research-runs?kind=investor&limit=1', headers });
+    expect(listed.statusCode).toBe(200);
+    const first = researchRunListSchema.parse(listed.json());
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.sourceCount).toBe(1);
+    expect(first.nextOffset).toBe(1);
+    expect(listed.body).not.toContain('Unverified public source text.');
+    const second = researchRunListSchema.parse(
+      (
+        await app.inject({ url: '/api/research-runs?kind=investor&limit=1&offset=1', headers })
+      ).json(),
+    );
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect((await app.inject({ url: '/api/research-runs?limit=1000', headers })).statusCode).toBe(
+      400,
+    );
+    const detail = await app.inject({ url: `/api/research-runs/${body.id}`, headers });
+    expect(researchRunSchema.parse(detail.json()).searches).toEqual(body.searches);
+    expect(detail.headers['cache-control']).toBe('no-store');
+    expect(
+      (await app.inject({ url: `/api/research-runs/${randomUUID()}`, headers })).statusCode,
+    ).toBe(404);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.findResearchRun(body.id))?.searches).toEqual(body.searches);
+    } finally {
+      await reopened.close();
+    }
+  });
+});
+
+describe('automatic research archiving', () => {
+  it('saves investor and discovery workflow outputs in PostgreSQL with job correlation', async () => {
+    const research = new LiveResearch('test-exa', 'test-model', 'test-model', undefined, store);
+    const recording = new WorkspaceService(store, research, undefined, store);
+    const current = await recording.read();
+    await recording.updateProfile({
+      ...current.profile,
+      stage: 'Seed',
+      sector: 'B2B software',
+      geography: 'Canada',
+    });
+    const target = await recording.investors.add({
+      name: 'Archive Test',
+      url: 'https://example.com/archive-test',
+      frequency: 'paused',
+    });
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({ results: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await recording.investors.check(target.id, 'archive-check', 2);
+      await recording.investors.discover('archive-discovery', 1);
+      const checked = await store.listResearchRuns({
+        investorId: target.id,
+        jobId: 'archive-check',
+        limit: 20,
+        offset: 0,
+      });
+      expect(checked.items).toHaveLength(1);
+      expect(checked.items[0]).toMatchObject({ kind: 'investor', status: 'succeeded', attempt: 2 });
+      const discovered = await store.listResearchRuns({
+        kind: 'discovery',
+        jobId: 'archive-discovery',
+        limit: 20,
+        offset: 0,
+      });
+      expect(discovered.items).toHaveLength(1);
+      const id = discovered.items[0]?.id;
+      if (!id) {
+        throw new Error('Archive missing');
+      }
+      expect((await store.findResearchRun(id))?.searches).toHaveLength(2);
+      await recording.investors.check(target.id, 'archive-check', 2);
+      expect(
+        (await store.listResearchRuns({ jobId: 'archive-check', limit: 20, offset: 0 })).items,
+      ).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

@@ -36,7 +36,7 @@ export function readEnvironment(values: EnvironmentValues) {
       DATABASE_URL: databaseUrlSchema,
       API_PORT: apiPortSchema,
       WEB_ORIGIN: webOriginSchema,
-      RESEARCH_MODE: z.enum(['demo', 'live']).default('demo'),
+      LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('debug'),
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),
       RESEARCH_MODEL: z.string().default('gpt-6.1-sol'),
@@ -47,16 +47,14 @@ export function readEnvironment(values: EnvironmentValues) {
       ELEVENLABS_WEBHOOK_SECRET: z.string().optional(),
       LIVEAVATAR_API_KEY: z.string().optional(),
       LIVEAVATAR_AVATAR_ID: z.uuid().optional(),
-      LIVEAVATAR_ELEVENLABS_SECRET_ID: z.uuid().optional(),
+      LIVEAVATAR_VOICE_ID: z.uuid().optional(),
+      LIVEAVATAR_CONTEXT_ID: z.uuid().optional(),
       TRIGGER_PROJECT_REF: z.string().optional(),
     },
     runtimeEnv: { ...values },
     emptyStringAsUndefined: true,
     onValidationError: rejectSettings,
   });
-  if (env.RESEARCH_MODE === 'live' && (!env.EXA_API_KEY || !env.OPENAI_API_KEY)) {
-    rejectSettings();
-  }
   if (env.SCENARIO_MODE === 'live' && !env.OPENAI_API_KEY) rejectSettings();
   return env;
 }

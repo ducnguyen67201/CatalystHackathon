@@ -1,3 +1,5 @@
+import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
+import { RehearsalMode } from '../contracts/Workspace.js';
 import { readFile } from 'node:fs/promises';
 import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { LocalSessionError } from '../contracts/LocalSession.js';
@@ -110,7 +112,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Onboarding:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:)/.test(
         error.message,
       )
     ) {
@@ -124,14 +126,22 @@ export async function createApi(
       typeof error.code === 'string'
         ? error.code
         : 'UNKNOWN';
+    const diagnostic = z
+      .object({ statusCode: z.number().int().min(400).max(599).optional() })
+      .safeParse(error);
     console.warn(
       JSON.stringify({
+        statusCode: diagnostic.success ? (diagnostic.data.statusCode ?? 500) : 500,
+        requestId: request.id,
         event: 'api_request_failed',
         stage: request.routeOptions.url,
         code,
         category: error instanceof Error ? error.name : 'unknown',
       }),
     );
+    if (diagnostic.success && diagnostic.data.statusCode === 429) {
+      return reply.code(429).send({ error: 'Too many requests. Wait a moment and try again.' });
+    }
     void reply
       .code(500)
       .send({ error: 'The operation failed. Check server configuration and try again.' });
@@ -146,18 +156,17 @@ export async function createApi(
     return { ok: true };
   });
   app.get('/api/health', () => ({ status: 'ready', localOnly: true }));
-  app.get('/api/state', async () =>
+  app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
       workspace: await service.read(),
       jobs: await service.store.listJobs(),
       capabilities: {
         avatarReady: isAvatarConfigured(env),
-        researchMode: env.RESEARCH_MODE,
+        researchMode: 'live',
         voiceReady: Boolean(
           env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID && env.ELEVENLABS_WEBHOOK_SECRET,
         ),
-        researchReady:
-          env.RESEARCH_MODE === 'demo' || Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
+        researchReady: Boolean(env.EXA_API_KEY && env.OPENAI_API_KEY),
         scenarioMode: service.scenarios?.generator.mode ?? 'demo',
         scenarioReady: service.scenarios !== null,
         localOnly: true,
@@ -214,6 +223,7 @@ export async function createApi(
   });
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
+  registerResearchRunRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };
@@ -241,7 +251,13 @@ export async function createApi(
       });
     }
     const state = await service.read();
-    if (state.rehearsals.some((item) => item.mode === 'elevenlabs' && item.status === 'active')) {
+    if (
+      state.rehearsals.some(
+        (item) =>
+          (item.mode === 'elevenlabs' || item.mode === RehearsalMode.LIVEAVATAR) &&
+          item.status === 'active',
+      )
+    ) {
       throw new Error('End an active rehearsal before starting another.');
     }
     if (selection && !service.scenarios) throw new Error('Scenario unavailable.');
@@ -285,7 +301,9 @@ export async function createApi(
         });
       }
       const active = state.rehearsals.filter(
-        (item) => item.mode === 'elevenlabs' && item.status === 'active',
+        (item) =>
+          (item.mode === 'elevenlabs' || item.mode === RehearsalMode.LIVEAVATAR) &&
+          item.status === 'active',
       );
       if (active.length) {
         throw new Error('End an active rehearsal before starting another.');

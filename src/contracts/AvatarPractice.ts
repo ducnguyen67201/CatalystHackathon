@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { rehearsalSchema } from './Workspace.js';
 
+export const AVATAR_SESSION_DURATION_SECONDS = 120;
+
 export const avatarSessionResponseSchema = z.strictObject({
   session: rehearsalSchema,
   token: z.string().min(1),

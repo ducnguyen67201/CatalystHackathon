@@ -177,6 +177,9 @@ export function App() {
         }
       });
     const timer = setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
       void fetchState()
         .then((data) => {
           if (alive) {
@@ -280,7 +283,7 @@ export function App() {
   ];
   return (
     <div className="layout dashboard-layout">
-      <header className="workspace-header">
+      <aside className="workspace-sidebar" aria-label="Workspace sidebar">
         <button
           className="brand brand-home"
           aria-label="June home"
@@ -304,13 +307,14 @@ export function App() {
                 setPage(item.id);
               }}
             >
-              {item.label}
+              <item.icon size={18} aria-hidden="true" />
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
         <div className="workspace-status">
           <span className="demo-badge">
-            {state.capabilities.researchMode === 'demo' ? 'Demo research' : 'Live research'}
+            {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
           </span>
           <button
             className="notification-button"
@@ -323,7 +327,7 @@ export function App() {
             {unread > 0 && <i />}
           </button>
         </div>
-      </header>
+      </aside>
       <main className="main">
         <div className="content">
           {error && (
@@ -542,8 +546,8 @@ export function App() {
                           evidence with your financial preparation.
                         </p>
                         <p className="source-label">
-                          Demo mode uses clearly labeled fictional investors. Live research can be
-                          configured in the server environment.
+                          Research searches public sources with Exa and checks supporting passages.
+                          Results depend on publicly accessible information.
                         </p>
                       </div>
                     )}
@@ -573,9 +577,9 @@ export function App() {
                     </article>
                   )}
                   <p className="footnote">
-                    Stage, sector, location and raise goal begin as editable demo assumptions.
-                    Financial currency stays unspecified until you confirm it. Investor matching is
-                    a research lead, not a funding prediction.
+                    Confirm your stage, sector, location and raise goal before researching
+                    investors. Financial currency stays unspecified until you confirm it. Investor
+                    matching is a research lead, not a funding prediction.
                   </p>
                 </div>
                 <div>

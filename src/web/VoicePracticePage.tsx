@@ -30,7 +30,7 @@ export function VoicePracticePage({ page = 'room' }: { page?: 'scenarios' | 'roo
       });
 
     const timer = setInterval(() => {
-      if (polling) {
+      if (polling || document.visibilityState === 'hidden') {
         return;
       }
       polling = true;

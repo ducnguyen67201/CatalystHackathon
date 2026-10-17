@@ -20,6 +20,7 @@ export const investorInputSchema = z.strictObject({
 
 export const investorCheckSchema = z.strictObject({
   jobId: z.string(),
+  mode: z.enum(['demo', 'live']).optional(),
   checkedAt: z.iso.datetime(),
   profileVersion: z.int().positive(),
   evidenceIds: z.array(z.string()),

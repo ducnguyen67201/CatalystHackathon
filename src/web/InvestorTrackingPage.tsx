@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { InvestorSuggestions } from './InvestorSuggestions.js';
 import { Plus, Search, RefreshCw, ExternalLink, ArrowRight } from 'lucide-react';
 import { z } from 'zod';
 import {
@@ -63,16 +64,16 @@ export function InvestorTrackingPage({
   const [message, setMessage] = useState('');
   const investors = state.workspace.investors;
   const selected = investors.find((item) => item.id === selectedId) ?? investors[0];
-  const discovery = state.jobs.find((job) => job.kind === 'discover-investors');
-  const discoveryPending =
-    discovery?.status === JobStatus.QUEUED || discovery?.status === JobStatus.RUNNING;
   const latestCheck = selected?.checks.at(-1);
   const selectedJob = state.jobs.find((job) => job.kind === `${checkPrefix}${selected?.id ?? ''}`);
   const selectedPending =
     selectedJob?.status === JobStatus.QUEUED || selectedJob?.status === JobStatus.RUNNING;
-  const evidenceIds =
-    latestCheck?.evidenceIds ??
-    (selected?.discoveryEvidenceId ? [selected.discoveryEvidenceId] : []);
+  const evidenceIds = [
+    ...new Set([
+      ...(latestCheck?.evidenceIds ?? []),
+      ...(selected?.discoveryEvidenceId ? [selected.discoveryEvidenceId] : []),
+    ]),
+  ];
   const sources = evidenceIds.flatMap((id) => {
     const source = state.workspace.evidence.find((item) => item.id === id);
     return source ? [source] : [];
@@ -110,10 +111,10 @@ export function InvestorTrackingPage({
         <ArrowRight size={14} />
         <span>03 Review what changed</span>
       </div>
-      {state.capabilities.researchMode === 'demo' && (
+      {!state.capabilities.researchReady && (
         <p className="investor-demo">
-          Demo mode: saves real profile links, but makes no live searches. “Find candidates”
-          demonstrates the loop with fictional Northline Ventures.
+          Research is not configured. Add EXA_API_KEY and OPENAI_API_KEY in Doppler, then restart
+          the API and worker. Saved profiles will use live public-source research.
         </p>
       )}
       <form
@@ -177,41 +178,6 @@ export function InvestorTrackingPage({
           {message}
         </p>
       )}
-      <div className="investor-discovery">
-        <div>
-          <strong>Who else is worth researching?</strong>
-          <p className="muted">
-            Find candidates for {state.workspace.profile.stage} · {state.workspace.profile.sector} ·{' '}
-            {state.workspace.profile.geography}. Every new candidate gets an individual check and
-            daily monitoring.
-          </p>
-        </div>
-        <button
-          className="button secondary"
-          disabled={busy || discoveryPending}
-          onClick={() => {
-            void act(async () => {
-              await request('/investors/discover', jobSchema, { key: crypto.randomUUID() });
-              setMessage(
-                'Discovery queued. Check results will appear here as the worker finishes.',
-              );
-            });
-          }}
-        >
-          <Search size={16} />
-          {discoveryPending ? 'Finding candidates…' : 'Find candidates'}
-        </button>
-      </div>
-      {discovery?.error && (
-        <p role="status" className="muted">
-          Discovery {discovery.status}: {discovery.error}
-        </p>
-      )}
-      {discovery?.result && (
-        <p className="muted" role="status">
-          {discovery.result}
-        </p>
-      )}
       <div className="investor-grid">
         <aside className="investor-list" aria-label="Tracked investors">
           <div className="investor-list-heading">
@@ -249,7 +215,9 @@ export function InvestorTrackingPage({
                     : job?.status === JobStatus.FAILED
                       ? 'Check failed · retry available'
                       : check
-                        ? `${check.addedIds.length + check.changedIds.length} new source versions in last check`
+                        ? check.mode === 'demo'
+                          ? `Previous demo check · ${check.evidenceIds.length} sources · no live search`
+                          : `${check.evidenceIds.length} sources · ${check.addedIds.length + check.changedIds.length} new versions`
                         : 'Waiting for first check'}
                 </small>
               </button>
@@ -431,6 +399,7 @@ export function InvestorTrackingPage({
           )}
         </div>
       </div>
+      <InvestorSuggestions state={state} onRefresh={onRefresh} />
     </section>
   );
 }

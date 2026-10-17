@@ -4,6 +4,7 @@ import { Mic, MicOff, Square } from 'lucide-react';
 import { z } from 'zod';
 import type { StateResponse, TranscriptTurn } from '../contracts/Workspace.js';
 import { endVoicePractice, startVoicePractice } from './VoicePracticeClient.js';
+import { describeVoiceFailure } from './VoiceFailure.js';
 import './AvatarPractice.css';
 import type { ScenarioSelection } from '../contracts/Scenario.js';
 
@@ -46,6 +47,7 @@ export function VoicePractice({
           aria-pressed={videoMode}
           disabled={sessionBusy}
           onClick={() => {
+            onError('');
             setVideoMode(true);
           }}
         >
@@ -56,6 +58,7 @@ export function VoicePractice({
           aria-pressed={!videoMode}
           disabled={sessionBusy}
           onClick={() => {
+            onError('');
             setVideoMode(false);
           }}
         >
@@ -108,6 +111,8 @@ function VoicePracticeSession({
   const starting = useRef(false);
   const closing = useRef(false);
   const activeId = useRef<string | null>(null);
+  const browserSupportsVoice =
+    typeof RTCPeerConnection !== 'undefined' && typeof AudioContext !== 'undefined';
 
   const conversation = useConversation({
     onMessage: (raw: unknown) => {
@@ -120,10 +125,19 @@ function VoicePracticeSession({
         setPreview((turns) => [...turns, turn].slice(-200));
       }
     },
-    onError: () => {
-      onError(
-        'Voice could not connect. Check microphone access and the published ElevenLabs agent.',
+    onError: (message: unknown) => {
+      const failure = describeVoiceFailure(message);
+      console.warn(
+        JSON.stringify({
+          event: 'voice_connection_failed',
+          stage: 'sdk_connect',
+          sessionId: activeId.current,
+          signals: failure.signals,
+        }),
       );
+      if (mounted.current) {
+        onError(failure.message);
+      }
       void finish(false);
     },
     onDisconnect: () => {
@@ -134,7 +148,8 @@ function VoicePracticeSession({
   });
 
   const sessions = state.workspace.rehearsals.filter(
-    (item) => item.context !== null && item.avatarCorrelationHash === null,
+    (item) =>
+      item.context !== null && item.mode === 'elevenlabs' && item.avatarCorrelationHash === null,
   );
   const session = sessions.find((item) => item.id === sessionId);
   const verified =
@@ -153,8 +168,15 @@ function VoicePracticeSession({
     if (starting.current || activeId.current) {
       return;
     }
+    if (!browserSupportsVoice) {
+      onError(
+        'This browser does not expose WebRTC audio. Open this page in Chrome to use voice practice.',
+      );
+      return;
+    }
     starting.current = true;
     onLockChange?.(true);
+    onError('');
     setBusy(true);
     try {
       /* Ask before minting a token, so denied permission leaves no active server session. */
@@ -251,6 +273,7 @@ function VoicePracticeSession({
 
   useEffect(() => {
     mounted.current = true;
+    closing.current = false;
     return () => {
       mounted.current = false;
       closing.current = true;
@@ -318,7 +341,11 @@ function VoicePracticeSession({
               <button
                 className="button"
                 disabled={
-                  startDisabled || busy || !state.capabilities.voiceReady || abandoned.length > 0
+                  startDisabled ||
+                  busy ||
+                  !browserSupportsVoice ||
+                  !state.capabilities.voiceReady ||
+                  abandoned.length > 0
                 }
                 onClick={() => {
                   void start();
@@ -332,6 +359,12 @@ function VoicePracticeSession({
                 ? 'Microphone audio goes to ElevenLabs after you start. Final transcripts are saved in this workspace.'
                 : 'Configure the ElevenLabs key, private agent and transcript webhook to enable voice.'}
             </small>
+            {!browserSupportsVoice && (
+              <p role="status">
+                This browser does not expose WebRTC audio. Open http://127.0.0.1:4317/voice in
+                Chrome.
+              </p>
+            )}
           </div>
         </section>
         <article className="panel transcript">

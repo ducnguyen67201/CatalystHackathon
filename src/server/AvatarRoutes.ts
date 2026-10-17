@@ -1,10 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { voiceSessionRequestSchema } from '../contracts/VoicePractice.js';
 import { avatarSessionResponseSchema } from '../contracts/AvatarPractice.js';
 import { practiceContextSchema } from '../contracts/PracticeContext.js';
-import { idSchema } from '../contracts/Workspace.js';
+import { idSchema, RehearsalMode } from '../contracts/Workspace.js';
 import type { AvatarProvider } from '../features/AvatarProvider.js';
 import type { PracticeContextProvider } from '../features/PracticeContextProvider.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
@@ -14,9 +13,8 @@ export function isAvatarConfigured(env: Environment): boolean {
   return Boolean(
     env.LIVEAVATAR_API_KEY &&
     env.LIVEAVATAR_AVATAR_ID &&
-    env.LIVEAVATAR_ELEVENLABS_SECRET_ID &&
-    env.ELEVENLABS_AGENT_ID &&
-    env.ELEVENLABS_WEBHOOK_SECRET,
+    env.LIVEAVATAR_VOICE_ID &&
+    env.LIVEAVATAR_CONTEXT_ID,
   );
 }
 
@@ -27,41 +25,55 @@ export function registerAvatarRoutes(
   contextProvider: PracticeContextProvider,
   provider: AvatarProvider,
 ): void {
+  async function saveTranscript(id: string): Promise<boolean> {
+    const session = (await service.read()).rehearsals.find((item) => item.id === id);
+    if (
+      !session ||
+      session.mode !== RehearsalMode.LIVEAVATAR ||
+      !session.avatarSessionId ||
+      !env.LIVEAVATAR_API_KEY
+    ) {
+      throw new Error('LiveAvatar session unavailable.');
+    }
+    if (session.transcriptReceivedAt) {
+      return true;
+    }
+    if (session.status === 'active') {
+      return false;
+    }
+    const turns = await provider.fetchTranscript(env.LIVEAVATAR_API_KEY, session.avatarSessionId);
+    if (!turns) {
+      return false;
+    }
+    await service.finishRehearsal(id, turns, session.status === 'awaiting_transcript', true);
+    return true;
+  }
+
   app.post('/api/avatar/sessions', async (request, reply) => {
     const { selection } = voiceSessionRequestSchema.parse(request.body);
     if (
       !env.LIVEAVATAR_API_KEY ||
       !env.LIVEAVATAR_AVATAR_ID ||
-      !env.LIVEAVATAR_ELEVENLABS_SECRET_ID ||
-      !env.ELEVENLABS_AGENT_ID ||
-      !env.ELEVENLABS_WEBHOOK_SECRET
+      !env.LIVEAVATAR_VOICE_ID ||
+      !env.LIVEAVATAR_CONTEXT_ID
     ) {
       return reply.code(503).send({
-        error: 'Configure LiveAvatar and its ElevenLabs connector to enable the live interviewer.',
+        error:
+          'Configure the LiveAvatar API key, avatar, voice and context to enable the live interviewer.',
       });
     }
     const context = practiceContextSchema.parse(await contextProvider.loadContext(selection));
-    const nonce = randomBytes(32).toString('hex');
-    const correlationHash = createHash('sha256').update(nonce).digest('hex');
-    const session = await service.createRehearsal(
-      null,
-      'elevenlabs',
-      null,
-      context,
-      correlationHash,
-    );
+    const session = await service.createRehearsal(null, RehearsalMode.LIVEAVATAR, null, context);
     let avatarSessionId: string | null = null;
     try {
       const credentials = await provider.createToken(
         {
           apiKey: env.LIVEAVATAR_API_KEY,
           avatarId: env.LIVEAVATAR_AVATAR_ID,
-          elevenLabsSecretId: env.LIVEAVATAR_ELEVENLABS_SECRET_ID,
-          agentId: env.ELEVENLABS_AGENT_ID,
+          voiceId: env.LIVEAVATAR_VOICE_ID,
+          contextId: env.LIVEAVATAR_CONTEXT_ID,
         },
         context,
-        session.id,
-        nonce,
       );
       avatarSessionId = credentials.avatarSessionId;
       await service.attachAvatarSession(session.id, avatarSessionId);
@@ -92,6 +104,17 @@ export function registerAvatarRoutes(
     }
     await provider.stopSession(env.LIVEAVATAR_API_KEY, session.avatarSessionId);
     await service.finishRehearsal(id, [], completed);
+    if (session.mode === RehearsalMode.LIVEAVATAR) {
+      await saveTranscript(id).catch(() => {
+        console.warn(JSON.stringify({ event: 'avatar_transcript_pending', sessionId: id }));
+      });
+    }
     return { ok: true };
+  });
+
+  app.post('/api/avatar/sessions/:id/transcript', async (request) => {
+    const { id } = z.object({ id: idSchema }).parse(request.params);
+    z.strictObject({}).parse(request.body);
+    return { saved: await saveTranscript(id) };
   });
 }

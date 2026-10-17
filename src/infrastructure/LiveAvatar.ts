@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { AVATAR_SESSION_DURATION_SECONDS } from '../contracts/AvatarPractice.js';
+import type { TranscriptTurn } from '../contracts/Workspace.js';
 import type { PracticeContext } from '../contracts/PracticeContext.js';
 import type { AvatarProvider, AvatarSettings } from '../features/AvatarProvider.js';
 
@@ -17,30 +19,20 @@ const stoppedSessionSchema = z.object({
 
 /** Only this adapter sends LiveAvatar credentials; browsers receive a session token. */
 export class LiveAvatarProvider implements AvatarProvider {
-  async createToken(
-    settings: AvatarSettings,
-    context: PracticeContext,
-    sessionId: string,
-    nonce: string,
-  ) {
+  async createToken(settings: AvatarSettings, context: PracticeContext) {
     const response = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
       headers: { 'X-API-KEY': settings.apiKey, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
-        mode: 'LITE',
+        mode: 'FULL',
+        dynamic_variables: { brief_context: JSON.stringify(context) },
         avatar_id: settings.avatarId,
-        max_session_duration: 600,
-        elevenlabs_agent_config: {
-          agent_id: settings.agentId,
-          secret_id: settings.elevenLabsSecretId,
-          dynamic_variables: {
-            company_name: context.company?.name ?? 'the founder',
-            brief_context: JSON.stringify(context),
-            previous_session_summary: 'No previous rehearsal supplied.',
-            june_session_id: sessionId,
-            june_session_nonce: nonce,
-          },
+        max_session_duration: AVATAR_SESSION_DURATION_SECONDS,
+        avatar_persona: {
+          voice_id: settings.voiceId,
+          context_id: settings.contextId,
+          language: 'en',
         },
       }),
     });
@@ -51,6 +43,49 @@ export class LiveAvatarProvider implements AvatarProvider {
     const raw: unknown = await response.json();
     const result = tokenSchema.parse(raw);
     return { token: result.data.session_token, avatarSessionId: result.data.session_id };
+  }
+
+  /** Pull only the server-recorded session; browser captions never become saved evidence. */
+  async fetchTranscript(apiKey: string, avatarSessionId: string): Promise<TranscriptTurn[] | null> {
+    const response = await fetch(
+      `https://api.liveavatar.com/v1/sessions/${encodeURIComponent(avatarSessionId)}/transcript`,
+      { headers: { 'X-API-KEY': apiKey }, signal: AbortSignal.timeout(15000) },
+    );
+    if (response.status === 404 || response.status === 202) {
+      return null;
+    }
+    if (!response.ok) {
+      console.warn(JSON.stringify({ event: 'avatar_transcript_failed', status: response.status }));
+      throw new Error(
+        'The interview stopped, but the transcript could not be retrieved. Retry saving it.',
+      );
+    }
+    const raw: unknown = await response.json();
+    const result = z
+      .object({
+        code: successCodeSchema,
+        data: z
+          .object({
+            session_active: z.boolean(),
+            transcript_data: z
+              .array(
+                z.object({
+                  role: z.enum(['user', 'avatar', 'assistant', 'agent']),
+                  transcript: z.string().max(10000),
+                }),
+              )
+              .max(200),
+          })
+          .nullable(),
+      })
+      .parse(raw);
+    if (!result.data || result.data.session_active) {
+      return null;
+    }
+    const turns: TranscriptTurn[] = result.data.transcript_data
+      .filter((turn) => turn.transcript.trim().length > 0)
+      .map((turn) => ({ role: turn.role === 'user' ? 'user' : 'agent', text: turn.transcript }));
+    return turns.length ? turns : null;
   }
 
   async stopSession(apiKey: string, avatarSessionId: string): Promise<void> {
