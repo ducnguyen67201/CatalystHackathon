@@ -6,7 +6,7 @@ import { readEnvironment } from '../src/server/Env.js';
 import { isAvatarConfigured } from '../src/server/AvatarRoutes.js';
 
 const avatarId = 'b672e83f-398a-4701-ac89-949fe3b680ea';
-const secretId = 'b822515d-d4a5-431c-bbc4-059bfca7b702';
+const contextId = 'b822515d-d4a5-431c-bbc4-059bfca7b702';
 const providerSessionId = '67a1123f-a915-48c8-9d4c-aae60df15846';
 
 afterEach(() => {
@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('LiveAvatar adapter', () => {
-  it('creates a bounded ElevenLabs connector session with empty context and webhook correlation', async () => {
+  it('creates a two-minute FULL session without ElevenLabs credentials', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -28,30 +28,20 @@ describe('LiveAvatar adapter', () => {
       {
         apiKey: 'server-key',
         avatarId,
-        agentId: 'eleven-agent',
-        elevenLabsSecretId: secretId,
+        voiceId: 'eleven-agent',
+        contextId: contextId,
       },
       createEmptyPracticeContext(),
-      'app-session',
-      'test-nonce',
     );
     expect(response).toEqual({ token: 'short-lived-token', avatarSessionId: providerSessionId });
     const call = fetchMock.mock.calls.at(0);
     expect(call?.[0]).toBe('https://api.liveavatar.com/v1/sessions/token');
     const raw: unknown = JSON.parse(z.string().parse(call?.[1]?.body));
     expect(raw).toMatchObject({
-      mode: 'LITE',
-      max_session_duration: 600,
+      mode: 'FULL',
+      max_session_duration: 120,
       avatar_id: avatarId,
-      elevenlabs_agent_config: {
-        agent_id: 'eleven-agent',
-        secret_id: secretId,
-        dynamic_variables: {
-          june_session_id: 'app-session',
-          june_session_nonce: 'test-nonce',
-          company_name: 'the founder',
-        },
-      },
+      avatar_persona: { voice_id: 'eleven-agent', context_id: contextId, language: 'en' },
     });
     expect(JSON.stringify(raw)).not.toContain('server-key');
   });
@@ -65,16 +55,14 @@ describe('LiveAvatar adapter', () => {
     const provider = new LiveAvatarProvider();
     await expect(
       provider.createToken(
-        { apiKey: 'key', avatarId, agentId: 'agent', elevenLabsSecretId: secretId },
+        { apiKey: 'key', avatarId, voiceId: 'agent', contextId: contextId },
         createEmptyPracticeContext(),
-        'app',
-        'nonce',
       ),
     ).rejects.toThrow();
     await expect(provider.stopSession('key', providerSessionId)).resolves.toBeUndefined();
   });
 
-  it('keeps video unavailable until the complete connector configuration is supplied', () => {
+  it('keeps video unavailable until the built-in voice and context configuration is supplied', () => {
     const base = { DATABASE_URL: 'postgresql://example:example@localhost/example' };
     expect(isAvatarConfigured(readEnvironment(base))).toBe(false);
     expect(
@@ -83,9 +71,8 @@ describe('LiveAvatar adapter', () => {
           ...base,
           LIVEAVATAR_API_KEY: 'key',
           LIVEAVATAR_AVATAR_ID: avatarId,
-          LIVEAVATAR_ELEVENLABS_SECRET_ID: secretId,
-          ELEVENLABS_AGENT_ID: 'agent',
-          ELEVENLABS_WEBHOOK_SECRET: 'secret',
+          LIVEAVATAR_CONTEXT_ID: contextId,
+          LIVEAVATAR_VOICE_ID: contextId,
         }),
       ),
     ).toBe(true);
@@ -116,10 +103,8 @@ describe('LiveAvatar adapter', () => {
     );
     await expect(
       new LiveAvatarProvider().createToken(
-        { apiKey: 'key', avatarId, agentId: 'agent', elevenLabsSecretId: secretId },
+        { apiKey: 'key', avatarId, voiceId: 'agent', contextId: contextId },
         createEmptyPracticeContext(),
-        'app',
-        'nonce',
       ),
     ).rejects.toThrow();
   });
@@ -148,6 +133,45 @@ describe('LiveAvatar adapter', () => {
     await expect(provider.stopSession('key', providerSessionId)).resolves.toBeUndefined();
     await expect(provider.stopSession('key', providerSessionId)).rejects.toThrow(
       'could not be stopped',
+    );
+  });
+  it('retrieves ended provider transcripts and leaves active or empty results pending', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ code: 1000, data: { session_active: true, transcript_data: [] } }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ code: 1000, data: { session_active: false, transcript_data: [] } }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 1000,
+            data: {
+              session_active: false,
+              transcript_data: [
+                { role: 'avatar', transcript: 'Tell me about your business.' },
+                { role: 'user', transcript: 'We help founders.' },
+              ],
+            },
+          }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new LiveAvatarProvider();
+    expect(await provider.fetchTranscript('key', providerSessionId)).toBeNull();
+    expect(await provider.fetchTranscript('key', providerSessionId)).toBeNull();
+    expect(await provider.fetchTranscript('key', providerSessionId)).toEqual([
+      { role: 'agent', text: 'Tell me about your business.' },
+      { role: 'user', text: 'We help founders.' },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `https://api.liveavatar.com/v1/sessions/${providerSessionId}/transcript`,
     );
   });
 });

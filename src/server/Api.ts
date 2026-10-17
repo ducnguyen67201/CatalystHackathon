@@ -1,3 +1,4 @@
+import { RehearsalMode } from '../contracts/Workspace.js';
 import { readFile } from 'node:fs/promises';
 import { meetingInputSchema } from '../contracts/Onboarding.js';
 import { LocalSessionError } from '../contracts/LocalSession.js';
@@ -123,14 +124,22 @@ export async function createApi(
       typeof error.code === 'string'
         ? error.code
         : 'UNKNOWN';
+    const diagnostic = z
+      .object({ statusCode: z.number().int().min(400).max(599).optional() })
+      .safeParse(error);
     console.warn(
       JSON.stringify({
+        statusCode: diagnostic.success ? (diagnostic.data.statusCode ?? 500) : 500,
+        requestId: request.id,
         event: 'api_request_failed',
         stage: request.routeOptions.url,
         code,
         category: error instanceof Error ? error.name : 'unknown',
       }),
     );
+    if (diagnostic.success && diagnostic.data.statusCode === 429) {
+      return reply.code(429).send({ error: 'Too many requests. Wait a moment and try again.' });
+    }
     void reply
       .code(500)
       .send({ error: 'The operation failed. Check server configuration and try again.' });
@@ -145,7 +154,7 @@ export async function createApi(
     return { ok: true };
   });
   app.get('/api/health', () => ({ status: 'ready', localOnly: true }));
-  app.get('/api/state', async () =>
+  app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
       workspace: await service.read(),
       jobs: await service.store.listJobs(),
@@ -229,7 +238,13 @@ export async function createApi(
       });
     }
     const state = await service.read();
-    if (state.rehearsals.some((item) => item.mode === 'elevenlabs' && item.status === 'active')) {
+    if (
+      state.rehearsals.some(
+        (item) =>
+          (item.mode === 'elevenlabs' || item.mode === RehearsalMode.LIVEAVATAR) &&
+          item.status === 'active',
+      )
+    ) {
       throw new Error('End an active rehearsal before starting another.');
     }
     const context = practiceContextSchema.parse(await voice.contextProvider.loadContext());
@@ -268,7 +283,9 @@ export async function createApi(
         });
       }
       const active = state.rehearsals.filter(
-        (item) => item.mode === 'elevenlabs' && item.status === 'active',
+        (item) =>
+          (item.mode === 'elevenlabs' || item.mode === RehearsalMode.LIVEAVATAR) &&
+          item.status === 'active',
       );
       if (active.length) {
         throw new Error('End an active rehearsal before starting another.');

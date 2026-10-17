@@ -68,26 +68,26 @@ async function state() {
   return stateResponseSchema.parse(response.json());
 }
 describe('PostgreSQL-backed application workflow', () => {
-  it('binds video transcripts through signed correlation and stops the stored provider session', async () => {
+  it('runs built-in video without ElevenLabs and saves only provider-fetched transcripts', async () => {
     const avatarId = 'b672e83f-398a-4701-ac89-949fe3b680ea';
     const createToken = vi
       .fn<AvatarProvider['createToken']>()
       .mockResolvedValue({ token: 'video-token', avatarSessionId: avatarId });
     const stopSession = vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined);
+    const fetchTranscript = vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null);
     const videoApi = await createApi(
       service,
       readEnvironment({
         DATABASE_URL: databaseUrl.href,
         LIVEAVATAR_API_KEY: 'avatar-key',
         LIVEAVATAR_AVATAR_ID: avatarId,
-        LIVEAVATAR_ELEVENLABS_SECRET_ID: 'b822515d-d4a5-431c-bbc4-059bfca7b702',
-        ELEVENLABS_AGENT_ID: 'video-agent',
-        ELEVENLABS_WEBHOOK_SECRET: 'video-secret',
+        LIVEAVATAR_VOICE_ID: avatarId,
+        LIVEAVATAR_CONTEXT_ID: avatarId,
       }),
       {
         contextProvider: new NoopPracticeContextProvider(),
         createToken: vi.fn<typeof createVoiceToken>(),
-        avatarProvider: { createToken, stopSession },
+        avatarProvider: { createToken, stopSession, fetchTranscript },
       },
     );
     try {
@@ -104,58 +104,20 @@ describe('PostgreSQL-backed application workflow', () => {
       expect(response.statusCode).toBe(200);
       const started = avatarSessionResponseSchema.parse(response.json());
       expect(started.session.context?.mode).toBe('empty');
+      expect(started.session.mode).toBe('liveavatar');
       expect(started.session.conversationId).toBeNull();
-      const nonce = createToken.mock.calls.at(0)?.[3];
-      expect(nonce).toHaveLength(64);
-      expect(response.body).not.toContain(nonce);
       const before = (await service.read()).briefs.length;
-      async function deliver(
-        correlationNonce: string | undefined,
-        conversationId = 'video-conversation',
-      ) {
-        const body = JSON.stringify({
-          type: 'post_call_transcription',
-          data: {
-            agent_id: 'video-agent',
-            conversation_id: conversationId,
-            status: 'done',
-            conversation_initiation_client_data: {
-              dynamic_variables: {
-                june_session_id: started.session.id,
-                june_session_nonce: correlationNonce,
-              },
-            },
-            transcript: [
-              { role: 'agent', message: 'Tell me about your business.' },
-              { role: 'user', message: 'We help teams prepare.' },
-            ],
-          },
-        });
-        const timestamp = String(Math.floor(Date.now() / 1000));
-        const signature = createHmac('sha256', 'video-secret')
-          .update(`${timestamp}.${body}`)
-          .digest('hex');
-        return videoApi.inject({
-          method: 'POST',
-          url: '/api/webhooks/elevenlabs',
-          headers: {
-            'content-type': 'application/json',
-            'elevenlabs-signature': `t=${timestamp},v0=${signature}`,
-          },
-          payload: body,
-        });
-      }
-      expect((await deliver('0'.repeat(64))).statusCode).toBe(202);
-      expect((await deliver(nonce)).statusCode).toBe(200);
-      expect((await deliver(nonce, 'different-conversation')).statusCode).toBe(202);
-      expect((await deliver(nonce)).statusCode).toBe(200);
-      const saved = (await service.read()).rehearsals.find(
-        (item) => item.id === started.session.id,
-      );
-      expect(saved?.conversationId).toBe('video-conversation');
-      expect(saved?.turns).toHaveLength(2);
-      expect(saved?.status).toBe('completed');
-      expect((await service.read()).briefs).toHaveLength(before);
+      expect(
+        (
+          await videoApi.inject({
+            method: 'POST',
+            url: '/api/avatar/sessions',
+            headers,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(createToken).toHaveBeenCalledTimes(1);
       expect(
         (
           await videoApi.inject({
@@ -167,6 +129,32 @@ describe('PostgreSQL-backed application workflow', () => {
         ).statusCode,
       ).toBe(200);
       expect(stopSession).toHaveBeenCalledWith('avatar-key', avatarId);
+      expect(
+        (await service.read()).rehearsals.find((item) => item.id === started.session.id)?.status,
+      ).toBe('awaiting_transcript');
+      fetchTranscript.mockResolvedValue([
+        { role: 'agent', text: 'Tell me about your business.' },
+        { role: 'user', text: 'We help teams prepare.' },
+      ]);
+      const path = `/api/avatar/sessions/${started.session.id}/transcript`;
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: { turns: [] } }))
+          .statusCode,
+      ).toBe(400);
+      expect(
+        (await videoApi.inject({ method: 'POST', url: path, headers, payload: {} })).statusCode,
+      ).toBe(200);
+      expect(fetchTranscript).toHaveBeenLastCalledWith('avatar-key', avatarId);
+      const calls = fetchTranscript.mock.calls.length;
+      await videoApi.inject({ method: 'POST', url: path, headers, payload: {} });
+      expect(fetchTranscript).toHaveBeenCalledTimes(calls);
+      const saved = (await service.read()).rehearsals.find(
+        (item) => item.id === started.session.id,
+      );
+      expect(saved?.turns).toHaveLength(2);
+      expect(saved?.transcriptReceivedAt).not.toBeNull();
+      expect(saved?.status).toBe('completed');
+      expect((await service.read()).briefs).toHaveLength(before);
       createToken.mockRejectedValueOnce(new Error('Provider unavailable'));
       expect(
         (
@@ -839,4 +827,30 @@ describe('onboarding restart', () => {
       await reopened.close();
     }
   });
+});
+
+it('keeps state polling separate from interview control requests', async () => {
+  const limitedApi = await createApi(service, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+  try {
+    const login = await limitedApi.inject({ method: 'POST', url: '/api/session' });
+    const headers = {
+      cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+    };
+    for (let index = 0; index < 120; index += 1) {
+      expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(200);
+    }
+    expect((await limitedApi.inject({ url: '/api/state', headers })).statusCode).toBe(429);
+    expect(
+      (
+        await limitedApi.inject({
+          method: 'POST',
+          url: '/api/avatar/sessions',
+          headers,
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(503);
+  } finally {
+    await limitedApi.close();
+  }
 });
