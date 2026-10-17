@@ -8,6 +8,8 @@ import {
   Search,
   ArrowRight,
   Bell,
+  CalendarDays,
+  ChartNoAxesCombined,
   Check,
   FileText,
   LayoutDashboard,
@@ -138,6 +140,7 @@ export function App() {
     new URLSearchParams(window.location.search).has('radarEvent') ? Page.RADAR : Page.OVERVIEW,
   );
   const [editingOnboarding, setEditingOnboarding] = useState(false);
+  const [sidebarLabelsDismissed, setSidebarLabelsDismissed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -276,17 +279,26 @@ export function App() {
   };
   const nav = [
     { id: Page.OVERVIEW, label: 'Overview', icon: LayoutDashboard },
-    { id: Page.MEETINGS, label: 'Meetings', icon: FileText },
+    { id: Page.MEETINGS, label: 'Meetings', icon: CalendarDays },
     { id: Page.RADAR, label: 'Investor radar', icon: Radar },
     { id: Page.INVESTORS, label: 'Investor research', icon: Search },
-    { id: Page.FINANCIALS, label: 'Financials', icon: LayoutDashboard },
+    { id: Page.FINANCIALS, label: 'Financials', icon: ChartNoAxesCombined },
     { id: Page.BRIEF, label: 'Meeting brief', icon: FileText },
     { id: Page.PRACTICE, label: 'Practice scenario', icon: MessageSquare },
     { id: Page.FOLLOWUPS, label: 'Follow-ups', icon: Target },
   ];
   return (
     <div className="layout dashboard-layout">
-      <aside className="workspace-sidebar" aria-label="Workspace sidebar">
+      <aside
+        className="workspace-sidebar"
+        aria-label="Workspace sidebar"
+        data-labels-dismissed={sidebarLabelsDismissed}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setSidebarLabelsDismissed(true);
+        }}
+        onFocus={() => setSidebarLabelsDismissed(false)}
+        onPointerOver={() => setSidebarLabelsDismissed(false)}
+      >
         <button
           className="brand brand-home"
           aria-label="June home"
@@ -294,7 +306,7 @@ export function App() {
             setPage(Page.OVERVIEW);
           }}
         >
-          june
+          j<small className="brand-wordmark">une</small>
           <span />
         </button>
         <nav className="workspace-nav" aria-label="Workspace">
@@ -302,6 +314,7 @@ export function App() {
             <button
               key={item.id}
               className={page === item.id ? 'active' : ''}
+              aria-label={item.label}
               aria-current={page === item.id ? 'page' : undefined}
               onClick={() => {
                 if (item.id === Page.PRACTICE && brief) {
@@ -311,13 +324,26 @@ export function App() {
               }}
             >
               <item.icon size={18} aria-hidden="true" />
-              <span>{item.label}</span>
+              <span className="sidebar-label" aria-hidden="true">
+                {item.label}
+              </span>
             </button>
           ))}
         </nav>
         <div className="workspace-status">
-          <span className="demo-badge">
-            {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
+          <span
+            className="workspace-research-status"
+            tabIndex={0}
+            role="img"
+            aria-label={
+              state.capabilities.researchReady ? 'Live research' : 'Research not configured'
+            }
+            data-ready={state.capabilities.researchReady}
+          >
+            <Activity size={18} aria-hidden="true" />
+            <span className="sidebar-label demo-badge" aria-hidden="true">
+              {state.capabilities.researchReady ? 'Live research' : 'Research not configured'}
+            </span>
           </span>
           <button
             className="notification-button"
@@ -326,8 +352,11 @@ export function App() {
               setModal('notices');
             }}
           >
-            <Bell size={17} />
+            <Bell size={18} aria-hidden="true" />
             {unread > 0 && <i />}
+            <span className="sidebar-label" aria-hidden="true">
+              Notifications, {unread} unread
+            </span>
           </button>
         </div>
       </aside>

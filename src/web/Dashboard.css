@@ -7,7 +7,7 @@
 }
 .dashboard-layout {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
 }
 .dashboard-layout .main {
   min-width: 0;
@@ -23,17 +23,26 @@
   top: 0;
   align-self: start;
   height: 100dvh;
-  overflow-y: auto;
+  min-height: 720px;
+  z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 36px;
-  padding: 32px 16px 24px;
+  gap: 24px;
+  padding: 24px 12px 20px;
   border-right: 1px solid var(--line);
   background: #faf9f6;
 }
 .workspace-sidebar .brand-home {
-  align-self: flex-start;
-  margin-left: 12px;
+  align-self: center;
+  margin: 0;
+  min-height: 44px;
+  width: 44px;
+}
+.brand-wordmark {
+  font: inherit;
+}
+.workspace-sidebar .brand-wordmark {
+  display: none;
 }
 .brand-home {
   background: transparent;
@@ -49,14 +58,17 @@
   gap: 6px;
 }
 .workspace-nav button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
+  justify-content: center;
+  min-height: 44px;
   text-align: left;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  padding: 13px 12px;
+  padding: 12px;
   font-size: 13px;
 }
 .workspace-nav button:hover {
@@ -74,11 +86,80 @@
 .workspace-status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: auto;
-  padding: 20px 4px 0;
+  padding: 16px 0 0;
   border-top: 1px solid var(--line);
+}
+.workspace-research-status,
+.workspace-status .notification-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+.workspace-research-status {
+  color: var(--muted);
+}
+.workspace-research-status[data-ready='true'] {
+  color: #52734b;
+}
+.workspace-research-status:focus-visible {
+  outline: 3px solid #82a952;
+  outline-offset: 4px;
+}
+.workspace-status .notification-button:hover {
+  background: #eeede8;
+}
+.workspace-status .notification-button i {
+  top: 9px;
+  right: 10px;
+}
+@media (min-width: 761px) {
+  .workspace-sidebar .sidebar-label {
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    width: max-content;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--ink);
+    color: white;
+    box-shadow: 0 4px 14px #292f401a;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    visibility: hidden;
+    opacity: 0;
+  }
+  .workspace-sidebar .sidebar-label::before {
+    content: '';
+    position: absolute;
+    right: 100%;
+    top: 0;
+    width: 14px;
+    height: 100%;
+  }
+  .workspace-sidebar:not([data-labels-dismissed='true'])
+    :is(button, .workspace-research-status):is(:hover, :focus-visible)
+    > .sidebar-label {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+@media (min-width: 761px) and (max-height: 720px) {
+  .workspace-sidebar {
+    position: static;
+    height: auto;
+  }
 }
 .dashboard-layout h1,
 .onboarding-shell h1 {
@@ -530,6 +611,7 @@
   .workspace-sidebar {
     position: static;
     height: auto;
+    min-height: 0;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -541,11 +623,25 @@
   }
   .workspace-sidebar .brand-home {
     margin-left: 0;
+    width: auto;
+  }
+  .workspace-sidebar .brand-wordmark {
+    display: inline;
   }
   .workspace-status {
+    flex-direction: row;
     margin: 0 0 0 auto;
     padding: 0;
     border-top: 0;
+  }
+  .workspace-research-status {
+    width: auto;
+  }
+  .workspace-research-status > svg {
+    display: none;
+  }
+  .workspace-status .notification-button .sidebar-label {
+    display: none;
   }
   .workspace-nav {
     order: 3;
