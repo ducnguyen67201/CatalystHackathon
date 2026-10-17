@@ -9,6 +9,11 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
     return false;
   }
   try {
+    if (job.kind === 'scenario') {
+      if (!service.scenarios) throw new Error('Scenario runtime unavailable.');
+      await service.scenarios.run(job);
+      return true;
+    }
     let result: string;
     if (job.kind.startsWith(InvestorJob.CHECK_PREFIX)) {
       result = await service.investors.check(

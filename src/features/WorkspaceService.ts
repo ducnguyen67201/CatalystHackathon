@@ -19,15 +19,26 @@ import { nextPracticeQuestion, reviewAnswer } from './RehearsalReview.js';
 import { nextScheduledCheck } from './Schedules.js';
 import { ConflictError, type WorkspaceStore } from './WorkspaceStore.js';
 import { practiceContextSchema, type PracticeContext } from '../contracts/PracticeContext.js';
+import { ScenarioService, type ScenarioGenerator } from './ScenarioService.js';
+import type { ScenarioStore } from './ScenarioStore.js';
 
 export class WorkspaceService {
   readonly investors: InvestorTrackingService;
+  readonly scenarios: ScenarioService | null;
 
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
+    scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
   ) {
     this.investors = new InvestorTrackingService(this, research);
+    this.scenarios = scenarioDependencies
+      ? new ScenarioService(
+          scenarioDependencies.store,
+          () => this.read(),
+          scenarioDependencies.generator,
+        )
+      : null;
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();

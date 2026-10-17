@@ -40,6 +40,8 @@ export function readEnvironment(values: EnvironmentValues) {
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),
       RESEARCH_MODEL: z.string().default('gpt-6.1-sol'),
+      SCENARIO_MODE: z.enum(['demo', 'live']).default('demo'),
+      SCENARIO_MODEL: z.string().min(1).max(200).default('gpt-6.1-sol'),
       ELEVENLABS_API_KEY: z.string().optional(),
       ELEVENLABS_AGENT_ID: z.string().optional(),
       ELEVENLABS_WEBHOOK_SECRET: z.string().optional(),
@@ -55,6 +57,7 @@ export function readEnvironment(values: EnvironmentValues) {
   if (env.RESEARCH_MODE === 'live' && (!env.EXA_API_KEY || !env.OPENAI_API_KEY)) {
     rejectSettings();
   }
+  if (env.SCENARIO_MODE === 'live' && !env.OPENAI_API_KEY) rejectSettings();
   return env;
 }
 

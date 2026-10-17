@@ -73,7 +73,7 @@ Tracked investors are company-scoped Prisma records with schema-validated payloa
 
 Schedules enqueue before advancing the due timestamp, with the due time as the idempotency key. Daily/weekly frequencies mean 24-hour/7-day intervals. Pausing stops future scheduling, while already queued or manual work can finish. Checks compare their starting investor identity before saving and pin the company profile version; stale-profile results retry rather than being saved. Job IDs prevent duplicate history and notices after a committed check is replayed. Provider failures leave the last successful check unchanged and use the existing delayed retry/terminal failure rules. Empty results are recorded explicitly and do not claim that no real-world changes exist. The state endpoint includes the latest job for each investor even beyond its general recent-job window.
 
-Investor source intake does not automatically build a new meeting brief or mutate a voice session. Evidence IDs and profile versions provide the handoff for that separate feature. This keeps parallel voice and onboarding work independent.
+Investor source intake does not automatically build a new meeting brief or mutate a voice session. Explicit scenario generation consumes a frozen selection of that evidence. Evidence IDs and profile versions provide the handoff for that separate feature. This keeps parallel voice and onboarding work independent.
 
 ## Voice and continuity
 
@@ -102,7 +102,7 @@ Browser VoicePractice <--+--- token + context dynamic variables
                                          session history / reopen transcript
 ```
 
-`POST /api/voice/sessions` accepts an empty object, not browser-provided facts or prompts. `createApi` injects the context provider and token issuer; the default context provider supplies no company data, CSV facts, notes, investor information, scenario or previous-session summary. The context schema distinguishes empty and provided modes; its future provided shape retains decimal strings, financial source rows, snapshot IDs, note IDs and investor source URLs. The voice path does not run research or financial calculations. Context is validated and saved with each session, so later data changes cannot silently alter its record.
+`POST /api/voice/sessions` accepts an empty object for open conversation or an optional server-resolved scenario selection, never browser-provided facts or prompts. `createApi` injects the context provider and token issuer; the default context provider supplies no company data, CSV facts, notes, investor information, scenario or previous-session summary. The context schema distinguishes empty and provided modes; its future provided shape retains decimal strings, financial source rows, snapshot IDs, note IDs and investor source URLs. The voice path does not run research or financial calculations. Context is validated and saved with each session, so later data changes cannot silently alter its record.
 
 The API obtains a WebRTC token and conversation ID before creating the session. A transactional application check prevents concurrent active voice records. The token goes only to the requesting browser; it is not persisted. `VoicePracticePage.tsx` exposes `/voice` independently of the onboarding gate and uses the same authenticated state API. `VoicePractice.tsx` has its own conversation provider to isolate SDK callbacks from the legacy practice component. It requests microphone permission on Start, offers mute/end, bounds connection startup and duration, stops audio when unmounted, and exposes saved session history. Existing written practice remains independent in the expandable legacy section.
 
@@ -168,3 +168,32 @@ Completion atomically saves meeting notes and identity links, upserts one tracke
 `OnboardingPage.tsx` is the first-visit gate at `/`; it supports uploads, sample selection, unknown company details, an optional investor, validation errors, resume and editing. `DashboardPage.tsx` owns the returning overview, meeting context and profile links. Its numbers, activity and practice status come from saved state. The existing financial, investor research, brief, practice and follow-up screens remain reachable from the new top navigation. Standalone `/voice` remains independent; the brief-based practice section carries the selected financial brief and meeting notes. No new paid research or voice session starts merely by completing onboarding.
 
 `POST /api/onboarding/restart` reopens setup by setting its step to 1 and clearing its completion timestamp in the normal revision-checked transaction. It retains the selected snapshot, company profile, meeting notes, investor links and all history. Dashboard and setup-header controls invoke this same endpoint. Repeated restarts are safe and the pending setup persists after reload.
+
+## Scenario generation and investor preparation
+
+`ScenarioService` assembles initial company information, selected-investor research, bounded CSV history and linked completed practices through `ScenarioSourceProvider` adapters. `Scenario.ts` owns strict Zod inputs, source provenance, coverage, investor-profile hypotheses and scenario branches. Pitch documents and forecasts are explicitly not connected; unrelated or incomplete practice sessions are excluded. `ScenarioPrompt.ts` owns the versioned instructions; new data kinds require a typed adapter and explicit prompt rules.
+
+`ScenarioGeneration` is a separate workspace-scoped Prisma table. `PrismaStore` atomically creates its input snapshot and a workflow job with kind `scenario`. Request keys are scoped to workspace and operation; changed parameters cannot reuse a key. The worker passes frozen inputs to an injected demo or live generator, validates references, and atomically commits output and job success under the current, unexpired lease. The job owns status. Concurrent or recovered workers cannot overwrite a completed result. A provider retry can incur another provider charge even though local output commits once.
+
+The generation API provides bounded history and source-change detection. Current company fields and matching meeting notes are copied into each input because their original records are mutable. Research IDs and selected excerpts, dates, labels, omitted IDs and input hashes are retained. New source data marks an old view outdated but never rewrites it. Structural and source-reference checks do not certify the semantic truth of generated claims.
+
+`ScenarioPractice.tsx` renders full scenarios and the research-based investor profile together in both the main Practice scenario and standalone `/voice`. Source inspection, missing-data coverage, demo labels, generation history and failure states remain visible. Both voice and avatar creation accept an optional saved generation/scenario selection. `PracticeContext` v2 freezes the entire selected scenario, investor profile and source snapshot into the rehearsal. Version 1 sessions and empty-object starts retain their existing behavior. Tokens and provider webhook verification are unchanged. Provider-side prompt configuration must honor the selected scenario; no remote configuration is edited automatically.
+
+The Practice scenario library (`/scenarios`, also in the workspace navigation) lists each
+saved scenario as a table row. Selecting a row opens an accessible modal drawer with the
+full scenario, inferred investor profile, coverage and frozen source snapshot. Start
+Practicing navigates to `/practice?generationId=…&scenarioId=…`. The room reloads and
+validates that saved selection before enabling a session; invalid or unavailable selections
+never fall back to an open conversation. `/practice` and the legacy `/voice` URL support
+open conversations. Navigation itself does not create a provider session. Both voice
+transports send the saved IDs to the server, which resolves the immutable practice context.
+
+Scenario generation now has a read-only `POST /api/scenario-generations/preview` step.
+It uses the same server-side assembly as creation, returning input plus a review hash.
+The UI submits that hash with its idempotency key; changed sources or prior-scenario
+summaries cause a conflict instead of silently sending different data. Replays of an
+already-created key return its saved generation even after workspace changes.
+Source freshness excludes prior generated scenarios to avoid immediately marking a
+new generation outdated. The prompt version is scenario-v2. Sources include bounded
+financial history and investor-linked completed practice; source snapshots remain immutable.
+CSV amounts are copied as exact decimal strings and no LLM financial arithmetic is requested.

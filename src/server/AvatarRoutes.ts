@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { voiceSessionRequestSchema } from '../contracts/VoicePractice.js';
 import { avatarSessionResponseSchema } from '../contracts/AvatarPractice.js';
 import { practiceContextSchema } from '../contracts/PracticeContext.js';
 import { idSchema } from '../contracts/Workspace.js';
@@ -27,7 +28,7 @@ export function registerAvatarRoutes(
   provider: AvatarProvider,
 ): void {
   app.post('/api/avatar/sessions', async (request, reply) => {
-    z.strictObject({}).parse(request.body);
+    const { selection } = voiceSessionRequestSchema.parse(request.body);
     if (
       !env.LIVEAVATAR_API_KEY ||
       !env.LIVEAVATAR_AVATAR_ID ||
@@ -39,7 +40,7 @@ export function registerAvatarRoutes(
         error: 'Configure LiveAvatar and its ElevenLabs connector to enable the live interviewer.',
       });
     }
-    const context = practiceContextSchema.parse(await contextProvider.loadContext());
+    const context = practiceContextSchema.parse(await contextProvider.loadContext(selection));
     const nonce = randomBytes(32).toString('hex');
     const correlationHash = createHash('sha256').update(nonce).digest('hex');
     const session = await service.createRehearsal(

@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { rehearsalSchema } from './Workspace.js';
+import { scenarioSelectionSchema } from './Scenario.js';
 
-export const voiceSessionRequestSchema = z.strictObject({});
+export const voiceSessionRequestSchema = z.strictObject({
+  selection: scenarioSelectionSchema.optional(),
+});
 
 export const voiceSessionResponseSchema = z.strictObject({
   session: rehearsalSchema,

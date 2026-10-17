@@ -3,6 +3,12 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { z } from 'zod';
 import {
+  generationSchema,
+  scenarioOutputSchema,
+  type ScenarioOutput,
+} from '../contracts/Scenario.js';
+import type { ScenarioStore, NewScenarioGeneration } from '../features/ScenarioStore.js';
+import {
   JobStatus,
   jobSchema,
   workspaceSchema,
@@ -13,7 +19,7 @@ import { ConflictError, type ClaimedJob, type WorkspaceStore } from '../features
 const workspaceId = 'tidewell';
 const json = (value: unknown): Prisma.InputJsonObject =>
   z.record(z.string(), z.json()).parse(value);
-export class PrismaStore implements WorkspaceStore {
+export class PrismaStore implements WorkspaceStore, ScenarioStore {
   private readonly client: PrismaClient;
   constructor(databaseUrl: string) {
     this.client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -282,5 +288,135 @@ export class PrismaStore implements WorkspaceStore {
   }
   async close(): Promise<void> {
     await this.client.$disconnect();
+  }
+
+  async getGenerationByRequestKey(key: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { workspaceId, job: { key: workspaceId + ':scenario:' + key } },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async createGeneration(requestKey: string, input: NewScenarioGeneration) {
+    const id = await this.client
+      .$transaction(async (tx) => {
+        const job = await tx.workflowJob.upsert({
+          where: { key: workspaceId + ':scenario:' + requestKey },
+          update: {},
+          create: {
+            id: randomUUID(),
+            workspaceId,
+            key: workspaceId + ':scenario:' + requestKey,
+            kind: 'scenario',
+          },
+        });
+        const generation = await tx.scenarioGeneration.upsert({
+          where: { jobId: job.id },
+          update: {},
+          create: {
+            id: randomUUID(),
+            workspaceId,
+            investorId: input.input.investor.id,
+            jobId: job.id,
+            ...input,
+            input: json(input.input),
+          },
+        });
+        if (generation.requestHash !== input.requestHash)
+          throw new ConflictError('Request key reused with different scenario inputs.');
+        return generation.id;
+      })
+      .catch(async (error: unknown) => {
+        // Concurrent Prisma upserts can lose the unique-key race. The winning
+        // transaction has committed both records before its key can conflict.
+        const code = z.object({ code: z.string() }).safeParse(error);
+        if (code.success && code.data.code === 'P2002') {
+          const existing = await this.client.scenarioGeneration.findFirst({
+            where: { workspaceId, job: { key: workspaceId + ':scenario:' + requestKey } },
+          });
+          if (existing) {
+            if (existing.requestHash !== input.requestHash)
+              throw new ConflictError('Request key reused with different scenario inputs.');
+            return existing.id;
+          }
+        }
+        throw error;
+      });
+    const generation = await this.getGeneration(id);
+    if (!generation) throw new Error('Scenario generation was not saved.');
+    return generation;
+  }
+
+  private generationFromRow(row: Prisma.ScenarioGenerationGetPayload<{ include: { job: true } }>) {
+    return generationSchema.parse({
+      id: row.id,
+      jobId: row.jobId,
+      input: row.input,
+      output: row.output,
+      inputHash: row.inputHash,
+      requestHash: row.requestHash,
+      promptVersion: row.promptVersion,
+      model: row.model,
+      mode: row.mode,
+      createdAt: row.createdAt.toISOString(),
+      status: row.job.status,
+      error: row.job.error,
+    });
+  }
+
+  async getGeneration(id: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { id, workspaceId },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async getGenerationForJob(jobId: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { jobId, workspaceId },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async listGenerations(investorId: string) {
+    const rows = await this.client.scenarioGeneration.findMany({
+      where: { workspaceId, investorId },
+      include: { job: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return rows.map((row) => this.generationFromRow(row));
+  }
+
+  async completeGeneration(job: ClaimedJob, output: ScenarioOutput): Promise<void> {
+    const parsed = scenarioOutputSchema.parse(output);
+    await this.client.$transaction(async (tx) => {
+      const lock = await tx.workflowJob.updateMany({
+        where: {
+          id: job.id,
+          workspaceId,
+          status: 'running',
+          leaseToken: job.leaseToken,
+          leaseUntil: { gt: new Date() },
+        },
+        data: {
+          status: 'succeeded',
+          result: 'Practice scenarios saved.',
+          error: null,
+          leaseToken: null,
+          leaseUntil: null,
+        },
+      });
+      if (lock.count !== 1)
+        throw new ConflictError('Scenario lease no longer belongs to this worker.');
+      const saved = await tx.scenarioGeneration.updateMany({
+        where: { workspaceId, jobId: job.id },
+        data: { output: json(parsed) },
+      });
+      if (saved.count !== 1) throw new Error('Scenario generation unavailable.');
+    });
   }
 }

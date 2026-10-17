@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import { fetchState, startLocalSession } from './ApiClient.js';
-import { VoicePractice } from './VoicePractice.js';
+import { ScenarioPractice } from './ScenarioPractice.js';
+import { ScenarioRoom } from './ScenarioRoom.js';
 
 /** Independent entrypoint while onboarding and context assembly are developed separately. */
-export function VoicePracticePage() {
+export function VoicePracticePage({ page = 'room' }: { page?: 'scenarios' | 'room' }) {
   const [state, setState] = useState<StateResponse | null>(null);
   const [error, setError] = useState('');
 
@@ -54,9 +55,19 @@ export function VoicePracticePage() {
     <main style={{ maxWidth: '1200px', padding: '32px 20px', margin: '0 auto' }}>
       <header className="page-heading">
         <div>
-          <div className="eyebrow">June · Practice room</div>
-          <h1>Start talking. Keep the conversation.</h1>
-          <p className="muted">Voice practice is ready independently of company setup.</p>
+          <div className="eyebrow">
+            June · {page === 'scenarios' ? 'Practice scenario' : 'Practice room'}
+          </div>
+          <h1>
+            {page === 'scenarios'
+              ? 'Choose your next conversation.'
+              : 'Make the next conversation count.'}
+          </h1>
+          <p className="muted">
+            {page === 'scenarios'
+              ? 'Generate a scenario, explore the details, and take it into the practice room.'
+              : 'Rehearse with June using your selected scenario and saved context.'}
+          </p>
         </div>
         <a href="/" className="text-button">
           Open workspace →
@@ -76,9 +87,13 @@ export function VoicePracticePage() {
         </p>
       )}
       {state ? (
-        <VoicePractice state={state} onRefresh={refresh} onError={setError} />
+        page === 'scenarios' ? (
+          <ScenarioPractice state={state} />
+        ) : (
+          <ScenarioRoom state={state} onRefresh={refresh} onError={setError} />
+        )
       ) : (
-        <p role="status">Loading voice practice…</p>
+        <p role="status">Loading workspace…</p>
       )}
     </main>
   );

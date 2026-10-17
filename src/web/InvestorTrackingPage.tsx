@@ -276,6 +276,12 @@ export function InvestorTrackingPage({
                       : 'Candidate to investigate'}
                   </div>
                   <h2>{selected.name}</h2>
+                  <a
+                    className="text-button"
+                    href={'/scenarios?investor=' + encodeURIComponent(selected.id)}
+                  >
+                    Prepare scenarios in the Practice scenario →
+                  </a>
                   {selected.url && (
                     <a href={selected.url} target="_blank" rel="noreferrer">
                       Open saved profile <ExternalLink size={13} />
