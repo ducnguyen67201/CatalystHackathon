@@ -1,3 +1,5 @@
+import { fictionalRecordingProvider, fictionalRecordingAudio } from './RecordingFixtures.js';
+import { meetingReviewFixture } from './MeetingReviewFixtures.js';
 import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
 import { liveGuidanceHistorySchema } from '../src/contracts/LiveGuidance.js';
 import { LiveGuidanceService } from '../src/features/LiveGuidance.js';
@@ -2530,4 +2532,101 @@ it('checkpoints evaluation children under the current lease and resumes after co
   expect((await store.listJobs()).find((item) => item.id === job.id)?.status).toBe('succeeded');
   expect(extractionCalls).toBe(1);
   expect(coachingCalls).toBe(2);
+});
+
+it('protects recording reads, resolves provider IDs from stored sessions and keeps text sessions audio-free', async () => {
+  const fixture = meetingReviewFixture().workspace.rehearsals[0];
+  if (!fixture) throw new Error('Missing recording fixture');
+  const voiceId = randomUUID();
+  const textId = randomUUID();
+  await service.change((state) => {
+    state.rehearsals.push({
+      ...fixture,
+      id: voiceId,
+      mode: 'elevenlabs',
+      conversationId: 'fictional-recording-id',
+    });
+    state.rehearsals.push({ ...fixture, id: textId });
+  });
+  let descriptions = 0;
+  let audioCalls = 0;
+  const playbackApp = await createApi(
+    service,
+    readEnvironment({
+      DATABASE_URL: databaseUrl.href,
+      WEB_ORIGIN: 'http://127.0.0.1:4317',
+      ELEVENLABS_API_KEY: 'test-only-recording-key',
+    }),
+    {
+      contextProvider: new NoopPracticeContextProvider(),
+      createToken: () => Promise.reject(new Error('Unexpected token request')),
+      recordingProvider: {
+        describe: (...args) => {
+          descriptions++;
+          expect(args[1]).toBe('fictional-recording-id');
+          return fictionalRecordingProvider.describe(...args);
+        },
+        audio: (...args) => {
+          audioCalls++;
+          expect(args[1]).toBe('fictional-recording-id');
+          return fictionalRecordingProvider.audio(...args);
+        },
+      },
+    },
+  );
+  try {
+    for (const route of ['playback', 'recording'])
+      expect(
+        (await playbackApp.inject({ method: 'GET', url: `/api/rehearsals/${voiceId}/${route}` }))
+          .statusCode,
+      ).toBe(401);
+    expect(descriptions + audioCalls).toBe(0);
+    const authorization = await playbackApp.inject({ method: 'POST', url: '/api/session' });
+    const cookie = authorization.cookies.map((item) => `${item.name}=${item.value}`).join('; ');
+    const metadata = await playbackApp.inject({
+      method: 'GET',
+      url: `/api/rehearsals/${voiceId}/playback`,
+      headers: { cookie },
+    });
+    expect(metadata.statusCode).toBe(200);
+    expect(metadata.headers['cache-control']).toBe('private, no-store');
+    expect(metadata.body).not.toContain('test-only-recording-key');
+    expect(metadata.body).toContain('"available":true');
+    const audio = await playbackApp.inject({
+      method: 'GET',
+      url: `/api/rehearsals/${voiceId}/recording`,
+      headers: { cookie },
+    });
+    expect(audio.statusCode).toBe(200);
+    expect(audio.headers['content-type']).toContain('audio/wav');
+    expect(audio.rawPayload.length).toBe(fictionalRecordingAudio().length);
+    const text = await playbackApp.inject({
+      method: 'GET',
+      url: `/api/rehearsals/${textId}/playback`,
+      headers: { cookie },
+    });
+    expect(text.body).toContain('"available":false');
+    expect(
+      (
+        await playbackApp.inject({
+          method: 'GET',
+          url: `/api/rehearsals/${textId}/recording`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await playbackApp.inject({
+          method: 'GET',
+          url: `/api/rehearsals/${randomUUID()}/recording`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(descriptions).toBe(1);
+    expect(audioCalls).toBe(1);
+  } finally {
+    await playbackApp.close();
+  }
 });

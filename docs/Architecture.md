@@ -422,3 +422,45 @@ and connected preparation actions inside `PitchPreparationReport.tsx`. Older rep
 their original claim-linked peer layout. Existing coaching items still drive follow-ups and
 written retries; business-only gaps are displayed as preparation guidance without claiming
 that an unasked question was answered poorly. No research runs merely by viewing a report.
+
+## Meeting brief table and review drawer
+
+`web/MeetingBriefs.tsx` replaces the expanded brief page with searchable brief/practice tables
+and a native modal dialog styled as a right-side drawer. Table rows use semantic buttons;
+close/Escape and the browser's modal focus handling retain keyboard navigation. Brief details
+preserve their snapshot, source, notes and existing commands. Explicit brief IDs associate
+practice records; reviewed predecessor links are followed only while investor, financial
+snapshot and profile version match. Ordinary refreshed briefs and open practices are not
+silently grouped. The practice table exposes all conversations without guessing associations.
+
+The selected practice mounts `EvaluationPanel` with its public saved turns as fallback.
+Existing private evaluation reads load full reports, versions and evidence only on demand.
+`PracticeReviewTranscript.tsx` projects cited strengths and preparation gaps onto validated
+founder-turn references, highlights uniquely located quotes, and scrolls/focuses the full
+turn when feedback is selected. Superseded claims are excluded; repeated quotations fall
+back to whole-turn selection. Transcript text is rendered as React text. Old/unreviewed
+sessions show their transcript without fabricated feedback. Source-linked financial evidence,
+written retries, clarification and evaluation history remain in the shared panel. The table itself introduces no model call or schema migration; optional provider playback is described below.
+
+## On-demand recording playback
+
+`RecordingRoutes.ts` exposes private authenticated/rate-limited playback metadata and audio
+reads scoped to a stored rehearsal. Only completed provider-receipted ElevenLabs sessions with
+a stored conversation ID and configured backend key qualify. `ElevenLabsRecording.ts` uses
+fixed provider endpoints with redirects disabled and bounded timeouts. Audio MIME types are
+allowlisted and declared/streamed sizes are bounded to 20 MiB. Provider failures expose safe
+messages. No browser-provided provider ID, URL or credentials are accepted.
+
+`RecordingPlayback.ts` validates optional playback metadata independently of saved transcripts
+and evaluation hashes. `describe` supplies timings only after matching the full provider
+speaker/text sequence to the saved receipt. Nonmonotonic or out-of-duration timestamps remove
+alignment rather than attaching a wrong passage. Written/unsupported sessions return an
+explicit unavailable result. Audio is read on demand, never archived or backfilled.
+
+`web/RecordingPlayback.tsx` requests data only after Load recording, decodes bounded audio
+into waveform peaks, and creates a transient object URL for native playback. Cleanup aborts
+in-flight work, closes decoding contexts and revokes the URL. The waveform, seek slider and
+assessment markers navigate a shared audio element. `PracticeReviewTranscript.tsx` displays
+assertion details and synchronizes selected findings with matched timestamps; missing timing
+retains exact turn/quote navigation. Transcript text stays below the waveform. Fictional preview
+audio uses explicitly labeled synthesized tones and is isolated under test fixtures.

@@ -1,0 +1,310 @@
+.practice-review {
+  margin: 24px 0;
+}
+.practice-review-heading h3 {
+  margin-bottom: 8px;
+}
+.practice-review-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 12px;
+  margin: 16px 0;
+}
+.practice-review-legend span:first-child {
+  color: #35623c;
+}
+.practice-review-legend span:last-child {
+  color: #88520c;
+}
+.practice-review-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+.practice-findings {
+  min-width: 0;
+}
+.practice-findings h4 {
+  margin: 0 0 12px;
+}
+.practice-findings section + section {
+  margin-top: 24px;
+}
+.practice-finding {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  margin: 0 0 10px;
+  border: 1px solid #d6dfd1;
+  border-left: 3px solid #527b48;
+  border-radius: 10px;
+  background: #f3f7ef;
+  color: #303b2e;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.practice-finding.improvement {
+  background: #fcf7ed;
+  border-color: #e5d6b9;
+  border-left-color: #a57527;
+}
+.practice-finding strong {
+  font-size: 14px;
+}
+.practice-finding small {
+  text-decoration: underline;
+}
+.practice-finding[aria-pressed='true'] {
+  outline: 2px solid #526344;
+  outline-offset: 2px;
+}
+.practice-transcript {
+  border: 1px solid #dfe2d9;
+  border-radius: 12px;
+  background: #f6f7f3;
+  padding: 18px;
+  max-height: 70dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding: 16px;
+}
+.practice-transcript > h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 20px;
+}
+.practice-transcript > h4 span {
+  font-size: 12px;
+  font-weight: 400;
+}
+.practice-bubble {
+  margin: 14px 28px 14px 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #dde1d8;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  scroll-margin: 16px;
+}
+.practice-bubble.user {
+  margin: 14px 0 14px 28px;
+  background: #edf2e7;
+}
+.practice-bubble.selected {
+  outline: 2px solid #657b52;
+  outline-offset: 2px;
+}
+.practice-bubble header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #596352;
+}
+.practice-bubble p {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+.practice-bubble mark {
+  padding: 2px 0;
+  color: inherit;
+  background: #efd8a8;
+}
+.practice-bubble mark.strength {
+  background: #cfdfbf;
+}
+.practice-turn-findings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.practice-turn-findings button {
+  border: 1px solid #d0d9c5;
+  border-radius: 20px;
+  padding: 5px 9px;
+  color: #3c5630;
+  background: #eef4e7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.practice-turn-findings button.improvement {
+  background: #fff5e2;
+  color: #79521a;
+  border-color: #e4cfaa;
+}
+.practice-passage-feedback {
+  margin-top: 14px;
+  border-top: 1px solid #d2d9c9;
+  padding-top: 12px;
+  font-size: 13px;
+}
+.practice-passage-feedback p {
+  font-size: 13px;
+}
+.practice-review button:focus-visible,
+.practice-bubble:focus-visible {
+  outline: 2px solid #526344;
+  outline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .practice-review-grid {
+    grid-template-columns: 1fr;
+  }
+  .practice-findings {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .practice-findings section + section {
+    margin-top: 0;
+  }
+  .practice-transcript {
+    max-height: 65dvh;
+  }
+}
+@media (max-width: 440px) {
+  .practice-findings {
+    grid-template-columns: 1fr;
+  }
+  .practice-bubble,
+  .practice-bubble.user {
+    margin: 12px 0;
+  }
+}
+.practice-review-main {
+  min-width: 0;
+}
+.assertion-inspector {
+  margin-top: 24px;
+  border: 1px solid #d6dfcf;
+  border-radius: 10px;
+  padding: 16px;
+  background: white;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.assertion-inspector h5 {
+  margin: 18px 0 6px;
+  color: #65715b;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.assertion-inspector blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 3px solid #a4b58d;
+  white-space: pre-wrap;
+}
+.assertion-inspector p {
+  margin: 6px 0;
+}
+.assertion-inspector ul {
+  padding-left: 18px;
+}
+.recording-player {
+  border: 1px solid #dfe3d7;
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+.recording-player header {
+  display: flex;
+  align-items: start;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recording-player h4 {
+  margin: 0;
+}
+.recording-player p {
+  font-size: 12px;
+  color: #6b7562;
+  line-height: 1.5;
+}
+.recording-player .button {
+  font-size: 12px;
+  padding: 9px 12px;
+}
+.recording-waveform-button {
+  display: block;
+  padding: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: crosshair;
+}
+.recording-waveform {
+  display: block;
+  width: 100%;
+  height: 110px;
+}
+.recording-seek {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #626c58;
+}
+.recording-seek input {
+  width: 100%;
+  accent-color: #526b43;
+}
+.recording-player audio {
+  width: 100%;
+  height: 40px;
+  margin-top: 12px;
+}
+.recording-markers {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.recording-markers button {
+  border: 1px solid #d8e2cd;
+  border-radius: 6px;
+  background: #f2f6ec;
+  color: #425f35;
+  padding: 8px;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.recording-markers button.improvement {
+  border-color: #e6d7bb;
+  background: #fcf6eb;
+  color: #8b621e;
+}
+.practice-bubble.playing {
+  border-color: #6d855a;
+  box-shadow: 0 0 0 1px #6d855a;
+}
+.evaluation-panel .recording-seek {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  width: 100%;
+  font-weight: 400;
+}
+.evaluation-panel .recording-seek input {
+  flex-basis: 100%;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}

@@ -1,3 +1,5 @@
+import { registerRecordingRoutes } from './RecordingRoutes.js';
+import type { RecordingProvider } from '../features/RecordingProvider.js';
 import { registerPeerRoutes } from './PeerRoutes.js';
 import { registerRadarRoutes } from './RadarRoutes.js';
 import { registerHostedAccess } from './HostedAccess.js';
@@ -54,6 +56,7 @@ import {
 } from '../features/PracticeContextProvider.js';
 
 interface VoiceDependencies {
+  recordingProvider?: RecordingProvider;
   contextProvider: PracticeContextProvider;
   createToken: typeof createVoiceToken;
   avatarProvider?: AvatarProvider;
@@ -244,6 +247,7 @@ export async function createApi(
     return reply.code(202).send(job);
   });
   registerPeerRoutes(app, service);
+  registerRecordingRoutes(app, service, env, voice.recordingProvider);
   registerEvaluationRoutes(app, service);
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);

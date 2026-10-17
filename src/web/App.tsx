@@ -2,7 +2,8 @@ import { FinancialSheet } from './FinancialSheet.js';
 import { RadarUpdates } from './RadarUpdates.js';
 import { PracticeFollowups } from './Followups.js';
 import { OnboardingPage } from './OnboardingPage.js';
-import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
+import { DashboardPage, MeetingsPage } from './DashboardPage.js';
+import { MeetingBriefs } from './MeetingBriefs.js';
 import { useEffect, useState, useRef } from 'react';
 import {
   Activity,
@@ -12,7 +13,6 @@ import {
   Radar,
   RefreshCw,
   X,
-  Target,
   Clock3,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -234,13 +234,6 @@ export function App() {
   );
   const unread = workspace.notices.filter((notice) => !notice.read).length;
   const latestEvidence = workspace.evidence.at(-1);
-  const sourceForBrief = workspace.evidence.find((item) => item.id === brief?.evidenceId);
-  const briefSnapshot = workspace.snapshots.find((item) => item.id === brief?.snapshotId);
-  const stale =
-    brief &&
-    (brief.profileVersion !== workspace.profile.version ||
-      brief.snapshotId !== snapshot?.id ||
-      JSON.stringify(brief.meeting) !== JSON.stringify(workspace.onboarding.meeting));
   const openBrief = (id?: string): void => {
     setSelectedBrief(id ?? null);
     setPage(Page.BRIEF);
@@ -619,191 +612,25 @@ export function App() {
             />
           )}
           {page === Page.BRIEF && (
-            <>
-              <div className="page-heading">
-                <div>
-                  <div className="eyebrow">Your meeting brief</div>
-                  <h1>Walk in with the whole story.</h1>
-                  <p className="muted">
-                    The opportunity, the numbers, and the questions still open.
-                  </p>
-                </div>
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    void action(async () => {
-                      await command('/briefs');
-                      setSelectedBrief(null);
-                    }, 'Brief refreshed from current inputs.');
-                  }}
-                >
-                  <RefreshCw size={14} /> Refresh brief
-                </button>
-              </div>
-              {brief ? (
-                <>
-                  {stale && (
-                    <div className="notice financial-notice">
-                      This brief uses earlier inputs. Refresh it to include the latest profile and
-                      financial snapshot.
-                    </div>
-                  )}
-                  <div className="brief-layout">
-                    <article className="panel">
-                      <div className="brief-top">
-                        <div className="signal-label">
-                          {workspace.profile.name} × {brief.investor}
-                        </div>
-                        <h2>
-                          {brief.fit.suitable
-                            ? 'Why this conversation could matter'
-                            : 'Check the fit before approaching'}
-                        </h2>
-                        <p>
-                          {sourceForBrief?.explanation ??
-                            'Start with your financial story. Run the radar to add investor-specific evidence.'}
-                        </p>
-                        {sourceForBrief && (
-                          <button
-                            className="text-button"
-                            onClick={() => {
-                              setSource(sourceForBrief);
-                            }}
-                          >
-                            Inspect the source →
-                          </button>
-                        )}
-                      </div>
-                      <div className="section-block">
-                        <div className="section-label">01 / A question to prepare for</div>
-                        <div className="quote">“{brief.finding.question}”</div>
-                        <p>
-                          This question comes from the financial evidence; it is not a prediction
-                          about a particular investor.
-                        </p>
-                      </div>
-                      <div className="section-block">
-                        <div className="section-label">
-                          02 / Follow the numbers · {brief.finding.month}
-                        </div>
-                        <div className="evidence-row">
-                          <span>Operating income</span>
-                          <strong className="loss">${amount(brief.finding.operatingIncome)}</strong>
-                        </div>
-                        <div className="evidence-row">
-                          <span>Other income · SR&ED credit</span>
-                          <strong>${amount(brief.finding.credit)}</strong>
-                        </div>
-                        <div className="evidence-row">
-                          <span>Reported net income</span>
-                          <strong>${amount(brief.finding.netIncome)}</strong>
-                        </div>
-                        <p className="footnote">
-                          Source: {briefSnapshot?.fileName}, row {brief.finding.sourceRow}.
-                          Currency: {briefSnapshot?.currency}. The file does not establish when the
-                          credit was received as cash.
-                        </p>
-                        <p className="grounded-answer">{brief.finding.answer}</p>
-                      </div>
-                      {brief.review && (
-                        <div className="brief-update">
-                          <div className="section-label">From your rehearsal</div>
-                          <h3>Your explanation, kept with the evidence.</h3>
-                          <p>{brief.review.answer || 'No answer was captured.'}</p>
-                          <p>
-                            {brief.review.missing.length
-                              ? `Open themes: ${brief.review.missing.join(', ')}`
-                              : 'The expected themes appeared. Verify your figures against the source.'}
-                          </p>
-                          <small>{brief.review.note}</small>
-                        </div>
-                      )}
-                      <div className="section-block">
-                        <div className="section-label">03 / What still needs an answer</div>
-                        <ul className="list">
-                          {brief.openQuestions.map((question) => (
-                            <li key={question}>{question}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </article>
-                    <aside>
-                      <ResearchLinks meeting={brief.meeting} />
-                      {brief.meeting?.notes && (
-                        <section className="research-links">
-                          <h3>Meeting notes</h3>
-                          <p className="preserve-lines">{brief.meeting.notes}</p>
-                          <small>Founder-provided · saved with this brief</small>
-                        </section>
-                      )}
-                      <div className="brief-aside">
-                        <div className="eyebrow">Your next step</div>
-                        <h2>Make the explanation yours.</h2>
-                        <p>
-                          Practise using the figures and evidence in this brief. Keep the unresolved
-                          questions for your next review.
-                        </p>
-                        <button
-                          className="button"
-                          onClick={() => {
-                            setSelectedBrief(brief.id);
-                            setPage(Page.PRACTICE);
-                          }}
-                        >
-                          Practice this question <ArrowRight size={14} />
-                        </button>
-                        <button
-                          className="button secondary full-width"
-                          disabled={busy}
-                          onClick={() => {
-                            void action(
-                              () => command('/milestones', { briefId: brief.id }),
-                              'Follow-up saved.',
-                            );
-                          }}
-                        >
-                          Track a follow-up <Target size={14} />
-                        </button>
-                      </div>
-                      <div className="version-picker">
-                        <label htmlFor="brief-version">Brief history</label>
-                        <select
-                          id="brief-version"
-                          value={brief.id}
-                          onChange={(event) => {
-                            setSelectedBrief(event.target.value);
-                          }}
-                        >
-                          {[...workspace.briefs].reverse().map((item, index) => (
-                            <option key={item.id} value={item.id}>
-                              {index === 0 ? 'Latest · ' : ''}
-                              {when(item.createdAt)}
-                              {item.review ? ' · rehearsal review' : ''}
-                            </option>
-                          ))}
-                        </select>
-                        <small>
-                          Profile version {brief.profileVersion} · original evidence retained
-                        </small>
-                      </div>
-                    </aside>
-                  </div>
-                </>
-              ) : (
-                <div className="empty-signal">
-                  <h2>Start with a financial brief.</h2>
-                  <button
-                    className="button"
-                    onClick={() => {
-                      void action(() => command('/briefs'));
-                    }}
-                  >
-                    Create brief
-                  </button>
-                </div>
-              )}
-            </>
+            <MeetingBriefs
+              state={state}
+              initialBriefId={selectedBrief}
+              busy={busy}
+              onCloseSelection={() => setSelectedBrief(null)}
+              onRefreshBrief={() => {
+                void action(async () => {
+                  await command('/briefs');
+                  setSelectedBrief(null);
+                }, 'Brief refreshed from current inputs.');
+              }}
+              onPractice={(id) => {
+                setSelectedBrief(id);
+                setPage(Page.PRACTICE);
+              }}
+              onFollowup={(id) => {
+                void action(() => command('/milestones', { briefId: id }), 'Follow-up saved.');
+              }}
+            />
           )}
           {page === Page.ROOM && (
             <>

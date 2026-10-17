@@ -1,3 +1,5 @@
+import { PracticeReviewTranscript } from './PracticeReviewTranscript.js';
+import type { TranscriptTurn } from '../contracts/Workspace.js';
 import './EvaluationPanel.css';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
@@ -11,17 +13,22 @@ import { PitchPreparationReport } from './PitchPreparationReport.js';
 import type { EvidenceReview as EvidenceReviewData } from '../contracts/EvidenceReview.js';
 
 /** Shared voice/video review. Child written attempts reuse this panel and the same evaluator. */
-export function EvaluationPanel(props: { sessionId: string; receipt: string | null }) {
+interface EvaluationPanelProps {
+  sessionId: string;
+  receipt: string | null;
+  fallbackTurns?: TranscriptTurn[];
+  transcriptFirst?: boolean;
+}
+export function EvaluationPanel(props: EvaluationPanelProps) {
   return <SelectedEvaluationPanel key={props.sessionId} {...props} />;
 }
 
 function SelectedEvaluationPanel({
   sessionId,
   receipt,
-}: {
-  sessionId: string;
-  receipt: string | null;
-}) {
+  fallbackTurns = [],
+  transcriptFirst = false,
+}: EvaluationPanelProps) {
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
   const evidenceCache = useRef(new Map<string, EvidenceReviewData>());
   const [data, setData] = useState<EvaluationResponse | null>(null);
@@ -246,6 +253,16 @@ function SelectedEvaluationPanel({
           sessions are not assessed against today's data.
         </p>
       )}
+      {transcriptFirst && !evaluation?.report && (
+        <PracticeReviewTranscript
+          sessionId={sessionId}
+          turns={fallbackTurns.map((turn, index) => ({
+            ...turn,
+            id: `${sessionId}:saved:${index}`,
+          }))}
+          report={null}
+        />
+      )}
       {evaluation && (
         <>
           <p className="muted">
@@ -283,6 +300,14 @@ function SelectedEvaluationPanel({
           {evaluation.reason && <p>{evaluation.reason}</p>}
           {evaluation.report && (
             <>
+              {transcriptFirst && (
+                <PracticeReviewTranscript
+                  sessionId={sessionId}
+                  key={evaluation.id}
+                  turns={evaluation.turns}
+                  report={evaluation.report}
+                />
+              )}
               <PitchPreparationReport
                 evaluation={evaluation}
                 fictional={
