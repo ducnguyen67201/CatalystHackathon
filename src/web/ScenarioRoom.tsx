@@ -118,8 +118,8 @@ export function ScenarioRoom({
         )}
         {scenario && (
           <p className="muted">
-            Guided text generates each question and its explanation together using this saved source
-            snapshot.
+            Live questions and answer guidance appear as you talk in either interview format. Open
+            Why? to explore the explanation and saved evidence.
           </p>
         )}
       </section>
