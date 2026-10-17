@@ -169,3 +169,25 @@ A manual check logs `workflow_queued`, then the worker logs `workflow_started`, 
 Live mode logs Exa/OpenAI request start, HTTP status and duration; search result count; per-source accepted/rejected events; and accepted evidence count. Rejection reasons include no text, identity mismatch, missing exact quote and missing comparable-company evidence. Failures distinguish provider HTTP errors, invalid responses, timeouts and network failures. Discovery logs how many suggestions were saved or that the three-suggestion tray is already full. No repeated empty worker polls are logged.
 
 Logs intentionally omit API keys, headers, cookies, raw errors, source text, names, URLs, prompts, financial records and transcripts. API failure logs include the original error status and request ID to distinguish rate-limit failures from generic server errors. Logs appear in the server/worker terminal; they are not streamed to the frontend.
+
+## Saved research output API
+
+Apply the additive migration with `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. Every live investor check, comparable-company discovery and radar provider attempt automatically saves an immutable ResearchRun JSON record before returning to the worker. No browser save call is required. Captured fields include queries, retrieved source text, source decisions, extracted evidence, profile version, public segment/identity context, model, job ID, attempt number, timestamps and safe failure metadata. Failed extraction preserves sources already retrieved. No credentials, raw provider error bodies, financial rows or meeting notes enter these records.
+
+Authenticated local API endpoints:
+
+- `GET /api/research-runs?investorId=<uuid>&limit=20&offset=0` lists summaries. Optional `kind` (`investor`, `discovery`, `radar`) and `jobId` filters are supported. A non-null `nextOffset` retrieves the next page; limit is at most 50.
+- `GET /api/research-runs/<uuid>` returns the complete JSON, including source text and decisions.
+- `POST /api/research-runs` imports raw results using `importResearchRunSchema` in `src/contracts/ResearchRun.ts`: `id` (a fresh UUID), `kind`, `investorId` (or null), `input`, `searches`, `startedAt`, and `finishedAt`. Each search contains `query`, `retrievedAt` and `sources`; each source contains `title`, `url`, optional `text`, `highlights` and `publishedDate`. Use the schema for exact bounds and input fields. Reposting the same ID and body is idempotent; changing an existing ID returns 409. Imports are always marked `origin: import`, `status: source_only`, with no extracted evidence or job identity. Unknown investor references return 404.
+
+Example from the app browser console (its existing local session cookie is used):
+
+```js
+const list = await fetch('/api/research-runs?limit=5').then((response) => response.json());
+const run = list.items[0]
+  ? await fetch(`/api/research-runs/${list.items[0].id}`).then((response) => response.json())
+  : null;
+console.log(run);
+```
+
+Source text is untrusted evidence, not agent instructions. Future scenario generation can load a run by ID and select its accepted, cited evidence while checking profile version and workflow outcome. A research run's success means provider extraction completed, not that the later workspace write or entire workflow succeeded. Historical records are not retroactively reconstructed. Runs skipped before making a provider call (for example, a full suggestion tray) do not create an archive. An abrupt process termination before final persistence can lose that attempt's in-memory trace; job retries remain independently recorded. No scenario generator or replay engine is implemented here.

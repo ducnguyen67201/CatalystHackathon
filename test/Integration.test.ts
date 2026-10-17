@@ -1,3 +1,10 @@
+import { vi } from 'vitest';
+import { LiveResearch } from '../src/infrastructure/Research.js';
+import {
+  importResearchRunSchema,
+  researchRunSchema,
+  researchRunListSchema,
+} from '../src/contracts/ResearchRun.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
 import { randomUUID, createHmac } from 'node:crypto';
@@ -39,7 +46,7 @@ beforeAll(async () => {
     throw new Error('Temporary database migration failed.');
   }
   store = new PrismaStore(databaseUrl.href);
-  service = new WorkspaceService(store, new ResearchFixture());
+  service = new WorkspaceService(store, new ResearchFixture(), undefined, store);
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
   await service.investors.discovery.setFrequency('paused');
@@ -418,6 +425,179 @@ describe('durable investor suggestions', () => {
       expect(saved?.investors.find((item) => item.name === track.name)?.frequency).toBe('daily');
     } finally {
       await fresh.close();
+    }
+  });
+});
+
+describe('research archive API', () => {
+  it('persists raw imports, enforces sessions, and exposes immutable paged records', async () => {
+    const snapshot = await service.read();
+    const body = importResearchRunSchema.parse({
+      id: randomUUID(),
+      kind: 'investor',
+      investorId: null,
+      input: {
+        profileVersion: snapshot.profile.version,
+        segment: {
+          stage: snapshot.profile.stage,
+          sector: snapshot.profile.sector,
+          geography: snapshot.profile.geography,
+        },
+        target: { name: 'Example investor', url: 'https://example.com/person', profileLinks: [] },
+        discovery: null,
+      },
+      searches: [
+        {
+          query: 'Example investor',
+          retrievedAt: '2026-10-17T00:00:00Z',
+          sources: [
+            {
+              title: 'Public profile',
+              url: 'https://example.com/person',
+              text: 'Unverified public source text.',
+            },
+          ],
+        },
+      ],
+      startedAt: '2026-10-17T00:00:00Z',
+      finishedAt: '2026-10-17T00:00:01Z',
+    });
+    const headers = { cookie: sessionCookie };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/research-runs', payload: body })).statusCode,
+    ).toBe(401);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/research-runs',
+      headers,
+      payload: body,
+    });
+    expect(created.statusCode).toBe(201);
+    expect(researchRunSchema.parse(created.json())).toMatchObject({
+      origin: 'import',
+      status: 'source_only',
+      evidence: [],
+      jobId: null,
+    });
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/research-runs', headers, payload: body }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, kind: 'discovery' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, evidence: [] },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/research-runs',
+          headers,
+          payload: { ...body, id: randomUUID(), investorId: randomUUID() },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const secondId = randomUUID();
+    await app.inject({
+      method: 'POST',
+      url: '/api/research-runs',
+      headers,
+      payload: { ...body, id: secondId },
+    });
+    const listed = await app.inject({ url: '/api/research-runs?kind=investor&limit=1', headers });
+    expect(listed.statusCode).toBe(200);
+    const first = researchRunListSchema.parse(listed.json());
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.sourceCount).toBe(1);
+    expect(first.nextOffset).toBe(1);
+    expect(listed.body).not.toContain('Unverified public source text.');
+    const second = researchRunListSchema.parse(
+      (
+        await app.inject({ url: '/api/research-runs?kind=investor&limit=1&offset=1', headers })
+      ).json(),
+    );
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect((await app.inject({ url: '/api/research-runs?limit=1000', headers })).statusCode).toBe(
+      400,
+    );
+    const detail = await app.inject({ url: `/api/research-runs/${body.id}`, headers });
+    expect(researchRunSchema.parse(detail.json()).searches).toEqual(body.searches);
+    expect(detail.headers['cache-control']).toBe('no-store');
+    expect(
+      (await app.inject({ url: `/api/research-runs/${randomUUID()}`, headers })).statusCode,
+    ).toBe(404);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.findResearchRun(body.id))?.searches).toEqual(body.searches);
+    } finally {
+      await reopened.close();
+    }
+  });
+});
+
+describe('automatic research archiving', () => {
+  it('saves investor and discovery workflow outputs in PostgreSQL with job correlation', async () => {
+    const research = new LiveResearch('test-exa', 'test-model', 'test-model', undefined, store);
+    const recording = new WorkspaceService(store, research, undefined, store);
+    const current = await recording.read();
+    await recording.updateProfile({
+      ...current.profile,
+      stage: 'Seed',
+      sector: 'B2B software',
+      geography: 'Canada',
+    });
+    const target = await recording.investors.add({
+      name: 'Archive Test',
+      url: 'https://example.com/archive-test',
+      frequency: 'paused',
+    });
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({ results: [] })));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await recording.investors.check(target.id, 'archive-check', 2);
+      await recording.investors.discover('archive-discovery', 1);
+      const checked = await store.listResearchRuns({
+        investorId: target.id,
+        jobId: 'archive-check',
+        limit: 20,
+        offset: 0,
+      });
+      expect(checked.items).toHaveLength(1);
+      expect(checked.items[0]).toMatchObject({ kind: 'investor', status: 'succeeded', attempt: 2 });
+      const discovered = await store.listResearchRuns({
+        kind: 'discovery',
+        jobId: 'archive-discovery',
+        limit: 20,
+        offset: 0,
+      });
+      expect(discovered.items).toHaveLength(1);
+      const id = discovered.items[0]?.id;
+      if (!id) {
+        throw new Error('Archive missing');
+      }
+      expect((await store.findResearchRun(id))?.searches).toHaveLength(2);
+      await recording.investors.check(target.id, 'archive-check', 2);
+      expect(
+        (await store.listResearchRuns({ jobId: 'archive-check', limit: 20, offset: 0 })).items,
+      ).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

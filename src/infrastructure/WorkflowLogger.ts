@@ -16,6 +16,7 @@ const priorities: Record<LogLevel, number> = {
   silent: 100,
 };
 const fieldsSchema = z.object({
+  runId: z.uuid().optional(),
   jobId: z.string().max(100).optional(),
   jobKind: z.string().max(150).optional(),
   attempt: z.number().optional(),

@@ -12,6 +12,7 @@ export function createRuntime(env: Environment) {
     env.OPENAI_API_KEY,
     env.RESEARCH_MODEL,
     logger,
+    store,
   );
   if (!env.EXA_API_KEY || !env.OPENAI_API_KEY) {
     logger.write(
@@ -20,5 +21,5 @@ export function createRuntime(env: Environment) {
       'warn',
     );
   }
-  return new WorkspaceService(store, research, logger);
+  return new WorkspaceService(store, research, logger, store);
 }

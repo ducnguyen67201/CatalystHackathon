@@ -23,11 +23,12 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
           result = await service.investors.check(
             job.kind.slice(InvestorJob.CHECK_PREFIX.length),
             job.id,
+            job.attempts,
           );
         } else if (job.kind === InvestorJob.DISCOVER) {
-          result = await service.investors.discover(job.id);
+          result = await service.investors.discover(job.id, job.attempts);
         } else if (job.kind === 'radar') {
-          result = await service.runRadar();
+          result = await service.runRadar(job.id, job.attempts);
         } else if (job.kind === 'rebuild') {
           result = await service.rebuild();
         } else {

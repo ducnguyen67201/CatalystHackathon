@@ -19,6 +19,7 @@ model Workspace {
   milestones Milestone[]
   notices Notice[]
   jobs WorkflowJob[]
+  researchRuns ResearchRun[]
   investors TrackedInvestor[]
 }
 model FinancialSnapshot {
@@ -102,4 +103,19 @@ model TrackedInvestor {
   createdAt DateTime @default(now())
   @@unique([workspaceId, key])
   @@index([workspaceId, createdAt])
+}
+
+model ResearchRun {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  investorId String?
+  jobId String?
+  kind String
+  contentHash String
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, createdAt, id])
+  @@index([workspaceId, investorId, createdAt])
+  @@index([workspaceId, jobId])
 }

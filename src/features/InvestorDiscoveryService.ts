@@ -62,7 +62,7 @@ export class InvestorDiscoveryService {
     });
   }
 
-  async discover(jobId: string): Promise<string> {
+  async discover(jobId: string, attempt = 1): Promise<string> {
     const initial = await this.workspace.read();
     if (initial.discovery.lastJobId === jobId) {
       return initial.discovery.note;
@@ -77,17 +77,22 @@ export class InvestorDiscoveryService {
       });
       return 'Review your three suggestions: Track or Dismiss one before finding more.';
     }
-    const records = await this.research.discover({ ...initial.profile, watchlist: [] }, undefined, {
-      knownInvestors: initial.investors.map((investor) => investor.name).slice(0, 20),
-      excludedInvestors: initial.discovery.suggestions
-        .filter(
-          (suggestion) =>
-            suggestion.status !== SuggestionStatus.SUGGESTED ||
-            suggestion.profileVersion === initial.profile.version,
-        )
-        .map((suggestion) => suggestion.name)
-        .slice(-200),
-    });
+    const records = await this.research.discover(
+      { ...initial.profile, watchlist: [] },
+      undefined,
+      {
+        knownInvestors: initial.investors.map((investor) => investor.name).slice(0, 20),
+        excludedInvestors: initial.discovery.suggestions
+          .filter(
+            (suggestion) =>
+              suggestion.status !== SuggestionStatus.SUGGESTED ||
+              suggestion.profileVersion === initial.profile.version,
+          )
+          .map((suggestion) => suggestion.name)
+          .slice(-200),
+      },
+      { jobId, attempt },
+    );
     let addedCount = 0;
     const result = await this.workspace.change((state) => {
       if (state.profile.version !== initial.profile.version) {

@@ -1,4 +1,23 @@
-import { createHash } from 'node:crypto';
+import {
+  researchRunSchema,
+  researchSourceSchema,
+  ResearchRunKind,
+  ResearchRunOrigin,
+  ResearchRunStatus,
+  SourceDecision,
+  type ResearchRun,
+  type ResearchSearch,
+  type ResearchDecision,
+} from '../contracts/ResearchRun.js';
+import type { ResearchRunStore } from '../features/ResearchRunStore.js';
+import type { ResearchExecution } from '../features/ResearchProvider.js';
+
+interface ResearchTrace {
+  searches: ResearchSearch[];
+  decisions: ResearchDecision[];
+  evidence: Evidence[];
+}
+import { createHash, randomUUID } from 'node:crypto';
 import {
   LogEvent,
   LogReason,
@@ -14,19 +33,7 @@ import {
 import type { InvestorResearchTarget } from '../contracts/InvestorTracking.js';
 import { evidenceSchema, type Evidence, type Profile } from '../contracts/Workspace.js';
 import { ResearchConfigurationError, type ResearchProvider } from '../features/ResearchProvider.js';
-const searchSchema = z.object({
-  results: z
-    .array(
-      z.object({
-        title: z.string(),
-        url: z.url(),
-        text: z.string().optional(),
-        highlights: z.array(z.string()).optional(),
-        publishedDate: z.string().optional(),
-      }),
-    )
-    .max(10),
-});
+const searchSchema = z.object({ results: z.array(researchSourceSchema).max(10) });
 const claimSchema = z.strictObject({
   investor: z.string().min(1).max(100),
   matchesTarget: z.boolean(),
@@ -51,31 +58,80 @@ export class LiveResearch implements ResearchProvider {
     private readonly modelKey: string | undefined,
     private readonly model: string,
     private readonly logger: WorkflowLog = silentWorkflowLog,
+    private readonly researchRuns?: ResearchRunStore,
   ) {}
 
   async discover(
     profile: Profile,
     target?: InvestorResearchTarget,
     discovery?: ResearchDiscoveryContext,
+    execution?: ResearchExecution,
   ): Promise<Evidence[]> {
     const started = Date.now();
+    const trace: ResearchTrace = { searches: [], decisions: [], evidence: [] };
+    const id = randomUUID();
+    const save = async (
+      status: ResearchRun['status'],
+      failure: ResearchRun['failure'],
+    ): Promise<void> => {
+      if (!this.researchRuns) {
+        return;
+      }
+      await this.researchRuns.saveResearchRun(
+        researchRunSchema.parse({
+          id,
+          kind: target
+            ? ResearchRunKind.INVESTOR
+            : discovery
+              ? ResearchRunKind.DISCOVERY
+              : ResearchRunKind.RADAR,
+          origin: ResearchRunOrigin.WORKFLOW,
+          status,
+          investorId: execution?.investorId ?? null,
+          jobId: execution?.jobId ?? null,
+          attempt: execution?.attempt ?? null,
+          model: this.model,
+          input: {
+            profileVersion: profile.version,
+            segment: { stage: profile.stage, sector: profile.sector, geography: profile.geography },
+            target: target
+              ? { name: target.name, url: target.url, profileLinks: target.profileLinks ?? [] }
+              : null,
+            discovery: discovery ?? null,
+          },
+          ...trace,
+          failure,
+          startedAt: new Date(started).toISOString(),
+          finishedAt: new Date().toISOString(),
+        }),
+      );
+      this.logger.write(LogEvent.RESEARCH_RUN_SAVED, { runId: id, count: trace.evidence.length });
+    };
     this.logger.write(LogEvent.RESEARCH_STARTED, { mode: this.mode });
     try {
-      const records = await this.collectEvidence(profile, target, discovery);
-      this.logger.write(LogEvent.RESEARCH_COMPLETED, {
-        mode: this.mode,
-        count: records.length,
-        durationMs: Date.now() - started,
-      });
-      return records;
+      await this.collectEvidence(profile, trace, target, discovery);
     } catch (error) {
+      const diagnostic = describeResearchFailure(error);
       this.logger.write(
         LogEvent.RESEARCH_FAILED,
-        { mode: this.mode, ...describeResearchFailure(error), durationMs: Date.now() - started },
+        { mode: this.mode, ...diagnostic, durationMs: Date.now() - started },
         'error',
       );
+      await save(ResearchRunStatus.FAILED, {
+        reason: diagnostic.reason ?? LogReason.UNKNOWN,
+        ...(diagnostic.provider ? { provider: diagnostic.provider } : {}),
+        ...(diagnostic.statusCode ? { statusCode: diagnostic.statusCode } : {}),
+      });
       throw error;
     }
+    // Persistence must succeed before the caller may finish the workflow job.
+    await save(ResearchRunStatus.SUCCEEDED, null);
+    this.logger.write(LogEvent.RESEARCH_COMPLETED, {
+      mode: this.mode,
+      count: trace.evidence.length,
+      durationMs: Date.now() - started,
+    });
+    return trace.evidence;
   }
 
   private async requestJson(
@@ -100,6 +156,7 @@ export class LiveResearch implements ResearchProvider {
 
   private async collectEvidence(
     profile: Profile,
+    trace: ResearchTrace,
     target?: InvestorResearchTarget,
     discovery?: ResearchDiscoveryContext,
   ): Promise<Evidence[]> {
@@ -133,6 +190,11 @@ export class LiveResearch implements ResearchProvider {
         signal: AbortSignal.timeout(30000),
       });
       const parsed = searchSchema.parse(raw).results;
+      trace.searches.push({
+        query: searchQuery,
+        retrievedAt: new Date().toISOString(),
+        sources: parsed,
+      });
       this.logger.write(
         LogEvent.SEARCH_RESULTS_RECEIVED,
         { provider: 'exa', count: parsed.length },
@@ -150,15 +212,21 @@ export class LiveResearch implements ResearchProvider {
           .map((page) => [page.url, page]),
       ).values(),
     ];
-    const evidence: Evidence[] = [];
+    const evidence = trace.evidence;
     for (const [sourceIndex, result] of results.slice(0, 5).entries()) {
+      const rejectSource = (reason: NonNullable<ResearchDecision['reason']>): void => {
+        trace.decisions.push({
+          sourceIndex,
+          url: result.url,
+          status: SourceDecision.REJECTED,
+          reason,
+          evidenceId: null,
+        });
+        this.logger.write(LogEvent.SOURCE_REJECTED, { sourceIndex, reason }, 'debug');
+      };
       const text = result.text ?? result.highlights?.join('\n') ?? '';
       if (!text) {
-        this.logger.write(
-          LogEvent.SOURCE_REJECTED,
-          { sourceIndex, reason: LogReason.NO_TEXT },
-          'debug',
-        );
+        rejectSource(LogReason.NO_TEXT);
         continue;
       }
       const body = await this.requestJson('openai', 'https://api.openai.com/v1/chat/completions', {
@@ -207,23 +275,14 @@ export class LiveResearch implements ResearchProvider {
 
       const content = completionSchema.parse(body).choices[0]?.message.content;
       if (!content) {
-        this.logger.write(
-          LogEvent.SOURCE_REJECTED,
-          { sourceIndex, reason: LogReason.EMPTY_COMPLETION },
-          'debug',
-        );
+        rejectSource(LogReason.EMPTY_COMPLETION);
         continue;
       }
       const extracted: unknown = JSON.parse(content);
       const claim = claimSchema.parse(extracted);
       if (!claim.matchesTarget || !text.includes(claim.quote)) {
-        this.logger.write(
-          LogEvent.SOURCE_REJECTED,
-          {
-            sourceIndex,
-            reason: !claim.matchesTarget ? LogReason.IDENTITY_MISMATCH : LogReason.QUOTE_NOT_FOUND,
-          },
-          'debug',
+        rejectSource(
+          !claim.matchesTarget ? LogReason.IDENTITY_MISMATCH : LogReason.QUOTE_NOT_FOUND,
         );
         continue;
       }
@@ -233,20 +292,12 @@ export class LiveResearch implements ResearchProvider {
           !text.includes(claim.comparableDeal.participationQuote) ||
           !text.includes(claim.comparableDeal.comparisonQuote))
       ) {
-        this.logger.write(
-          LogEvent.SOURCE_REJECTED,
-          { sourceIndex, reason: LogReason.COMPARABLE_EVIDENCE_MISSING },
-          'debug',
-        );
+        rejectSource(LogReason.COMPARABLE_EVIDENCE_MISSING);
         continue;
       }
       const url = new URL(result.url);
       if (url.protocol !== 'https:') {
-        this.logger.write(
-          LogEvent.SOURCE_REJECTED,
-          { sourceIndex, reason: LogReason.NON_HTTPS },
-          'debug',
-        );
+        rejectSource(LogReason.NON_HTTPS);
         continue;
       }
       url.hash = '';
@@ -287,6 +338,13 @@ export class LiveResearch implements ResearchProvider {
           ...(claim.comparableDeal ? { comparableDeal: claim.comparableDeal } : {}),
         }),
       );
+      trace.decisions.push({
+        sourceIndex,
+        url: result.url,
+        status: SourceDecision.ACCEPTED,
+        reason: null,
+        evidenceId: eventKey,
+      });
       this.logger.write(LogEvent.SOURCE_ACCEPTED, { sourceIndex }, 'debug');
     }
     return evidence;

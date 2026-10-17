@@ -9,6 +9,7 @@ export const LogEvent = {
   RESEARCH_COMPLETED: 'research_completed',
   RESEARCH_FAILED: 'research_failed',
   RESEARCH_UNAVAILABLE: 'research_unavailable',
+  RESEARCH_RUN_SAVED: 'research_run_saved',
   PROVIDER_REQUEST_STARTED: 'provider_request_started',
   PROVIDER_REQUEST_COMPLETED: 'provider_request_completed',
   SEARCH_RESULTS_RECEIVED: 'search_results_received',
@@ -40,6 +41,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
 
 /** Deliberately excludes prompts, URLs, source bodies, credentials and financial records. */
 export interface LogFields {
+  runId?: string;
   jobId?: string;
   jobKind?: string;
   attempt?: number;

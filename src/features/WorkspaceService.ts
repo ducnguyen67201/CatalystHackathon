@@ -1,3 +1,4 @@
+import type { ResearchRunStore } from './ResearchRunStore.js';
 import { randomUUID } from 'node:crypto';
 import { silentWorkflowLog, type WorkflowLog } from './WorkflowLog.js';
 import { discoveryStateSchema } from '../contracts/InvestorDiscovery.js';
@@ -26,6 +27,7 @@ export class WorkspaceService {
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
     readonly logger: WorkflowLog = silentWorkflowLog,
+    readonly researchRuns?: ResearchRunStore,
   ) {
     this.investors = new InvestorTrackingService(this, research);
   }
@@ -168,9 +170,12 @@ export class WorkspaceService {
       return 'Meeting brief updated from the current evidence and financials.';
     });
   }
-  async runRadar(): Promise<string> {
+  async runRadar(jobId?: string, attempt = 1): Promise<string> {
     const input = await this.read();
-    const candidates = await this.research.discover(input.profile);
+    const candidates = await this.research.discover(input.profile, undefined, undefined, {
+      ...(jobId ? { jobId } : {}),
+      attempt,
+    });
     const result = await this.change((state) => {
       if (state.profile.version !== input.profile.version) {
         throw new ConflictError(

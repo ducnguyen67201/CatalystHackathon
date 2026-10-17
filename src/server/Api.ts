@@ -1,3 +1,4 @@
+import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
 import { registerInvestorRoutes } from './InvestorRoutes.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
@@ -152,6 +153,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     return reply.code(202).send(job);
   });
   registerInvestorRoutes(app, service);
+  registerResearchRunRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };

@@ -1,4 +1,12 @@
-import { randomUUID } from 'node:crypto';
+import {
+  researchRunSchema,
+  researchRunListSchema,
+  type ResearchRun,
+  type ResearchRunQuery,
+  type ResearchRunList,
+} from '../contracts/ResearchRun.js';
+import type { ResearchRunStore } from '../features/ResearchRunStore.js';
+import { randomUUID, createHash } from 'node:crypto';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { z } from 'zod';
@@ -13,7 +21,7 @@ import { ConflictError, type ClaimedJob, type WorkspaceStore } from '../features
 const workspaceId = 'tidewell';
 const json = (value: unknown): Prisma.InputJsonObject =>
   z.record(z.string(), z.json()).parse(value);
-export class PrismaStore implements WorkspaceStore {
+export class PrismaStore implements WorkspaceStore, ResearchRunStore {
   private readonly client: PrismaClient;
   constructor(databaseUrl: string) {
     this.client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -285,6 +293,70 @@ export class PrismaStore implements WorkspaceStore {
       },
     });
   }
+  /** Same ID/body is idempotent; an existing archive is never overwritten. */
+  async saveResearchRun(input: ResearchRun): Promise<ResearchRun> {
+    const run = researchRunSchema.parse(input);
+    const contentHash = createHash('sha256').update(JSON.stringify(run)).digest('hex');
+    const row = await this.client.researchRun.upsert({
+      where: { id: run.id },
+      update: {},
+      create: {
+        id: run.id,
+        workspaceId,
+        investorId: run.investorId,
+        jobId: run.jobId,
+        kind: run.kind,
+        contentHash,
+        payload: json(run),
+      },
+    });
+    if (row.workspaceId !== workspaceId || row.contentHash !== contentHash) {
+      throw new ConflictError('Research run already exists with different data.');
+    }
+    return researchRunSchema.parse(row.payload);
+  }
+
+  async findResearchRun(id: string): Promise<ResearchRun | null> {
+    const row = await this.client.researchRun.findFirst({ where: { id, workspaceId } });
+    return row ? researchRunSchema.parse(row.payload) : null;
+  }
+
+  async listResearchRuns(query: ResearchRunQuery): Promise<ResearchRunList> {
+    const rows = await this.client.researchRun.findMany({
+      where: {
+        workspaceId,
+        ...(query.investorId ? { investorId: query.investorId } : {}),
+        ...(query.kind ? { kind: query.kind } : {}),
+        ...(query.jobId ? { jobId: query.jobId } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: query.offset,
+      take: query.limit + 1,
+    });
+    return researchRunListSchema.parse({
+      items: rows.slice(0, query.limit).map((row) => {
+        const run = researchRunSchema.parse(row.payload);
+        return {
+          id: run.id,
+          kind: run.kind,
+          origin: run.origin,
+          status: run.status,
+          investorId: run.investorId,
+          jobId: run.jobId,
+          attempt: run.attempt,
+          model: run.model,
+          failure: run.failure,
+          startedAt: run.startedAt,
+          finishedAt: run.finishedAt,
+          profileVersion: run.input.profileVersion,
+          sourceCount: run.searches.reduce((sum, search) => sum + search.sources.length, 0),
+          evidenceCount: run.evidence.length,
+        };
+      }),
+      nextOffset: rows.length > query.limit ? query.offset + query.limit : null,
+    });
+  }
+
   async close(): Promise<void> {
     await this.client.$disconnect();
   }

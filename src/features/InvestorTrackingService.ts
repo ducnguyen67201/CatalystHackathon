@@ -136,11 +136,11 @@ export class InvestorTrackingService {
     }
   }
 
-  async discover(jobId: string = randomUUID()): Promise<string> {
-    return this.discovery.discover(jobId);
+  async discover(jobId: string = randomUUID(), attempt = 1): Promise<string> {
+    return this.discovery.discover(jobId, attempt);
   }
 
-  async check(id: string, jobId: string): Promise<string> {
+  async check(id: string, jobId: string, attempt = 1): Promise<string> {
     const initial = await this.workspace.read();
     const target = initial.investors.find((item) => item.id === id);
     if (!target) {
@@ -149,11 +149,16 @@ export class InvestorTrackingService {
     if (target.checks.some((check) => check.jobId === jobId)) {
       return 'This check is already saved.';
     }
-    const records = await this.research.discover(initial.profile, {
-      name: target.name,
-      url: target.url,
-      profileLinks: target.profileLinks,
-    });
+    const records = await this.research.discover(
+      initial.profile,
+      {
+        name: target.name,
+        url: target.url,
+        profileLinks: target.profileLinks,
+      },
+      undefined,
+      { jobId, investorId: id, attempt },
+    );
     let addedCount = 0;
     let changedCount = 0;
     const savedNote = await this.workspace.change((state) => {

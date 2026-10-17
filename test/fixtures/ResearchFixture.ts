@@ -1,5 +1,5 @@
 import { evidenceSchema, type Evidence, type Profile } from '../../src/contracts/Workspace.js';
-import type { ResearchProvider } from '../../src/features/ResearchProvider.js';
+import type { ResearchProvider, ResearchExecution } from '../../src/features/ResearchProvider.js';
 import type { InvestorResearchTarget } from '../../src/contracts/InvestorTracking.js';
 import type { ResearchDiscoveryContext } from '../../src/contracts/InvestorDiscovery.js';
 
@@ -11,6 +11,7 @@ export class ResearchFixture implements ResearchProvider {
     profile: Profile,
     target?: InvestorResearchTarget,
     discovery?: ResearchDiscoveryContext,
+    _execution?: ResearchExecution,
   ): Promise<Evidence[]> {
     if (discovery) {
       return ['Cedar Ventures', 'Harbour Capital', 'Maple Seed Partners', 'Summit Ventures']
