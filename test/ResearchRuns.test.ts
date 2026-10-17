@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { LiveResearch } from '../src/infrastructure/Research.js';
+import { investorPreferencesSchema } from '../src/contracts/InvestorDiscovery.js';
 import { profileSchema } from '../src/contracts/Workspace.js';
 import { researchRunSchema, type ResearchRun } from '../src/contracts/ResearchRun.js';
 import type { ResearchRunStore } from '../src/features/ResearchRunStore.js';
@@ -105,7 +106,7 @@ describe('research output archives', () => {
     expect(JSON.stringify(runs)).not.toMatch(/PRIVATE GOAL|9876543|exa-test|openai-test/);
   });
 
-  it('archives both segment and co-investor queries for suggestions', async () => {
+  it('archives segment and example-firm queries with frozen preferences for suggestions', async () => {
     const { research, runs } = fixture();
     vi.stubGlobal(
       'fetch',
@@ -116,13 +117,22 @@ describe('research output archives', () => {
         .mockResolvedValueOnce(completion()),
     );
     await research.discover(
-      profile,
+      {
+        ...profile,
+        investorPreferences: investorPreferencesSchema.parse({
+          types: ['Accelerator'],
+          referenceFirms: ['YC'],
+        }),
+      },
       undefined,
       { knownInvestors: ['Known VC'], excludedInvestors: ['Dismissed VC'] },
       { jobId: 'discovery-job', attempt: 1 },
     );
     expect(runs[0]?.kind).toBe('discovery');
     expect(runs[0]?.searches).toHaveLength(2);
+    expect(runs[0]?.input.investorPreferences?.referenceFirms).toEqual(['YC']);
+    expect(runs[0]?.searches[1]?.query).toContain('firms like YC');
+    expect(runs[0]?.searches.every((search) => !search.query.includes('Known VC'))).toBe(true);
     expect(runs[0]?.input.discovery?.knownInvestors).toEqual(['Known VC']);
     expect(runs[0]?.evidence[0]?.comparableDeal?.company).toBe('ExampleCo');
   });

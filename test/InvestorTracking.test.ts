@@ -1,3 +1,10 @@
+import { investorPreferencesSchema } from '../src/contracts/InvestorDiscovery.js';
+import {
+  listCurrentSuggestions,
+  hasDiscoveryProfile,
+} from '../src/features/InvestorSuggestionRules.js';
+import { saveMeetingContext } from '../src/features/Onboarding.js';
+import { meetingInputSchema } from '../src/contracts/Onboarding.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { runWorkerTick } from '../src/server/Worker.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -353,7 +360,7 @@ it('live research uses public identity hints, rejects unrelated claims, and vers
   }
 });
 
-it('uses comparable-round and co-investor searches and rejects unsupported funding passages', async () => {
+it('uses company and reference-firm searches and rejects unsupported funding passages', async () => {
   const { service } = createFixture();
   await initialize(service);
   const profile = (await service.read()).profile;
@@ -418,12 +425,16 @@ it('uses comparable-round and co-investor searches and rejects unsupported fundi
   vi.stubGlobal('fetch', fetchMock);
   try {
     const context = { knownInvestors: ['Known Fund'], excludedInvestors: ['Dismissed Fund'] };
+    profile.investorPreferences = investorPreferencesSchema.parse({
+      referenceFirms: ['YC', 'a16z'],
+    });
     const records = await research.discover(profile, undefined, context);
     expect(records).toHaveLength(1);
     expect(records[0]?.checkMin).toBeNull();
     expect(records[0]?.comparableDeal?.roundTotal).toBe('CAD 2 million');
     expect(requests.filter((body) => body.includes('numResults'))).toHaveLength(2);
-    expect(requests[1]).toContain('Known Fund');
+    expect(requests[1]).toContain('firms like YC OR a16z and similar investors');
+    expect(requests.slice(0, 2).join('')).not.toContain('Known Fund');
     expect(requests.join('\n')).not.toContain(profile.goal);
     expect(requests.join('\n')).toContain('Dismissed Fund');
     supported = false;
@@ -431,4 +442,113 @@ it('uses comparable-round and co-investor searches and rejects unsupported fundi
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('discovers broadly without turning prior names into search targets, including legacy radar', async () => {
+  const { service } = createFixture();
+  await initialize(service);
+  const profile = (await service.read()).profile;
+  profile.name = 'Private founder company';
+  profile.watchlist = ['Duke'];
+  profile.investorPreferences = investorPreferencesSchema.parse({
+    types: ['Angel', 'Venture capital'],
+    firmSize: 'Medium',
+    priorities: 'hands-on support',
+  });
+  const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({ results: [] })));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const research = new LiveResearch('test-exa', 'test-model', 'test-model');
+    await research.discover(profile, undefined, {
+      knownInvestors: ['Duke'],
+      excludedInvestors: [],
+    });
+    await research.discover(profile);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const call of fetchMock.mock.calls) {
+      const body = call[1]?.body;
+      expect(body).toContain('B2B software');
+      expect(body).toContain('Angel OR Venture capital');
+      expect(body).toContain('medium investment firms');
+      expect(body).toContain('hands-on support');
+      expect(body).not.toContain('Duke');
+      expect(body).not.toContain(profile.name);
+      expect(body).not.toContain(profile.goal);
+    }
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('keeps meeting contacts paused and private notes out of discovery context', async () => {
+  const discover = vi.fn<ResearchProvider['discover']>().mockResolvedValue([]);
+  const { service } = createFixture({ discover });
+  await initialize(service);
+  await service.change((state) => {
+    saveMeetingContext(
+      state,
+      meetingInputSchema.parse({
+        name: 'Duke',
+        firm: '',
+        date: null,
+        notes: 'PRIVATE previous conversation',
+        links: {},
+      }),
+    );
+  });
+  await service.investors.discover();
+  const call = discover.mock.calls[0];
+  expect(call?.[1]).toBeUndefined();
+  expect(call?.[2]?.knownInvestors).toContain('Duke');
+  expect(JSON.stringify(call)).not.toContain('PRIVATE');
+  expect((await service.read()).investors[0]?.frequency).toBe('paused');
+});
+
+it('refreshes a full suggestion tray on preference changes while preserving evidence and rejecting stale tracking', async () => {
+  const { service } = createFixture();
+  await initialize(service);
+  await service.investors.discover('before-preferences');
+  const before = await service.read();
+  const suggestion = before.discovery.suggestions[0];
+  if (!suggestion) throw new Error('Missing fixture suggestion');
+  const preferences = investorPreferencesSchema.parse({ types: ['Angel'], firmSize: 'Medium' });
+  await service.investors.discovery.setPreferences(preferences);
+  await service.investors.discovery.setPreferences(preferences);
+  const changed = await service.read();
+  expect(changed.profile.version).toBe(before.profile.version + 1);
+  expect(listCurrentSuggestions(changed)).toEqual([]);
+  expect(changed.evidence).toEqual(before.evidence);
+  expect(changed.discovery.suggestions).toEqual(before.discovery.suggestions);
+  await expect(service.investors.discovery.decide(suggestion.id, 'tracked')).rejects.toThrow(
+    'company context changed',
+  );
+  await service.investors.discover('after-preferences');
+  expect(listCurrentSuggestions(await service.read())).toHaveLength(3);
+});
+
+it('rejects results if preferences change while discovery is running', async () => {
+  const demo = new ResearchFixture();
+  const discover = vi.fn<ResearchProvider['discover']>();
+  const { service } = createFixture({ discover });
+  await initialize(service);
+  discover.mockImplementation(async (...args) => {
+    await service.investors.discovery.setPreferences(
+      investorPreferencesSchema.parse({ types: ['Accelerator'] }),
+    );
+    return demo.discover(...args);
+  });
+  await expect(service.investors.discover()).rejects.toThrow('Profile changed');
+  expect((await service.read()).discovery.suggestions).toEqual([]);
+});
+
+it('requires a confirmed stage and validates bounded discovery preferences', () => {
+  expect(
+    hasDiscoveryProfile({ stage: 'Not confirmed', sector: 'Software', geography: 'Canada' }),
+  ).toBe(false);
+  expect(investorPreferencesSchema.safeParse({ types: ['Person named Duke'] }).success).toBe(false);
+  expect(investorPreferencesSchema.safeParse({ firmSize: 'Gigantic' }).success).toBe(false);
+  expect(
+    investorPreferencesSchema.safeParse({ referenceFirms: Array.from({ length: 6 }, () => 'Fund') })
+      .success,
+  ).toBe(false);
 });

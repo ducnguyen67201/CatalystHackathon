@@ -339,3 +339,5 @@ New eligible live results enter the email outbox in the same PostgreSQL transact
 Restart `pnpm dev` using this repository's database environment to regenerate Prisma and apply pending migrations automatically. The additive migration retains evidence and financial history. Email settings, confirmation hashes, and outbox bodies are excluded from `/api/state` and feed responses. The API exposes masked recipient status only. No live email is sent by the test suite.
 
 The background worker records its heartbeat separately from research jobs. Offline means no heartbeat within 60 seconds; scheduled checks require a running worker and an awake computer. Email links point to localhost and work on the computer running June. No remote deployment, SMS, investor outreach, or voice-context integration is enabled.
+
+Investor research keeps forms in dialogs: use **Search preferences** to choose investor types, firm size, example firms and priorities, or **Add investor** to save a public profile. Saved preferences appear in a compact summary and guide the next public search. Discovery scheduling stays in an expandable section.

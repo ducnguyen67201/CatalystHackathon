@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { investorPreferencesSchema } from './InvestorDiscovery.js';
 import { evidenceSchema } from './Workspace.js';
 
 export const ResearchRunKind = {
@@ -31,6 +32,7 @@ export const researchSearchSchema = z.strictObject({
 
 export const researchInputSchema = z.strictObject({
   profileVersion: z.int().positive(),
+  investorPreferences: investorPreferencesSchema.optional(),
   segment: z.strictObject({
     stage: z.string().max(100),
     sector: z.string().max(100),

@@ -13,6 +13,21 @@ export const DiscoveryFrequency = {
 
 export const suggestionLimit = 3;
 
+export const InvestorType = {
+  ANGEL: 'Angel',
+  ACCELERATOR: 'Accelerator',
+  VENTURE_CAPITAL: 'Venture capital',
+} as const;
+
+/** Explicit search preferences, never inferred from a contact's name or private notes. */
+export const investorPreferencesSchema = z.strictObject({
+  types: z.array(z.enum(InvestorType)).max(3).default([]),
+  firmSize: z.enum(['Any size', 'Small', 'Medium', 'Large']).default('Any size'),
+  referenceFirms: z.array(z.string().trim().min(1).max(100)).max(5).default([]),
+  priorities: z.string().trim().max(500).default(''),
+});
+export type InvestorPreferences = z.infer<typeof investorPreferencesSchema>;
+
 /** Round totals describe the company financing, never an individual investor's check. */
 export const comparableDealSchema = z.strictObject({
   company: z.string().min(1).max(200),

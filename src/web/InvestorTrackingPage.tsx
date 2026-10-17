@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { InvestorSuggestions } from './InvestorSuggestions.js';
+import { InvestorModal } from './InvestorModal.js';
 import { Plus, Search, RefreshCw, ExternalLink, ArrowRight } from 'lucide-react';
 import { z } from 'zod';
 import {
@@ -58,10 +59,13 @@ export function InvestorTrackingPage({
 }) {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('investor'),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [addingInvestor, setAddingInvestor] = useState(false);
   const investors = state.workspace.investors;
   const selected = investors.find((item) => item.id === selectedId) ?? investors[0];
   const latestCheck = selected?.checks.at(-1);
@@ -97,19 +101,19 @@ export function InvestorTrackingPage({
     <section className="investor-tracking">
       <div className="page-heading">
         <div>
-          <div className="eyebrow">Your investor watchlist</div>
-          <h1>Your investor watchlist</h1>
+          <div className="eyebrow">Investor research</div>
+          <h1>Discover investors for your next round</h1>
           <p className="muted">
-            Follow a person or firm. Keep the evidence behind your next conversation.
+            Find relevant firms and angels, then choose which investors to follow.
           </p>
         </div>
       </div>
       <div className="investor-loop" aria-label="Research workflow">
-        <span>01 Add a profile</span>
+        <span>01 Set your preferences</span>
         <ArrowRight size={14} />
-        <span>02 Research public sources</span>
+        <span>02 Discover investors</span>
         <ArrowRight size={14} />
-        <span>03 Review what changed</span>
+        <span>03 Choose who to track</span>
       </div>
       {!state.capabilities.researchReady && (
         <p className="investor-demo">
@@ -117,58 +121,90 @@ export function InvestorTrackingPage({
           the API and worker. Saved profiles will use live public-source research.
         </p>
       )}
-      <form
-        className="investor-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void act(async () => {
-            const investor = await request('/investors', trackedInvestorSchema, {
-              name,
-              url,
-              frequency: CheckFrequency.DAILY,
-            });
-            setSelectedId(investor.id);
-            setName('');
-            setUrl('');
-            setMessage(
-              'Profile saved. New profiles are scheduled for an immediate check, then every 24 hours. Existing profiles keep their schedule.',
-            );
-          });
-        }}
-      >
-        <label>
-          LinkedIn, X, or firm URL{' '}
-          <input
-            required
-            value={url}
-            maxLength={500}
-            placeholder="https://linkedin.com/in/investor-name"
-            onChange={(event) => {
-              setUrl(event.target.value);
-            }}
-          />
-        </label>
-        <label>
-          Name and firm <span className="muted">(optional, helps identify them)</span>
-          <input
-            value={name}
-            maxLength={100}
-            placeholder="Alex Chen, Example Ventures"
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-          />
-        </label>
-        <button className="button" disabled={busy} type="submit">
+      <InvestorSuggestions state={state} onRefresh={onRefresh} />
+      <div className="investor-section-heading">
+        <div>
+          <h2>Your investors</h2>
+          <p className="muted">Select an investor to explore their research and sources.</p>
+        </div>
+        <button
+          className="button"
+          onClick={(event) => {
+            event.currentTarget.focus();
+            setError('');
+            setAddingInvestor(true);
+          }}
+        >
           <Plus size={16} />
-          Track investor
+          Add investor
         </button>
-        <p className="muted investor-add-note">
-          Checks public sources every 24 hours while the worker runs. Login-only posts may be
-          unavailable. You can pause any investor below.
-        </p>
-      </form>
-      {error && (
+      </div>
+      {addingInvestor && (
+        <InvestorModal
+          title="Add investor"
+          description="Save a person or firm using a public profile or company link."
+          onClose={() => setAddingInvestor(false)}
+        >
+          <form
+            className="investor-add"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void act(async () => {
+                const investor = await request('/investors', trackedInvestorSchema, {
+                  name,
+                  url,
+                  frequency: CheckFrequency.DAILY,
+                });
+                setSelectedId(investor.id);
+                setName('');
+                setUrl('');
+                setAddingInvestor(false);
+                setMessage(
+                  'Profile saved. New profiles are scheduled for an immediate check, then every 24 hours. Existing profiles keep their schedule.',
+                );
+              });
+            }}
+          >
+            <label>
+              LinkedIn, X, or firm URL{' '}
+              <input
+                required
+                value={url}
+                maxLength={500}
+                placeholder="https://linkedin.com/in/investor-name"
+                onChange={(event) => {
+                  setUrl(event.target.value);
+                }}
+              />
+            </label>
+            <label>
+              Name and firm <span className="muted">(optional, helps identify them)</span>
+              <input
+                value={name}
+                maxLength={100}
+                placeholder="Alex Chen, Example Ventures"
+                onChange={(event) => {
+                  setName(event.target.value);
+                }}
+              />
+            </label>
+            <button className="button" disabled={busy} type="submit">
+              <Plus size={16} />
+              Track investor
+            </button>
+            <p className="muted investor-add-note">
+              Checks public sources every 24 hours while the worker runs. Login-only posts may be
+              unavailable. You can pause any investor below.
+            </p>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+          </form>
+        </InvestorModal>
+      )}
+      {error && !addingInvestor && (
         <p className="error" role="alert">
           {error}
         </p>
@@ -186,7 +222,8 @@ export function InvestorTrackingPage({
           </div>
           {!investors.length && (
             <p className="investor-empty">
-              Paste your first profile above, or discover candidates from your company profile.
+              Choose Add investor to save a profile, or find investors using your search
+              preferences.
             </p>
           )}
           {investors.map((investor) => {
@@ -240,7 +277,7 @@ export function InvestorTrackingPage({
                 <div>
                   <div className="eyebrow">
                     {selected.origin === InvestorOrigin.ADDED
-                      ? 'Your priority investor'
+                      ? 'Saved contact'
                       : 'Candidate to investigate'}
                   </div>
                   <h2>{selected.name}</h2>
@@ -361,6 +398,7 @@ export function InvestorTrackingPage({
                   {selectedJob.error}
                 </p>
               )}
+
               <div className="investor-result">
                 <strong>What changed?</strong>
                 <p>
@@ -399,7 +437,6 @@ export function InvestorTrackingPage({
           )}
         </div>
       </div>
-      <InvestorSuggestions state={state} onRefresh={onRefresh} />
     </section>
   );
 }

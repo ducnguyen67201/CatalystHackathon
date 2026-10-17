@@ -1,7 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { LogEvent } from '../features/WorkflowLog.js';
-import { DiscoveryFrequency, SuggestionStatus } from '../contracts/InvestorDiscovery.js';
+import {
+  DiscoveryFrequency,
+  SuggestionStatus,
+  investorPreferencesSchema,
+} from '../contracts/InvestorDiscovery.js';
 import { CheckFrequency, investorInputSchema } from '../contracts/InvestorTracking.js';
 import { radarRequestSchema } from '../contracts/Workspace.js';
 import { InvestorJob } from '../features/InvestorTrackingService.js';
@@ -45,6 +49,11 @@ export function registerInvestorRoutes(app: FastifyInstance, service: WorkspaceS
       .strictObject({ frequency: z.enum(DiscoveryFrequency) })
       .parse(request.body);
     await service.investors.discovery.setFrequency(frequency);
+    return { ok: true };
+  });
+
+  app.put('/api/investors/discovery/preferences', async (request) => {
+    await service.investors.discovery.setPreferences(investorPreferencesSchema.parse(request.body));
     return { ok: true };
   });
 
