@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { LiveAvatarProvider } from '../src/infrastructure/LiveAvatar.js';
-import { createEmptyPracticeContext } from '../src/contracts/PracticeContext.js';
+import {
+  createEmptyPracticeContext,
+  practiceContextSchema,
+} from '../src/contracts/PracticeContext.js';
 import { readEnvironment } from '../src/server/Env.js';
 import { isAvatarConfigured } from '../src/server/AvatarRoutes.js';
 
@@ -44,6 +47,35 @@ describe('LiveAvatar adapter', () => {
       avatar_persona: { voice_id: 'eleven-agent', context_id: contextId, language: 'en' },
     });
     expect(JSON.stringify(raw)).not.toContain('server-key');
+  });
+
+  it('passes provided practice context as session-scoped data without changing the configured context', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        code: 1000,
+        data: { session_id: providerSessionId, session_token: 'token' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const context = practiceContextSchema.parse({
+      ...createEmptyPracticeContext(),
+      mode: 'provided',
+      company: {
+        name: 'Fictional company',
+        description: 'Saved source context',
+        fundraisingGoal: 'Practise the pitch',
+      },
+    });
+    await new LiveAvatarProvider().createToken(
+      { apiKey: 'server-key', avatarId, voiceId: avatarId, contextId },
+      context,
+    );
+    const body: unknown = JSON.parse(z.string().parse(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      avatar_persona: { context_id: contextId },
+      dynamic_variables: { brief_context: JSON.stringify(context) },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects malformed provider tokens and accepts stopping an already missing session', async () => {

@@ -1,3 +1,4 @@
+import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { radarEvidence } from './fixtures/RadarFixture.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -43,7 +44,7 @@ async function fixture() {
   };
   const evidence = radarEvidence();
   const research = { discover: vi.fn().mockResolvedValue([evidence]) };
-  const service = new WorkspaceService(store, research);
+  const service = new WorkspaceService(store, research, fixtureEvaluationProvider);
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   const investor = await service.investors.add({
     name: 'Fictional Northline',

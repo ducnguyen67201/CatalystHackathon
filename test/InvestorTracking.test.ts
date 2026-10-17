@@ -1,3 +1,4 @@
+import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { runWorkerTick } from '../src/server/Worker.js';
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -42,7 +43,7 @@ function createFixture(research: ResearchProvider = new ResearchFixture()) {
     failJob: () => Promise.resolve(),
     close: () => Promise.resolve(),
   };
-  const service = new WorkspaceService(store, research);
+  const service = new WorkspaceService(store, research, fixtureEvaluationProvider);
   return { service, enqueue };
 }
 

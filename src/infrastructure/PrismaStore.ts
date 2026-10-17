@@ -12,6 +12,12 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { z } from 'zod';
 import {
+  generationSchema,
+  scenarioOutputSchema,
+  type ScenarioOutput,
+} from '../contracts/Scenario.js';
+import type { ScenarioStore, NewScenarioGeneration } from '../features/ScenarioStore.js';
+import {
   JobStatus,
   jobSchema,
   workspaceSchema,
@@ -22,7 +28,7 @@ import { ConflictError, type ClaimedJob, type WorkspaceStore } from '../features
 const workspaceId = 'tidewell';
 const json = (value: unknown): Prisma.InputJsonObject =>
   z.record(z.string(), z.json()).parse(value);
-export class PrismaStore implements WorkspaceStore, ResearchRunStore {
+export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioStore {
   private readonly client: PrismaClient;
   constructor(databaseUrl: string) {
     this.client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
@@ -84,7 +90,11 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       await this.save({ ...workspace, revision: existing.revision }, existing.revision);
     }
   }
-  async save(workspace: Workspace, expectedRevision: number): Promise<void> {
+  async save(
+    workspace: Workspace,
+    expectedRevision: number,
+    completedJob?: ClaimedJob,
+  ): Promise<void> {
     await this.client.$transaction(
       async (tx) => {
         const lock = await tx.workspace.updateMany({
@@ -104,6 +114,25 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
         });
         if (lock.count !== 1) {
           throw new ConflictError('The workspace changed. Retry this operation.');
+        }
+        // Always lock workspace before jobs, matching ordinary receipt writes.
+        if (completedJob) {
+          const completed = await tx.workflowJob.updateMany({
+            where: {
+              id: completedJob.id,
+              workspaceId,
+              status: JobStatus.RUNNING,
+              leaseToken: completedJob.leaseToken,
+              leaseUntil: { gt: new Date() },
+            },
+            data: {
+              status: JobStatus.SUCCEEDED,
+              result: 'Evaluation saved.',
+              leaseToken: null,
+              leaseUntil: null,
+            },
+          });
+          if (completed.count !== 1) throw new Error('Workflow lease expired.');
         }
         for (const payload of workspace.snapshots) {
           await tx.financialSnapshot.upsert({
@@ -142,6 +171,37 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
               payload: json(payload),
             },
           });
+        }
+        // Receipt and queue intent commit together. Unique keys make replay idempotent.
+        for (const session of workspace.rehearsals) {
+          for (const evaluation of session.evaluations) {
+            if (evaluation.status !== 'queued') continue;
+            const kind = `evaluate:${session.id}:${evaluation.id}`;
+            await tx.workflowJob.upsert({
+              where: { key: `${kind}:${evaluation.generation}` },
+              update: {},
+              create: {
+                id: randomUUID(),
+                workspaceId,
+                key: `${kind}:${evaluation.generation}`,
+                kind,
+              },
+            });
+          }
+          if (
+            session.evaluationContext !== null &&
+            session.mode === 'liveavatar' &&
+            session.status !== 'active' &&
+            session.avatarSessionId &&
+            !session.transcriptReceivedAt
+          ) {
+            const kind = `avatar-transcript:${session.id}`;
+            await tx.workflowJob.upsert({
+              where: { key: kind },
+              update: {},
+              create: { id: randomUUID(), workspaceId, key: kind, kind },
+            });
+          }
         }
         for (const payload of workspace.milestones) {
           await tx.milestone.upsert({
@@ -258,7 +318,11 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
       this.client.workflowJob.findMany({
         where: {
           workspaceId,
-          OR: [{ kind: { startsWith: 'investor:' } }, { kind: 'discover-investors' }],
+          OR: [
+            { kind: { startsWith: 'investor:' } },
+            { kind: 'discover-investors' },
+            { kind: { startsWith: 'evaluate:' } },
+          ],
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['kind'],
@@ -412,5 +476,135 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore {
 
   async close(): Promise<void> {
     await this.client.$disconnect();
+  }
+
+  async getGenerationByRequestKey(key: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { workspaceId, job: { key: workspaceId + ':scenario:' + key } },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async createGeneration(requestKey: string, input: NewScenarioGeneration) {
+    const id = await this.client
+      .$transaction(async (tx) => {
+        const job = await tx.workflowJob.upsert({
+          where: { key: workspaceId + ':scenario:' + requestKey },
+          update: {},
+          create: {
+            id: randomUUID(),
+            workspaceId,
+            key: workspaceId + ':scenario:' + requestKey,
+            kind: 'scenario',
+          },
+        });
+        const generation = await tx.scenarioGeneration.upsert({
+          where: { jobId: job.id },
+          update: {},
+          create: {
+            id: randomUUID(),
+            workspaceId,
+            investorId: input.input.investor.id,
+            jobId: job.id,
+            ...input,
+            input: json(input.input),
+          },
+        });
+        if (generation.requestHash !== input.requestHash)
+          throw new ConflictError('Request key reused with different scenario inputs.');
+        return generation.id;
+      })
+      .catch(async (error: unknown) => {
+        // Concurrent Prisma upserts can lose the unique-key race. The winning
+        // transaction has committed both records before its key can conflict.
+        const code = z.object({ code: z.string() }).safeParse(error);
+        if (code.success && code.data.code === 'P2002') {
+          const existing = await this.client.scenarioGeneration.findFirst({
+            where: { workspaceId, job: { key: workspaceId + ':scenario:' + requestKey } },
+          });
+          if (existing) {
+            if (existing.requestHash !== input.requestHash)
+              throw new ConflictError('Request key reused with different scenario inputs.');
+            return existing.id;
+          }
+        }
+        throw error;
+      });
+    const generation = await this.getGeneration(id);
+    if (!generation) throw new Error('Scenario generation was not saved.');
+    return generation;
+  }
+
+  private generationFromRow(row: Prisma.ScenarioGenerationGetPayload<{ include: { job: true } }>) {
+    return generationSchema.parse({
+      id: row.id,
+      jobId: row.jobId,
+      input: row.input,
+      output: row.output,
+      inputHash: row.inputHash,
+      requestHash: row.requestHash,
+      promptVersion: row.promptVersion,
+      model: row.model,
+      mode: row.mode,
+      createdAt: row.createdAt.toISOString(),
+      status: row.job.status,
+      error: row.job.error,
+    });
+  }
+
+  async getGeneration(id: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { id, workspaceId },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async getGenerationForJob(jobId: string) {
+    const row = await this.client.scenarioGeneration.findFirst({
+      where: { jobId, workspaceId },
+      include: { job: true },
+    });
+    return row ? this.generationFromRow(row) : null;
+  }
+
+  async listGenerations(investorId: string) {
+    const rows = await this.client.scenarioGeneration.findMany({
+      where: { workspaceId, investorId },
+      include: { job: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return rows.map((row) => this.generationFromRow(row));
+  }
+
+  async completeGeneration(job: ClaimedJob, output: ScenarioOutput): Promise<void> {
+    const parsed = scenarioOutputSchema.parse(output);
+    await this.client.$transaction(async (tx) => {
+      const lock = await tx.workflowJob.updateMany({
+        where: {
+          id: job.id,
+          workspaceId,
+          status: 'running',
+          leaseToken: job.leaseToken,
+          leaseUntil: { gt: new Date() },
+        },
+        data: {
+          status: 'succeeded',
+          result: 'Practice scenarios saved.',
+          error: null,
+          leaseToken: null,
+          leaseUntil: null,
+        },
+      });
+      if (lock.count !== 1)
+        throw new ConflictError('Scenario lease no longer belongs to this worker.');
+      const saved = await tx.scenarioGeneration.updateMany({
+        where: { workspaceId, jobId: job.id },
+        data: { output: json(parsed) },
+      });
+      if (saved.count !== 1) throw new Error('Scenario generation unavailable.');
+    });
   }
 }

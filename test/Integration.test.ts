@@ -1,5 +1,6 @@
 import { radarEvidence } from './fixtures/RadarFixture.js';
 import type { EmailSender } from '../src/features/EmailSender.js';
+import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
@@ -33,6 +34,12 @@ import { voiceSessionResponseSchema } from '../src/contracts/VoicePractice.js';
 import type { createVoiceToken } from '../src/infrastructure/Voice.js';
 import type { AvatarProvider } from '../src/features/AvatarProvider.js';
 import { avatarSessionResponseSchema } from '../src/contracts/AvatarPractice.js';
+import { DemoScenarioGenerator } from '../src/infrastructure/ScenarioGeneration.js';
+import {
+  generationSchema,
+  generationViewSchema,
+  scenarioPreviewSchema,
+} from '../src/contracts/Scenario.js';
 let app: FastifyInstance;
 let store: PrismaStore;
 let service: WorkspaceService;
@@ -54,7 +61,17 @@ beforeAll(async () => {
     throw new Error('Temporary database migration failed.');
   }
   store = new PrismaStore(databaseUrl.href);
-  service = new WorkspaceService(store, new ResearchFixture(), undefined, store);
+  service = new WorkspaceService(
+    store,
+    new ResearchFixture(),
+    fixtureEvaluationProvider,
+    undefined,
+    store,
+    {
+      store,
+      generator: new DemoScenarioGenerator(),
+    },
+  );
   await service.initialize(readFileSync('fixtures/Tidewell.csv', 'utf8'));
   await service.rebuild();
   await service.investors.discovery.setFrequency('paused');
@@ -72,6 +89,14 @@ afterAll(async () => {
   await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
   await admin.end();
 });
+async function drainWorker(target: WorkspaceService): Promise<boolean> {
+  let ran = false;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (!(await runWorkerTick(target))) return ran;
+    ran = true;
+  }
+  throw new Error('Test queue did not drain');
+}
 async function state() {
   const response = await app.inject({ url: '/api/state', headers: { cookie: sessionCookie } });
   return stateResponseSchema.parse(response.json());
@@ -296,6 +321,9 @@ describe('PostgreSQL-backed application workflow', () => {
       expect(completed?.status).toBe('completed');
       expect(completed?.turns).toHaveLength(2);
       expect(completed?.review).toBeNull();
+      expect(completed?.evaluationContext).not.toBeNull();
+      expect(completed?.evaluations[0]?.status).toBe('queued');
+      expect(completed?.evaluations[0]).not.toHaveProperty('mode');
       expect(completed?.transcriptReceivedAt).toEqual(expect.any(String));
       await deliver('standalone-conversation', 'test-agent');
       await voiceApi.inject({
@@ -378,7 +406,15 @@ describe('PostgreSQL-backed application workflow', () => {
       });
       expect(restored.statusCode).toBe(200);
       const publicBefore = (({ radar: _privateRadar, ...value }) => value)(before);
-      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual(publicBefore);
+      expect(stateResponseSchema.parse(restored.json()).workspace).toEqual({
+        ...publicBefore,
+        rehearsals: before.rehearsals.map((s) => ({
+          ...s,
+          evaluationContext: null,
+          evaluations: [],
+          evaluationResponses: [],
+        })),
+      });
     } finally {
       await restartedApi.close();
     }
@@ -404,9 +440,9 @@ describe('PostgreSQL-backed application workflow', () => {
       ).json(),
     );
     expect(one.id).toBe(two.id);
-    await runWorkerTick(service);
+    await drainWorker(service);
     await service.store.enqueue(randomUUID(), 'radar');
-    await runWorkerTick(service);
+    await drainWorker(service);
     const response = await state();
     expect(response.workspace.evidence).toHaveLength(1);
     expect(response.workspace.notices).toHaveLength(1);
@@ -417,7 +453,7 @@ describe('PostgreSQL-backed application workflow', () => {
     for (let run = 0; run < 12; run += 1) {
       const job = await service.store.enqueue(randomUUID(), 'radar');
       jobIds.add(job.id);
-      expect(await runWorkerTick(service)).toBe(true);
+      expect(await drainWorker(service)).toBe(true);
     }
     const jobs = (await service.store.listJobs()).filter((job) => jobIds.has(job.id));
     expect(jobs).toHaveLength(12);
@@ -636,7 +672,7 @@ describe('durable investor research', () => {
     const first = await service.investors.enqueueCheck(investor.id, randomUUID());
     const second = await service.investors.enqueueCheck(investor.id, randomUUID());
     expect(second.id).toBe(first.id);
-    await runWorkerTick(service);
+    await drainWorker(service);
     const saved = (await state()).workspace.investors.find((item) => item.id === investor.id);
     expect(saved?.checks).toHaveLength(1);
     expect(saved?.checks[0]?.evidenceIds).toContain('demo-northline');
@@ -660,7 +696,7 @@ describe('durable investor research', () => {
     ).toBeNull();
     const before = (await state()).workspace.notices.length;
     await service.investors.enqueueCheck(investor.id, randomUUID());
-    await runWorkerTick(service);
+    await drainWorker(service);
     expect((await state()).workspace.notices).toHaveLength(before);
     expect(
       (await state()).workspace.investors.find((item) => item.id === investor.id)?.checks,
@@ -677,7 +713,7 @@ describe('durable investor research', () => {
       Array.from({ length: 4 }, () => service.investors.enqueueCheck(investor.id, randomUUID())),
     );
     expect(new Set(jobs.map((job) => job.id)).size).toBe(1);
-    await runWorkerTick(service);
+    await drainWorker(service);
     expect(
       (await service.read()).investors.find((item) => item.id === investor.id)?.checks[0]
         ?.evidenceIds,
@@ -752,12 +788,16 @@ describe('saved founder onboarding', () => {
     expect(investor?.profileLinks).toEqual(Object.values(links));
     expect(investor?.frequency).toBe('paused');
     const calls: unknown[] = [];
-    const researchService = new WorkspaceService(store, {
-      discover: (_profile, target) => {
-        calls.push(target);
-        return Promise.resolve([]);
+    const researchService = new WorkspaceService(
+      store,
+      {
+        discover: (_profile, target) => {
+          calls.push(target);
+          return Promise.resolve([]);
+        },
       },
-    });
+      fixtureEvaluationProvider,
+    );
     if (!investor) {
       throw new Error('Missing onboarding investor');
     }
@@ -839,6 +879,312 @@ describe('onboarding restart', () => {
   });
 });
 
+describe('saved scenario workflow', () => {
+  async function prepare() {
+    const investor = await service.investors.add({
+      name: 'Scenario test investor',
+      url: 'https://example.com/scenario-investor',
+      frequency: 'paused',
+    });
+    for (let index = 0; index < 30 && (await runWorkerTick(service)); index++) {
+      /* Drain pre-existing jobs. */
+    }
+    return investor;
+  }
+
+  it('atomically deduplicates generation requests, saves output, and preserves snapshots across updates', async () => {
+    const investor = await prepare();
+    const headers = { cookie: sessionCookie };
+    const payload = {
+      investorId: investor.id,
+      objective: 'Explain the company clearly',
+      key: randomUUID(),
+    };
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/scenario-generations', payload })).statusCode,
+    ).toBe(401);
+    const responses = await Promise.all(
+      [1, 2].map(() =>
+        app.inject({ method: 'POST', url: '/api/scenario-generations', headers, payload }),
+      ),
+    );
+    const first = generationSchema.parse(responses[0]?.json());
+    const second = generationSchema.parse(responses[1]?.json());
+    expect(first.id).toBe(second.id);
+    expect(first.jobId).toBe(second.jobId);
+    expect(first.output).toBeNull();
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: { ...payload, objective: 'Different request' },
+        })
+      ).statusCode,
+    ).toBe(409);
+    await runWorkerTick(service);
+    const finished = generationViewSchema.parse(
+      (await app.inject({ url: '/api/scenario-generations/' + first.id, headers })).json(),
+    );
+    expect(finished.status).toBe('succeeded');
+    expect(finished.output?.scenarios.length).toBeGreaterThan(0);
+    expect(finished.outdated).toBe(false);
+    const reopened = new PrismaStore(databaseUrl.href);
+    try {
+      expect((await reopened.getGeneration(first.id))?.output).toEqual(finished.output);
+    } finally {
+      await reopened.close();
+    }
+    await service.change((workspace) => {
+      workspace.profile.goal = 'A new preparation goal';
+      workspace.profile.version++;
+    });
+    const stale = generationViewSchema.parse(
+      (await app.inject({ url: '/api/scenario-generations/' + first.id, headers })).json(),
+    );
+    expect(stale.outdated).toBe(true);
+    expect(stale.input).toEqual(first.input);
+    expect(stale.output).toEqual(finished.output);
+  });
+
+  it('reviews server-selected input, rejects changed data and replays a confirmed request safely', async () => {
+    const investor = await prepare();
+    const headers = { cookie: sessionCookie };
+    const payload = {
+      investorId: investor.id,
+      objective: 'Practise using the current financial evidence',
+    };
+    const beforeJobs = await store.listJobs();
+    expect(
+      (await app.inject({ method: 'POST', url: '/api/scenario-generations/preview', payload }))
+        .statusCode,
+    ).toBe(401);
+    const preview = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    expect(preview.input.sources.some((source) => source.kind === 'financials')).toBe(true);
+    expect(await store.listJobs()).toEqual(beforeJobs);
+    await service.change((workspace) => {
+      workspace.profile.goal = 'Updated after review';
+      workspace.profile.version++;
+    });
+    const stale = await app.inject({
+      method: 'POST',
+      url: '/api/scenario-generations',
+      headers,
+      payload: { ...payload, key: randomUUID(), expectedInputHash: preview.inputHash },
+    });
+    expect(stale.statusCode).toBe(409);
+    const fresh = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    const confirmed = { ...payload, key: randomUUID(), expectedInputHash: fresh.inputHash };
+    const created = generationSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: confirmed,
+        })
+      ).json(),
+    );
+    expect(created.input.sources.map(({ capturedAt: _capturedAt, ...source }) => source)).toEqual(
+      fresh.input.sources.map(({ capturedAt: _capturedAt, ...source }) => source),
+    );
+    await runWorkerTick(service);
+    await service.change((workspace) => {
+      workspace.profile.goal = 'Changed again';
+      workspace.profile.version++;
+    });
+    const replay = generationSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations',
+          headers,
+          payload: confirmed,
+        })
+      ).json(),
+    );
+    expect(replay.id).toBe(created.id);
+    const next = scenarioPreviewSchema.parse(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/scenario-generations/preview',
+          headers,
+          payload,
+        })
+      ).json(),
+    );
+    expect(next.input.previousScenarios.length).toBeGreaterThan(0);
+  });
+
+  it('rejects stale worker completion and recovers a leased job without overwriting the saved result', async () => {
+    const investor = await prepare();
+    if (!service.scenarios) throw new Error('Scenario runtime missing.');
+    const generation = await service.scenarios.create(investor.id, '', randomUUID());
+    const firstClaim = await store.claimJob(new Date());
+    if (!firstClaim || firstClaim.id !== generation.jobId)
+      throw new Error('Expected scenario job.');
+    const connection = new Client({ connectionString: databaseUrl.href });
+    await connection.connect();
+    try {
+      await connection.query('UPDATE "WorkflowJob" SET "leaseUntil" = $1 WHERE id = $2', [
+        new Date(0),
+        firstClaim.id,
+      ]);
+    } finally {
+      await connection.end();
+    }
+    const nextClaim = await store.claimJob(new Date());
+    if (!nextClaim) throw new Error('Expected recovered scenario job.');
+    const output = await new DemoScenarioGenerator().generate(generation.input);
+    await expect(store.completeGeneration(firstClaim, output)).rejects.toThrow('lease');
+    expect((await store.getGeneration(generation.id))?.output).toBeNull();
+    await service.scenarios.run(nextClaim);
+    expect((await store.getGeneration(generation.id))?.status).toBe('succeeded');
+    await expect(store.completeGeneration(nextClaim, output)).rejects.toThrow('lease');
+    expect((await store.getGeneration(generation.id))?.output).toEqual(output);
+  });
+
+  it('passes the selected full scenario to voice and avatar and preserves empty-context practice', async () => {
+    const investor = await prepare();
+    if (!service.scenarios) throw new Error('Scenario runtime missing.');
+    const generation = await service.scenarios.create(investor.id, '', randomUUID());
+    await runWorkerTick(service);
+    const ready = await service.scenarios.get(generation.id);
+    const scenario = ready.output?.scenarios[0];
+    if (!scenario) throw new Error('Expected scenario output.');
+    const selection = { generationId: ready.id, scenarioId: scenario.id };
+    const createToken = vi
+      .fn<typeof createVoiceToken>()
+      .mockResolvedValue({ token: 'scenario-test-token', conversationId: randomUUID() });
+    const avatarToken = vi
+      .fn<AvatarProvider['createToken']>()
+      .mockResolvedValue({ token: 'scenario-avatar-token', avatarSessionId: randomUUID() });
+    const localApi = await createApi(
+      service,
+      readEnvironment({
+        DATABASE_URL: databaseUrl.href,
+        ELEVENLABS_API_KEY: 'test-key',
+        ELEVENLABS_AGENT_ID: 'test-agent',
+        ELEVENLABS_WEBHOOK_SECRET: 'test-secret',
+        LIVEAVATAR_API_KEY: 'test-avatar-key',
+        LIVEAVATAR_AVATAR_ID: randomUUID(),
+        LIVEAVATAR_VOICE_ID: randomUUID(),
+        LIVEAVATAR_CONTEXT_ID: randomUUID(),
+      }),
+      {
+        contextProvider: new NoopPracticeContextProvider(),
+        createToken,
+        avatarProvider: {
+          createToken: avatarToken,
+          fetchTranscript: vi.fn<AvatarProvider['fetchTranscript']>().mockResolvedValue(null),
+          stopSession: vi.fn<AvatarProvider['stopSession']>().mockResolvedValue(undefined),
+        },
+      },
+    );
+    try {
+      const login = await localApi.inject({ method: 'POST', url: '/api/session' });
+      const headers = {
+        cookie: login.cookies.map((item) => item.name + '=' + item.value).join('; '),
+      };
+      expect(
+        (
+          await localApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: { selection: { ...selection, prompt: 'override' } },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const response = await localApi.inject({
+        method: 'POST',
+        url: '/api/voice/sessions',
+        headers,
+        payload: { selection },
+      });
+      expect(response.statusCode).toBe(200);
+      const voice = voiceSessionResponseSchema.parse(response.json());
+      expect(voice.session.context?.version).toBe(2);
+      expect(voice.session.context?.scenario).toEqual(scenario);
+      expect(voice.session.evaluationContext?.investorId).toBe(investor.id);
+      expect(voice.session.evaluationContext?.scenario).toBe(scenario.objective);
+      expect(voice.dynamicVariables.brief_context).toContain(scenario.openingQuestion);
+      const frozen = voice.session.context;
+      await service.change((workspace) => {
+        workspace.profile.goal = 'Changed after voice start';
+        workspace.profile.version++;
+      });
+      expect(
+        (await service.read()).rehearsals.find((item) => item.id === voice.session.id)?.context,
+      ).toEqual(frozen);
+      await service.finishRehearsal(voice.session.id, [], true);
+      expect((await service.evaluations.get(voice.session.id)).evaluations).toHaveLength(0);
+      await service.finishRehearsal(
+        voice.session.id,
+        [
+          { role: 'agent', text: scenario.openingQuestion },
+          { role: 'user', text: 'Our operating income is -59797 unspecified for 2026-07.' },
+        ],
+        true,
+        true,
+      );
+      expect((await service.evaluations.get(voice.session.id)).evaluations[0]?.status).toBe(
+        'queued',
+      );
+      await drainWorker(service);
+      expect((await service.evaluations.get(voice.session.id)).evaluations[0]?.status).toBe(
+        'completed',
+      );
+      const videoResponse = await localApi.inject({
+        method: 'POST',
+        url: '/api/avatar/sessions',
+        headers,
+        payload: { selection },
+      });
+      expect(videoResponse.statusCode).toBe(200);
+      const video = avatarSessionResponseSchema.parse(videoResponse.json());
+      expect(video.session.context?.scenario).toEqual(scenario);
+      expect(avatarToken.mock.calls[0]?.[1]).toEqual(video.session.context);
+      await service.finishRehearsal(video.session.id, [], false);
+      createToken.mockResolvedValue({ token: 'empty-test-token', conversationId: randomUUID() });
+      const empty = voiceSessionResponseSchema.parse(
+        (
+          await localApi.inject({
+            method: 'POST',
+            url: '/api/voice/sessions',
+            headers,
+            payload: {},
+          })
+        ).json(),
+      );
+      expect(empty.session.context?.mode).toBe('empty');
+      await service.finishRehearsal(empty.session.id, [], false);
+    } finally {
+      await localApi.close();
+    }
+  });
+});
+
 it('keeps state polling separate from interview control requests', async () => {
   const limitedApi = await createApi(service, readEnvironment({ DATABASE_URL: databaseUrl.href }));
   try {
@@ -862,6 +1208,127 @@ it('keeps state polling separate from interview control requests', async () => {
     ).toBe(503);
   } finally {
     await limitedApi.close();
+  }
+});
+
+it('atomically evaluates a saved transcript, fences stale workers, and preserves a written retry', async () => {
+  const { createEmptyPracticeContext } = await import('../src/contracts/PracticeContext.js');
+  const { evaluationResponseSchema } = await import('../src/contracts/RehearsalEvaluation.js');
+  const evaluator = fixtureEvaluationProvider;
+  const coached = new WorkspaceService(store, new ResearchFixture(), evaluator);
+  const initial = await coached.read();
+  const snapshot = initial.snapshots.find((s) => s.fileName === 'Tidewell.csv');
+  if (!snapshot) throw new Error('Missing fictional fixture');
+  await coached.selectOnboardingFinancials(snapshot.id);
+  const brief = initial.briefs.at(-1);
+  if (!brief) throw new Error('Missing fixture brief');
+  const session = await coached.createRehearsal(
+    brief.id,
+    'text',
+    null,
+    createEmptyPracticeContext(),
+  );
+  await coached.answer(session.id, 'Our operating income is 122503 unspecified for 2026-07.');
+  await Promise.all([
+    coached.finishRehearsal(session.id, [], true),
+    coached.finishRehearsal(session.id, [], true),
+  ]);
+  const pending = (await coached.read()).rehearsals.find((s) => s.id === session.id);
+  const evaluation = pending?.evaluations[0];
+  if (!evaluation) throw new Error('Evaluation was not scheduled');
+  expect(pending.evaluations).toHaveLength(1);
+  const persisted = new PrismaStore(databaseUrl.href);
+  try {
+    expect(
+      (await persisted.load())?.rehearsals.find((s) => s.id === session.id)?.evaluations[0]?.id,
+    ).toBe(evaluation.id);
+    expect(
+      (await persisted.listJobs()).some(
+        (j) => j.kind === `evaluate:${session.id}:${evaluation.id}`,
+      ),
+    ).toBe(true);
+  } finally {
+    await persisted.close();
+  }
+  // Editing company context after the call must not change the frozen review inputs.
+  await coached.change((state) => {
+    state.profile.goal = 'Changed after practice';
+  });
+  expect(
+    (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluationContext,
+  ).toEqual(session.evaluationContext);
+  let claimed = await store.claimJob(new Date());
+  for (
+    let attempt = 0;
+    claimed && claimed.kind !== `evaluate:${session.id}:${evaluation.id}` && attempt < 100;
+    attempt++
+  ) {
+    await store.finishJob(claimed, 'Unrelated test job drained.');
+    claimed = await store.claimJob(new Date());
+  }
+  if (!claimed || claimed.kind !== `evaluate:${session.id}:${evaluation.id}`)
+    throw new Error('Expected evaluation job');
+  await expect(
+    coached.evaluations.run(session.id, evaluation.id, { ...claimed, leaseToken: 'expired-token' }),
+  ).rejects.toThrow('lease expired');
+  expect(
+    (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0]?.report,
+  ).toBeNull();
+  await coached.evaluations.run(session.id, evaluation.id, claimed);
+  const completed = (await coached.read()).rehearsals.find((s) => s.id === session.id)
+    ?.evaluations[0];
+  expect(completed?.status).toBe('completed');
+  expect(completed?.report?.checks[0]?.support).toBe('contradicted');
+  expect((await store.listJobs()).find((j) => j.id === claimed.id)?.status).toBe('succeeded');
+  const item = completed?.report?.coaching.items[0];
+  if (!item) throw new Error('Missing coaching item');
+  const reviewApi = await createApi(coached, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+  try {
+    expect(
+      (await reviewApi.inject({ url: `/api/rehearsals/${session.id}/evaluations` })).statusCode,
+    ).toBe(401);
+    const login = await reviewApi.inject({ method: 'POST', url: '/api/session' });
+    const headers = { cookie: login.cookies.map((c) => `${c.name}=${c.value}`).join('; ') };
+    const reviewed = await reviewApi.inject({
+      url: `/api/rehearsals/${session.id}/evaluations`,
+      headers,
+    });
+    expect(evaluationResponseSchema.parse(reviewed.json()).evaluations[0]?.status).toBe(
+      'completed',
+    );
+    const body = {
+      itemId: item.id,
+      kind: 'practice',
+      text: 'Our operating income is -59797 unspecified for 2026-07.',
+      requestKey: randomUUID(),
+    };
+    const path = `/api/rehearsals/${session.id}/evaluations/${evaluation.id}/responses`;
+    const [first, duplicate] = await Promise.all([
+      reviewApi.inject({ method: 'POST', url: path, headers, payload: body }),
+      reviewApi.inject({ method: 'POST', url: path, headers, payload: body }),
+    ]);
+    expect(first.statusCode).toBe(200);
+    expect(duplicate.json()).toEqual(first.json());
+    const after = await coached.read();
+    expect(after.rehearsals.find((s) => s.id === session.id)?.evaluationResponses).toHaveLength(1);
+    const retry = after.rehearsals.find((s) =>
+      s.evaluations.some((e) => e.parentEvaluationId === evaluation.id),
+    );
+    expect(retry?.mode).toBe('text');
+    const childEvaluation = retry?.evaluations[0];
+    if (!retry || !childEvaluation) throw new Error('Missing written retry');
+    const childJob = await store.claimJob(new Date());
+    if (!childJob) throw new Error('Missing retry job');
+    await coached.evaluations.run(retry.id, childEvaluation.id, childJob);
+    const result = (await coached.read()).rehearsals.find((s) => s.id === retry.id)?.evaluations[0];
+    expect(result?.report?.checks[0]?.support).toBe('supported');
+    expect(result?.report?.coaching.items).toHaveLength(0);
+    expect(result?.report?.coaching.comparison?.outcome).toBe('not_comparable');
+    expect(
+      (await coached.read()).rehearsals.find((s) => s.id === session.id)?.evaluations[0],
+    ).toEqual(completed);
+  } finally {
+    await reviewApi.close();
   }
 });
 
@@ -1046,7 +1513,13 @@ describe('research archive API', () => {
 describe('automatic research archiving', () => {
   it('saves investor and discovery workflow outputs in PostgreSQL with job correlation', async () => {
     const research = new LiveResearch('test-exa', 'test-model', 'test-model', undefined, store);
-    const recording = new WorkspaceService(store, research, undefined, store);
+    const recording = new WorkspaceService(
+      store,
+      research,
+      fixtureEvaluationProvider,
+      undefined,
+      store,
+    );
     const current = await recording.read();
     await recording.updateProfile({
       ...current.profile,
@@ -1100,6 +1573,7 @@ describe('radar and email persistence', () => {
     const producer = new WorkspaceService(
       store,
       { discover: () => Promise.resolve([evidence]) },
+      fixtureEvaluationProvider,
       undefined,
       store,
     );
@@ -1174,7 +1648,11 @@ describe('radar and email persistence', () => {
         expect(
           restored?.radar.deliveries.filter((item) => item.eventId === event?.id),
         ).toHaveLength(1);
-        const resumed = new WorkspaceService(freshStore, new ResearchFixture());
+        const resumed = new WorkspaceService(
+          freshStore,
+          new ResearchFixture(),
+          fixtureEvaluationProvider,
+        );
         resumed.radar.configure({ send }, 'alerts@example.com', 'http://127.0.0.1:4317');
         send.mockClear();
         await Promise.all([producer.radar.deliverOne(), resumed.radar.deliverOne()]);

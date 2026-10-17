@@ -6,6 +6,6 @@
     "rootDir": "src",
     "declaration": false
   },
-  "include": ["src/contracts", "src/features", "src/infrastructure", "src/server"],
+  "include": ["src/contracts", "src/features", "src/infrastructure", "src/server", "src/prompts"],
   "exclude": ["src/web"]
 }

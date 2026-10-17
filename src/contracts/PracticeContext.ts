@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  scenarioInputSchema,
+  scenarioOutputSchema,
+  generatedScenarioSchema,
+  scenarioSelectionSchema,
+} from './Scenario.js';
 
 const referenceSchema = z.string().min(1).max(100);
 
@@ -61,7 +67,7 @@ const scenarioSchema = z.strictObject({
 });
 
 /** Frozen inputs for one conversation. Null means unknown, never an inferred fact. */
-export const practiceContextSchema = z.discriminatedUnion('mode', [
+const legacyPracticeContextSchema = z.discriminatedUnion('mode', [
   z.strictObject({
     version: z.literal(1),
     mode: z.literal(PracticeContextMode.EMPTY),
@@ -79,6 +85,24 @@ export const practiceContextSchema = z.discriminatedUnion('mode', [
     meetingNotes: z.array(meetingNoteSchema).max(10),
     investor: investorContextSchema.nullable(),
     scenario: scenarioSchema.nullable(),
+  }),
+]);
+
+export const practiceContextSchema = z.union([
+  legacyPracticeContextSchema,
+  z.strictObject({
+    version: z.literal(2),
+    mode: z.literal(PracticeContextMode.PROVIDED),
+    company: companySchema.nullable(),
+    financials: z.null(),
+    meetingNotes: z.array(meetingNoteSchema).max(0),
+    investor: z.null(),
+    scenario: generatedScenarioSchema,
+    selection: scenarioSelectionSchema,
+    input: scenarioInputSchema,
+    investorProfile: scenarioOutputSchema.shape.investorProfile,
+    generationMode: z.enum(['demo', 'live']),
+    instruction: z.string().max(2000),
   }),
 ]);
 

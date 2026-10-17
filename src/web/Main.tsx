@@ -8,7 +8,13 @@ const root = document.getElementById('root');
 if (root) {
   createRoot(root).render(
     <ConversationProvider>
-      {window.location.pathname === '/voice' ? <VoicePracticePage /> : <App />}
+      {window.location.pathname === '/scenarios' ? (
+        <VoicePracticePage page="scenarios" />
+      ) : ['/voice', '/practice'].includes(window.location.pathname) ? (
+        <VoicePracticePage />
+      ) : (
+        <App />
+      )}
     </ConversationProvider>,
   );
 }
