@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { trackedInvestorSchema } from './InvestorTracking.js';
 
 export const ResearchMode = {
   DEMO: 'demo',
@@ -206,6 +207,7 @@ export const workspaceSchema = z.strictObject({
   rehearsals: z.array(rehearsalSchema),
   milestones: z.array(milestoneSchema),
   notices: z.array(noticeSchema),
+  investors: z.array(trackedInvestorSchema).default([]),
 });
 
 export type Workspace = z.infer<typeof workspaceSchema>;

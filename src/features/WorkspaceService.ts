@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { InvestorTrackingService } from './InvestorTrackingService.js';
 import { Decimal } from 'decimal.js';
 import {
   briefSchema,
@@ -17,10 +18,14 @@ import { nextScheduledCheck } from './Schedules.js';
 import { ConflictError, type WorkspaceStore } from './WorkspaceStore.js';
 
 export class WorkspaceService {
+  readonly investors: InvestorTrackingService;
+
   constructor(
     readonly store: WorkspaceStore,
     private readonly research: ResearchProvider,
-  ) {}
+  ) {
+    this.investors = new InvestorTrackingService(this, research);
+  }
   async read(): Promise<Workspace> {
     const state = await this.store.load();
     if (!state) {
@@ -69,6 +74,7 @@ export class WorkspaceService {
       rehearsals: [],
       milestones: [],
       notices: [],
+      investors: [],
     });
   }
   async updateProfile(profile: Omit<Profile, 'version'>): Promise<void> {

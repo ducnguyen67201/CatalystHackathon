@@ -39,7 +39,7 @@ export function readEnvironment(values: EnvironmentValues) {
       RESEARCH_MODE: z.enum(['demo', 'live']).default('demo'),
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),
-      RESEARCH_MODEL: z.string().default('gpt-4.1-mini'),
+      RESEARCH_MODEL: z.string().default('gpt-6.1-sol'),
       ELEVENLABS_API_KEY: z.string().optional(),
       ELEVENLABS_AGENT_ID: z.string().optional(),
       ELEVENLABS_WEBHOOK_SECRET: z.string().optional(),

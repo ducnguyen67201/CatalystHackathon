@@ -1,3 +1,4 @@
+import { registerInvestorRoutes } from './InvestorRoutes.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -76,7 +77,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable)/.test(
         error.message,
       )
     ) {
@@ -146,6 +147,7 @@ export async function createApi(service: WorkspaceService, env: Environment) {
     const job = await service.store.enqueue(`manual:${body.key}`, 'radar');
     return reply.code(202).send(job);
   });
+  registerInvestorRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };

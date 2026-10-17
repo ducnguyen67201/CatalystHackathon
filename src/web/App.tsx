@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   Activity,
+  Search,
   ArrowRight,
   Bell,
   Check,
@@ -21,9 +22,11 @@ import type { Brief, Evidence, Profile, StateResponse } from '../contracts/Works
 import { Stage, profileSchema } from '../contracts/Workspace.js';
 import { evaluateInvestorFit } from '../features/InvestorFit.js';
 import { command, fetchState, startLocalSession, startRadar } from './ApiClient.js';
+import { InvestorTrackingPage } from './InvestorTrackingPage.js';
 import { VoiceRoom } from './VoiceRoom.js';
 const Page = {
   RADAR: 'radar',
+  INVESTORS: 'investors',
   FINANCIALS: 'financials',
   BRIEF: 'brief',
   PRACTICE: 'practice',
@@ -235,6 +238,7 @@ export function App() {
   };
   const nav = [
     { id: Page.RADAR, label: 'Investor radar', icon: Radar },
+    { id: Page.INVESTORS, label: 'Investor research', icon: Search },
     { id: Page.FINANCIALS, label: 'Financials', icon: LayoutDashboard },
     { id: Page.BRIEF, label: 'Meeting brief', icon: FileText },
     { id: Page.PRACTICE, label: 'Practice room', icon: MessageSquare },
@@ -322,6 +326,7 @@ export function App() {
               </button>
             </div>
           )}
+          {page === Page.INVESTORS && <InvestorTrackingPage state={state} onRefresh={refresh} />}
           {page === Page.RADAR && (
             <>
               <div className="page-heading">
@@ -577,7 +582,13 @@ export function App() {
                 {state.jobs.slice(0, 3).map((job) => (
                   <div className="run-row" key={job.id}>
                     <span className={`run-dot ${job.status}`} />
-                    <strong>{job.kind === 'radar' ? 'Investor research' : 'Brief refresh'}</strong>
+                    <strong>
+                      {job.kind === 'rebuild'
+                        ? 'Brief refresh'
+                        : job.kind === 'discover-investors'
+                          ? 'Investor discovery'
+                          : 'Investor research'}
+                    </strong>
                     <span>{job.result ?? job.error ?? job.status}</span>
                     <small>{when(job.createdAt)}</small>
                   </div>

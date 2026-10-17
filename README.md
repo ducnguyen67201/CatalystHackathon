@@ -85,6 +85,16 @@ The application begins with fictional research and a paused schedule, and works 
 
 Subsequent checks of the same source save a no-change result and do not duplicate the notification. Uploading the same CSV and currency is also idempotent. Financial uploads must match the sample column format and reconcile exactly.
 
+## Investor watchlist
+
+Open **Investor research** in the sidebar. Paste a LinkedIn profile, X profile, or public firm URL and optionally add a name and firm. New targets get an immediate check, followed by checks every 24 hours. Choose every seven days or paused per investor. **Check now** works while paused; already queued checks may finish. Correct the saved name before retrying an ambiguous identity.
+
+**Find candidates** searches public company stage, sector and location. Every newly discovered candidate receives individual research and daily monitoring. These are leads to verify, not funding recommendations. Sources show exact quoted passages, publication dates where known, fit criteria, and whether they are new or changed. Check history preserves prior quotes and source IDs. Repeated unchanged sources do not create duplicate notices; failures remain distinct from successful checks with no results.
+
+Demo mode discovers fictional Northline Ventures. Other pasted identities are saved but are never assigned fictional facts. Live mode requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Monitoring requires the worker to remain running. No emails or investor outreach are sent.
+
+For an existing checkout, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
+
 ## Browser voice with ElevenLabs
 
 Configure a **private** ElevenLabs agent and these values in Doppler’s `dev` config (or `.env` for local fallback):
@@ -116,11 +126,11 @@ Provider guidance: [React SDK](https://elevenlabs.io/docs/eleven-agents/librarie
 
 ## Live research
 
-In Doppler, set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and the desired `RESEARCH_MODEL`. Restart the API and worker after editing settings. Live mode performs up to one Exa query and five bounded extraction calls per radar run. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
+In Doppler, set `RESEARCH_MODE=live`, `EXA_API_KEY`, `OPENAI_API_KEY`, and `RESEARCH_MODEL=gpt-6.1-sol` (the default). Restart the API and worker after editing settings. Live mode performs up to one Exa query and five bounded extraction calls per radar run. It never falls back silently to fictional evidence. Search receives investor names and public segment criteria, not financial rows.
 
-An exact supporting passage is required for an extracted record. This checks provenance; it does not prove every extracted criterion is correct. Live claims remain labeled as needing verification. Source URL deduplication prevents repeated alerts for the same page; grouping multiple pages describing the same real event is a future improvement.
+An exact supporting passage is required for an extracted record. This checks provenance; it does not prove every extracted criterion is correct. Live claims remain labeled as needing verification. Canonical URL, retrieved text and extracted investor identity identify source versions. Repeated pages do not duplicate evidence; changed text creates a preserved new version. Cross-page event grouping remains a future improvement.
 
-Research runs have no application-level daily attempt limit. Live requests use the configured paid services. Schedules begin paused; enable one from the UI after configuring the providers. No investor outreach or outbound email is implemented.
+Research runs have no application-level daily attempt limit. Live requests use the configured paid services. The original radar schedule begins paused. Investor profiles added through the watchlist start with an immediate check and then a 24-hour schedule; each can be paused. No investor outreach or outbound email is implemented.
 
 ## Durable jobs and deployment boundary
 

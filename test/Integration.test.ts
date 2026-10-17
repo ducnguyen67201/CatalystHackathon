@@ -1,3 +1,4 @@
+import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { loadEnvironmentValues } from '../src/server/LoadEnvironment.js';
 import { randomUUID, createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -285,5 +286,81 @@ describe('PostgreSQL-backed application workflow', () => {
     } finally {
       await webhookApi.close();
     }
+  });
+});
+
+describe('durable investor research', () => {
+  it('protects write routes and persists deduplicated profiles, checks and pauses', async () => {
+    const payload = { name: 'Northline Ventures', url: 'https://x.com/northline_demo' };
+    expect((await app.inject({ method: 'POST', url: '/api/investors', payload })).statusCode).toBe(
+      401,
+    );
+    const headers = { cookie: sessionCookie };
+    const response = await app.inject({ method: 'POST', url: '/api/investors', headers, payload });
+    expect(response.statusCode).toBe(201);
+    const investor = trackedInvestorSchema.parse(response.json());
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/investors',
+      headers,
+      payload: { ...payload, url: 'https://twitter.com/NORTHLINE_DEMO?ref=abc' },
+    });
+    expect(trackedInvestorSchema.parse(duplicate.json()).id).toBe(investor.id);
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/investors',
+      headers,
+      payload: { url: 'https://localhost' },
+    });
+    expect(invalid.statusCode).toBe(400);
+    const first = await service.investors.enqueueCheck(investor.id, randomUUID());
+    const second = await service.investors.enqueueCheck(investor.id, randomUUID());
+    expect(second.id).toBe(first.id);
+    await runWorkerTick(service);
+    const saved = (await state()).workspace.investors.find((item) => item.id === investor.id);
+    expect(saved?.checks).toHaveLength(1);
+    expect(saved?.checks[0]?.evidenceIds).toContain('demo-northline');
+    const freshStore = new PrismaStore(databaseUrl.href);
+    try {
+      expect(
+        (await freshStore.load())?.investors.find((item) => item.id === investor.id)?.checks,
+      ).toHaveLength(1);
+    } finally {
+      await freshStore.close();
+    }
+    const paused = await app.inject({
+      method: 'PUT',
+      url: `/api/investors/${investor.id}/schedule`,
+      headers,
+      payload: { frequency: 'paused' },
+    });
+    expect(paused.statusCode).toBe(200);
+    expect(
+      (await state()).workspace.investors.find((item) => item.id === investor.id)?.nextAt,
+    ).toBeNull();
+    const before = (await state()).workspace.notices.length;
+    await service.investors.enqueueCheck(investor.id, randomUUID());
+    await runWorkerTick(service);
+    expect((await state()).workspace.notices).toHaveLength(before);
+    expect(
+      (await state()).workspace.investors.find((item) => item.id === investor.id)?.checks,
+    ).toHaveLength(2);
+  });
+
+  it('deduplicates concurrent checks at the database boundary', async () => {
+    const investor = await service.investors.add({
+      name: 'Another investor',
+      url: 'https://example.com',
+      frequency: 'paused',
+    });
+    const jobs = await Promise.all(
+      Array.from({ length: 4 }, () => service.investors.enqueueCheck(investor.id, randomUUID())),
+    );
+    expect(new Set(jobs.map((job) => job.id)).size).toBe(1);
+    await runWorkerTick(service);
+    expect(
+      (await service.read()).investors.find((item) => item.id === investor.id)?.checks[0]
+        ?.evidenceIds,
+    ).toEqual([]);
   });
 });
