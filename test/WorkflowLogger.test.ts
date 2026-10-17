@@ -1,3 +1,4 @@
+import { EvaluationFailure, evaluationStage } from '../src/features/EvaluationFailure.js';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -181,6 +182,51 @@ describe('structured workflow diagnostics', () => {
       expect(lines.join('')).not.toContain('Other person invests.');
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it('logs evaluation stage and safe codes without private failure messages', async () => {
+    const lines: string[] = [];
+    const logger = new WorkflowLogger('debug', (line) => lines.push(line));
+    for (const stage of ['extraction', 'coaching'] as const) {
+      try {
+        await evaluationStage(stage, () =>
+          Promise.reject(new Error('private transcript or provider response')),
+        );
+      } catch (error) {
+        logger.write(LogEvent.WORKFLOW_FAILED, describeResearchFailure(error), 'error');
+      }
+      expect(lines.at(-1)).toContain(`"evaluationStage":"${stage}"`);
+      expect(lines.at(-1)).toContain('"evaluationCode":"invalid_evidence"');
+    }
+    logger.write(
+      LogEvent.WORKFLOW_FAILED,
+      describeResearchFailure(
+        new EvaluationFailure('extraction', 'unstated_claim_value', 'private quote'),
+      ),
+    );
+    expect(lines.at(-1)).toContain('"evaluationCode":"unstated_claim_value"');
+    expect(lines.join('')).not.toMatch(/private transcript|private quote|provider response/);
+    expect(
+      describeResearchFailure(new EvaluationFailure('coaching', 'http_error', 'private body', 429)),
+    ).toMatchObject({
+      reason: 'evaluation_failed',
+      evaluationStage: 'coaching',
+      evaluationCode: 'http_error',
+      provider: 'openai',
+      statusCode: 429,
+    });
+  });
+  it('classifies evaluation schema, timeout and network failures by stage', async () => {
+    for (const [error, code] of [
+      [new SyntaxError('private JSON'), 'invalid_response'],
+      [new DOMException('private URL', 'TimeoutError'), 'timeout'],
+      [new TypeError('private network address'), 'network_error'],
+    ] as const) {
+      await expect(evaluationStage('coaching', () => Promise.reject(error))).rejects.toMatchObject({
+        stage: 'coaching',
+        code,
+      });
     }
   });
 

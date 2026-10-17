@@ -6,7 +6,8 @@ import {
   type EvidenceCheck,
   type Extraction,
 } from '../contracts/RehearsalEvaluation.js';
-import type { EvaluationInput } from './EvaluationProvider.js';
+import type { EvaluationInput, EvaluationProvider } from './EvaluationProvider.js';
+import { EvaluationFailure, evaluationStage } from './EvaluationFailure.js';
 
 function numbers(text: string): string[] {
   return (text.replaceAll(',', '').match(/-?\d+(?:\.\d+)?/g) ?? []).map((n) =>
@@ -23,7 +24,7 @@ export function validateExtraction(raw: unknown, input: EvaluationInput): Extrac
     if (!turn || turn.role !== 'user' || !turn.text.includes(claim.quote))
       throw new Error('Invalid claim quotation.');
     if (claim.value !== null && !numbers(claim.quote).includes(new Decimal(claim.value).toFixed()))
-      throw new Error('Unstated claim value.');
+      throw new EvaluationFailure('extraction', 'unstated_claim_value', 'Unstated claim value.');
     if (
       claim.questionTurnId !== null &&
       !input.turns.slice(0, index).some((t) => t.id === claim.questionTurnId && t.role === 'agent')
@@ -42,6 +43,22 @@ export function validateExtraction(raw: unknown, input: EvaluationInput): Extrac
       throw new Error('Invalid focus reference.');
   return result;
 }
+/** One correction request per attempt; every response still passes all evidence checks. */
+export async function extractValidatedClaims(
+  provider: EvaluationProvider,
+  input: EvaluationInput,
+): Promise<Extraction> {
+  return evaluationStage('extraction', async () => {
+    try {
+      return validateExtraction(await provider.extract(input), input);
+    } catch (error) {
+      if (!(error instanceof EvaluationFailure) || error.code !== 'unstated_claim_value')
+        throw error;
+    }
+    return validateExtraction(await provider.extract(input, 'unstated_claim_value'), input);
+  });
+}
+
 export function checkClaims(extraction: Extraction, input: EvaluationInput): EvidenceCheck[] {
   return extraction.claims.map((claim): EvidenceCheck => {
     const base = { claimId: claim.id, factIds: [] };

@@ -1,3 +1,5 @@
+import type { EvaluationFailureCode, EvaluationStage } from './EvaluationFailure.js';
+
 export const LogEvent = {
   WORKER_READY: 'worker_ready',
   WORKFLOW_QUEUED: 'workflow_queued',
@@ -34,6 +36,7 @@ export const LogReason = {
   NETWORK_ERROR: 'network_error',
   STALE_CONTEXT: 'stale_context',
   UNKNOWN: 'unknown_error',
+  EVALUATION_FAILED: 'evaluation_failed',
   FULL_TRAY: 'suggestions_full',
 } as const;
 
@@ -53,6 +56,8 @@ export interface LogFields {
   changedCount?: number;
   durationMs?: number;
   statusCode?: number;
+  evaluationStage?: EvaluationStage;
+  evaluationCode?: EvaluationFailureCode;
   reason?: (typeof LogReason)[keyof typeof LogReason];
 }
 
