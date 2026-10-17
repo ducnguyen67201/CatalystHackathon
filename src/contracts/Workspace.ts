@@ -1,3 +1,4 @@
+import { radarSignalSchema, radarStateSchema } from './RadarDelivery.js';
 import {
   evaluationContextSchema,
   evaluationRecordSchema,
@@ -98,6 +99,9 @@ export const evidenceSchema = z.strictObject({
   explanation: z.string(),
   verified: z.boolean(),
   comparableDeal: comparableDealSchema.optional(),
+  signal: radarSignalSchema.nullable().optional(),
+  researchRunId: z.uuid().optional(),
+  supersedesEvidenceId: z.string().max(100).optional(),
 });
 
 export type Evidence = z.infer<typeof evidenceSchema>;
@@ -238,6 +242,7 @@ export const workspaceSchema = z.strictObject({
   milestones: z.array(milestoneSchema),
   notices: z.array(noticeSchema),
   investors: z.array(trackedInvestorSchema).default([]),
+  radar: radarStateSchema.default(() => radarStateSchema.parse({})),
   discovery: discoveryStateSchema.default(() => discoveryStateSchema.parse({})),
 });
 
@@ -266,7 +271,7 @@ export const capabilitiesSchema = z.strictObject({
 });
 
 export const stateResponseSchema = z.strictObject({
-  workspace: workspaceSchema,
+  workspace: workspaceSchema.omit({ radar: true }),
   jobs: z.array(jobSchema),
   capabilities: capabilitiesSchema,
 });

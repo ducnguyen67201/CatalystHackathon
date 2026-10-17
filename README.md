@@ -2,6 +2,8 @@
 
 A local TypeScript application for connecting financial evidence, investor research, meeting preparation, browser voice practice and tracked follow-ups. Built for the Catalyst 2026 June challenge.
 
+[Investor radar result delivery](docs/InvestorRadarEngineeringSpec.md) reuses classified research in the radar and emails meaningful updates to the founder. An [interactive HTML preview](docs/previews/InvestorRadarPreview.html) illustrates the research views. The result feed and Resend delivery path are implemented below; the HTML remains a design artifact.
+
 ## Start with Doppler
 
 Requirements: Node.js 24, pnpm 11, Docker with Compose, and the Doppler CLI. The Doppler project is `june-workspace`; its `dev` config contains local settings and provider credentials. `doppler.yaml` records this selection without credentials.
@@ -96,7 +98,7 @@ Open **Investor research** in the sidebar. Paste a LinkedIn profile, X profile, 
 
 Discovery runs weekly and when the company profile version changes, after stage, sector and geography are supplied and the initial company profile has been edited. You can pause discovery independently or use Find more manually. A full tray of three suggestions avoids further provider calls until a slot is available. Stale suggestions are hidden after a company profile change; decisions and evidence remain in history. The worker must remain running.
 
-Research requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Existing fictional evidence and past checks remain labeled for historical accuracy; new checks always use live providers. Monitoring requires the worker to remain running. No emails or investor outreach are sent.
+Research requires the settings below and performs public-source searches, not authenticated LinkedIn or X scraping. Existing fictional evidence and past checks remain labeled for historical accuracy; new checks always use live providers. Monitoring requires the worker to remain running. Founder email alerts require the separate opt-in setup below. Investor outreach is not implemented.
 
 For an existing checkout, run `doppler run -- pnpm db:generate` and `doppler run -- pnpm db:deploy`, then restart development. The additive migration preserves existing data. The existing worker processes these checks; no new service is required.
 
@@ -262,3 +264,22 @@ console.log(run);
 ```
 
 Source text is untrusted evidence, not agent instructions. Future scenario generation can load a run by ID and select its accepted, cited evidence while checking profile version and workflow outcome. A research run's success means provider extraction completed, not that the later workspace write or entire workflow succeeded. Historical records are not retroactively reconstructed. Runs skipped before making a provider call (for example, a full suggestion tray) do not create an archive. An abrupt process termination before final persistence can lose that attempt's in-memory trace; job retries remain independently recorded. The scenario generator uses accepted evidence already attached to the selected investor; raw imported archive text is not automatically included.
+
+## Investor radar updates and founder email
+
+Investor Radar now reads saved classified results from completed investor checks and candidate discovery. It shows news, the producer's relevance explanation, source passages, review state, unread filters, research archives, and email status. Opening a feed or an email link never runs research. Existing unclassified sources stay in research history. Static profiles do not become news merely because their page changed.
+
+Email is disabled by default. To configure the optional Resend adapter, set these backend values yourself and restart both API and worker:
+
+```text
+RESEND_API_KEY=
+NOTIFICATION_FROM=alerts@your-verified-domain.example
+```
+
+Use a sender domain verified in your Resend account. This implementation does not provision a provider, change account configuration, or send setup mail automatically. In Investor Radar, enter your recipient email and explicitly choose **Send confirmation code**. The worker sends the six-digit code; enter it within 15 minutes, then enable email alerts and choose categories. Five wrong guesses invalidate the challenge. Changing the address disables alerts and requires a new confirmation. A stopped worker leaves confirmation mail queued.
+
+New eligible live results enter the email outbox in the same PostgreSQL transaction as their radar event and investor check or suggestion. Fictional fixtures, historical backfill, identity-review results, unchanged results, and disabled categories are not emailed. Enabling alerts does not email old history. Retryable sends use the same saved message and key; Resend retains [idempotency keys for 24 hours](https://resend.com/docs/dashboard/emails/idempotency-keys), so June stops automatic replay after a conservative 23 hours and marks uncertain outcomes for provider review. `sent` means provider accepted, not guaranteed inbox delivery. Unknown outcomes are never blindly resent.
+
+Run `pnpm db:generate` and `pnpm db:deploy` using this repository's database environment before restarting an existing installation. The additive migration retains evidence and financial history. Email settings, confirmation hashes, and outbox bodies are excluded from `/api/state` and feed responses. The API exposes masked recipient status only. No live email is sent by the test suite.
+
+The background worker records its heartbeat separately from research jobs. Offline means no heartbeat within 60 seconds; scheduled checks require a running worker and an awake computer. Email links point to localhost and work on the computer running June. No remote deployment, SMS, investor outreach, or voice-context integration is enabled.

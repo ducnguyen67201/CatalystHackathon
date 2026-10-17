@@ -1,3 +1,5 @@
+import { radarEvidence } from './fixtures/RadarFixture.js';
+import type { EmailSender } from '../src/features/EmailSender.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
 import { LocalSessionError } from '../src/contracts/LocalSession.js';
@@ -403,8 +405,9 @@ describe('PostgreSQL-backed application workflow', () => {
         headers: { cookie: renewedCookie },
       });
       expect(restored.statusCode).toBe(200);
+      const publicBefore = (({ radar: _privateRadar, ...value }) => value)(before);
       expect(stateResponseSchema.parse(restored.json()).workspace).toEqual({
-        ...before,
+        ...publicBefore,
         rehearsals: before.rehearsals.map((s) => ({
           ...s,
           evaluationContext: null,
@@ -1560,6 +1563,129 @@ describe('automatic research archiving', () => {
       ).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('radar and email persistence', () => {
+  it('commits events and outbox atomically, protects confirmation secrets, and survives service restarts', async () => {
+    const evidence = radarEvidence();
+    const producer = new WorkspaceService(
+      store,
+      { discover: () => Promise.resolve([evidence]) },
+      fixtureEvaluationProvider,
+      undefined,
+      store,
+    );
+    const send = vi.fn<EmailSender['send']>().mockResolvedValue('fake-resend-receipt');
+    producer.radar.configure({ send }, 'alerts@example.com', 'http://127.0.0.1:4317');
+    const radarApi = await createApi(producer, readEnvironment({ DATABASE_URL: databaseUrl.href }));
+    try {
+      const login = await radarApi.inject({ method: 'POST', url: '/api/session' });
+      const headers = {
+        cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
+      };
+      expect((await radarApi.inject({ url: '/api/radar/events' })).statusCode).toBe(401);
+      expect(
+        (
+          await radarApi.inject({
+            method: 'PUT',
+            url: '/api/notification-preferences',
+            headers: { ...headers, origin: 'https://example.com' },
+            payload: { enabled: true, categories: [] },
+          })
+        ).statusCode,
+      ).toBe(403);
+      const confirmation = await radarApi.inject({
+        method: 'POST',
+        url: '/api/notification-preferences/confirmations',
+        headers,
+        payload: { recipient: 'founder@example.com' },
+      });
+      expect(confirmation.statusCode).toBe(200);
+      await producer.radar.deliverOne();
+      const code = send.mock.calls[0]?.[0].text.match(/\b\d{6}\b/)?.[0];
+      expect(code).toBeDefined();
+      const publicState = await radarApi.inject({ url: '/api/state', headers });
+      expect(publicState.body).not.toContain(code ?? 'MISSING_CODE');
+      expect(publicState.body).not.toContain('founder@example.com');
+      const confirmed = await radarApi.inject({
+        method: 'POST',
+        url: '/api/notification-preferences/confirm',
+        headers,
+        payload: { code },
+      });
+      expect(confirmed.statusCode).toBe(200);
+      expect(
+        (
+          await radarApi.inject({
+            method: 'PUT',
+            url: '/api/notification-preferences',
+            headers,
+            payload: { enabled: true, categories: ['investment'] },
+          })
+        ).statusCode,
+      ).toBe(200);
+      const investor = await producer.investors.add({
+        name: 'Fictional Northline',
+        url: 'https://example.com/radar-integration',
+        frequency: 'paused',
+      });
+      const before = await producer.read();
+      const failedSave = vi
+        .spyOn(store, 'save')
+        .mockRejectedValueOnce(new Error('simulated transaction failure'));
+      await expect(producer.investors.check(investor.id, 'radar-rollback')).rejects.toThrow();
+      failedSave.mockRestore();
+      expect((await producer.read()).radar.events).toEqual(before.radar.events);
+      await producer.investors.check(investor.id, 'radar-commit');
+      await producer.investors.check(investor.id, 'radar-commit');
+      const freshStore = new PrismaStore(databaseUrl.href);
+      try {
+        const restored = await freshStore.load();
+        const event = restored?.radar.events.find((item) => item.jobId === 'radar-commit');
+        expect(event).toBeDefined();
+        expect(
+          restored?.radar.deliveries.filter((item) => item.eventId === event?.id),
+        ).toHaveLength(1);
+        const resumed = new WorkspaceService(
+          freshStore,
+          new ResearchFixture(),
+          fixtureEvaluationProvider,
+        );
+        resumed.radar.configure({ send }, 'alerts@example.com', 'http://127.0.0.1:4317');
+        send.mockClear();
+        await Promise.all([producer.radar.deliverOne(), resumed.radar.deliverOne()]);
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(
+          (await freshStore.load())?.radar.deliveries.find((item) => item.eventId === event?.id)
+            ?.status,
+        ).toBe('sent');
+        const feed = await radarApi.inject({
+          url: `/api/radar/events?investorId=${investor.id}`,
+          headers,
+        });
+        expect(feed.statusCode).toBe(200);
+        expect(feed.body).toContain('Fictional Northline');
+        expect(feed.body).not.toContain('founder@example.com');
+        expect(
+          (
+            await radarApi.inject({
+              method: 'PATCH',
+              url: `/api/radar/events/${event?.id ?? ''}/read`,
+              headers,
+              payload: { read: true },
+            })
+          ).statusCode,
+        ).toBe(200);
+        expect((await resumed.radar.event(event?.id ?? ''))?.readAt).not.toBeNull();
+        await producer.radar.heartbeat('checking', 'radar-job');
+        expect((await resumed.radar.status()).state).toBe('checking');
+      } finally {
+        await freshStore.close();
+      }
+    } finally {
+      await radarApi.close();
     }
   });
 });

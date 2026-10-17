@@ -1,3 +1,4 @@
+import { registerRadarRoutes } from './RadarRoutes.js';
 import { registerEvaluationRoutes } from './EvaluationRoutes.js';
 import { registerResearchRunRoutes } from './ResearchRunRoutes.js';
 import { RehearsalMode } from '../contracts/Workspace.js';
@@ -113,7 +114,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:|Radar:)/.test(
         error.message,
       )
     ) {
@@ -160,7 +161,7 @@ export async function createApi(
   app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({
       workspace: await service.read().then((workspace) => ({
-        ...workspace,
+        ...(({ radar: _privateRadar, ...publicWorkspace }) => publicWorkspace)(workspace),
         rehearsals: workspace.rehearsals.map((session) => ({
           ...session,
           evaluationContext: null,
@@ -234,6 +235,7 @@ export async function createApi(
   registerInvestorRoutes(app, service);
   registerScenarioRoutes(app, service);
   registerResearchRunRoutes(app, service);
+  registerRadarRoutes(app, service);
   app.post('/api/briefs', async () => {
     await service.rebuild();
     return { ok: true };

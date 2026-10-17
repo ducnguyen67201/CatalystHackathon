@@ -1,3 +1,5 @@
+import { radarStateSchema } from '../contracts/RadarDelivery.js';
+import { RadarDeliveryService } from './RadarDeliveryService.js';
 import { assembleEvaluationContext } from './EvaluationContextAssembler.js';
 import { queueEvaluation, RehearsalEvaluationService } from './RehearsalEvaluationService.js';
 import type { EvaluationProvider } from './EvaluationProvider.js';
@@ -32,6 +34,7 @@ import type { ScenarioStore } from './ScenarioStore.js';
 
 export class WorkspaceService {
   readonly investors: InvestorTrackingService;
+  readonly radar: RadarDeliveryService;
   readonly evaluations: RehearsalEvaluationService;
   retrieveAvatarTranscript: ((sessionId: string) => Promise<void>) | null = null;
   readonly scenarios: ScenarioService | null;
@@ -45,6 +48,7 @@ export class WorkspaceService {
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
   ) {
     this.investors = new InvestorTrackingService(this, research);
+    this.radar = new RadarDeliveryService(this);
     this.evaluations = new RehearsalEvaluationService(this, evaluator);
     this.scenarios = scenarioDependencies
       ? new ScenarioService(
@@ -105,6 +109,7 @@ export class WorkspaceService {
       notices: [],
       investors: [],
       discovery: discoveryStateSchema.parse({}),
+      radar: radarStateSchema.parse({}),
     });
   }
   /** Reopens setup without deleting financials, company context, or research history. */

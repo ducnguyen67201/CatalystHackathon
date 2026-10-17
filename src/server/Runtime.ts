@@ -1,3 +1,4 @@
+import { ResendEmailSender } from '../infrastructure/EmailNotifications.js';
 import { LiveEvaluation } from '../infrastructure/Evaluation.js';
 import { LiveAvatarProvider } from '../infrastructure/LiveAvatar.js';
 import { retrieveFinalAvatarTranscript } from '../features/AvatarTranscript.js';
@@ -48,5 +49,11 @@ export function createRuntime(env: Environment) {
     )
       throw new Error('Transcript is still processing.');
   };
+  if (env.RESEND_API_KEY && env.NOTIFICATION_FROM)
+    service.radar.configure(
+      new ResendEmailSender(env.RESEND_API_KEY),
+      env.NOTIFICATION_FROM,
+      env.WEB_ORIGIN,
+    );
   return service;
 }

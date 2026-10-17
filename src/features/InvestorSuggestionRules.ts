@@ -20,7 +20,9 @@ export function hasDiscoveryProfile(profile: DiscoveryProfile): boolean {
 }
 
 /** Stale suggestions stay in history, but never appear as current recommendations. */
-export function listCurrentSuggestions(state: Workspace): InvestorSuggestion[] {
+export function listCurrentSuggestions(
+  state: Pick<Workspace, 'profile' | 'investors' | 'discovery'>,
+): InvestorSuggestion[] {
   const tracked = new Set(state.investors.map((investor) => investorNameKey(investor.name)));
   return state.discovery.suggestions
     .filter(

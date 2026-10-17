@@ -38,6 +38,8 @@ export function readEnvironment(values: EnvironmentValues) {
       WEB_ORIGIN: webOriginSchema,
       EVALUATION_MODEL: z.string().min(1).default('gpt-6.1-sol'),
       LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('debug'),
+      RESEND_API_KEY: z.string().optional(),
+      NOTIFICATION_FROM: z.email().optional(),
       EXA_API_KEY: z.string().optional(),
       OPENAI_API_KEY: z.string().optional(),
       RESEARCH_MODEL: z.string().default('gpt-6.1-sol'),

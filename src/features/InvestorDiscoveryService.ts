@@ -1,3 +1,4 @@
+import { publishRadarResult } from './RadarResults.js';
 import { randomUUID } from 'node:crypto';
 import { LogEvent, LogReason } from './WorkflowLog.js';
 import {
@@ -136,6 +137,14 @@ export class InvestorDiscoveryService {
           status: SuggestionStatus.SUGGESTED,
           createdAt: new Date().toISOString(),
         });
+        const suggestion = state.discovery.suggestions.at(-1);
+        if (suggestion)
+          publishRadarResult(
+            state,
+            evidence,
+            { investorId: null, suggestionId: suggestion.id },
+            jobId,
+          );
         excluded.add(key);
         remaining--;
         added++;
@@ -198,8 +207,12 @@ export class InvestorDiscoveryService {
         return;
       }
       const now = new Date().toISOString();
+      const investorId = randomUUID();
+      for (const event of state.radar.events) {
+        if (event.suggestionId === suggestion.id) event.investorId = investorId;
+      }
       state.investors.push({
-        id: randomUUID(),
+        id: investorId,
         key: `name:${investorNameKey(suggestion.name)}`,
         name: suggestion.name,
         url: null,
