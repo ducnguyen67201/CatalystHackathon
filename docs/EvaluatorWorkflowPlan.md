@@ -267,7 +267,7 @@ AFTER THE CALL
 
 ### Prompt and input/output contract
 
-Prompts are versioned with `EVALUATOR_VERSION` in `src/features/EvaluationProvider.ts`. The live adapter sends a stable system prompt and a separate user message containing `JSON.stringify(validatedInput)`. It supplies a strict JSON response schema generated from the corresponding Zod contract. No tools or web search are attached. `store` is false; each request times out after sixty seconds, with bounded output tokens. Provider retention policies remain separate from this application setting.
+Prompts are versioned with `EVALUATOR_VERSION` in `src/features/EvaluationProvider.ts`. Version `claims-coaching-v2` explicitly limits focus-area citations to founder (`user`) turns; interviewer questions belong in each claim's `questionTurnId`. This matches the existing validator and prevents interviewer questions from being counted as evidence of founder focus. The live adapter sends a stable system prompt and a separate user message containing `JSON.stringify(validatedInput)`. It supplies a strict JSON response schema generated from the corresponding Zod contract. No tools or web search are attached. `store` is false; each request times out after sixty seconds, with bounded output tokens. Provider retention policies remain separate from this application setting.
 
 ```text
 CALL 1

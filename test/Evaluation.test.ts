@@ -108,6 +108,24 @@ describe('post-practice evaluator', () => {
     claim.supersededByTurnId = 'correction';
     expect(checkClaims(validateExtraction(extraction, data), data)[0]?.support).toBe('not_checked');
   });
+  it('accepts founder focus citations and rejects interviewer turns in focus evidence', async () => {
+    const data = input();
+    const extraction = await provider.extract(data);
+    const focus = {
+      observation: 'The founder cites operating income.',
+      hypothesis: 'The founder may be using it to explain profitability.',
+      turnIds: ['answer'],
+    };
+    expect(validateExtraction({ ...extraction, focusAreas: [focus] }, data).focusAreas).toEqual([
+      focus,
+    ]);
+    expect(() =>
+      validateExtraction(
+        { ...extraction, focusAreas: [{ ...focus, turnIds: ['question', 'answer'] }] },
+        data,
+      ),
+    ).toThrow('Invalid focus reference.');
+  });
   it('rejects fabricated quotes, numerical extractions and source citations', async () => {
     const data = input();
     const extraction = await provider.extract(data);
