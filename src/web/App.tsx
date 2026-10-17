@@ -1,5 +1,6 @@
 import { FinancialSheet } from './FinancialSheet.js';
 import { RadarUpdates } from './RadarUpdates.js';
+import { PracticeFollowups } from './Followups.js';
 import { OnboardingPage } from './OnboardingPage.js';
 import { DashboardPage, MeetingsPage, ResearchLinks } from './DashboardPage.js';
 import { useEffect, useState, useRef } from 'react';
@@ -137,7 +138,11 @@ function RevenueChart({ state }: { state: StateResponse }) {
 export function App() {
   const [state, setState] = useState<StateResponse | null>(null);
   const [page, setPage] = useState<Page>(
-    new URLSearchParams(window.location.search).has('radarEvent') ? Page.RADAR : Page.OVERVIEW,
+    new URLSearchParams(window.location.search).has('radarEvent')
+      ? Page.RADAR
+      : new URLSearchParams(window.location.search).has('followups')
+        ? Page.FOLLOWUPS
+        : Page.OVERVIEW,
   );
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [sidebarLabelsDismissed, setSidebarLabelsDismissed] = useState(false);
@@ -912,9 +917,10 @@ export function App() {
               <div className="page-heading">
                 <div>
                   <div className="eyebrow">From conversation to progress</div>
-                  <h1>A reason to come back.</h1>
+                  <h1>Your next steps.</h1>
                   <p className="muted">
-                    Keep the promises and open questions connected to your evidence.
+                    Turn your practice feedback and new investor research into preparation for your
+                    next conversation.
                   </p>
                 </div>
                 <button
@@ -926,52 +932,43 @@ export function App() {
                   Open meeting brief
                 </button>
               </div>
-              {workspace.milestones.length ? (
-                workspace.milestones.map((milestone) => (
-                  <article className="panel milestone" key={milestone.id}>
-                    <div className="milestone-head">
-                      <span className="section-label">{milestone.status}</span>
-                      <span className="muted">Review by {when(milestone.dueAt)}</span>
-                    </div>
-                    <h2>{milestone.title}</h2>
-                    <p>
-                      Compare against the saved baseline, then explain the causes with financial and
-                      cash-flow evidence.
-                    </p>
-                    {milestone.observation && (
-                      <div className="milestone-result">{milestone.observation}</div>
-                    )}
-                    <button
-                      className="button secondary"
-                      disabled={busy}
-                      onClick={() => {
-                        void action(
-                          () => command(`/milestones/${milestone.id}/review`),
-                          'Review saved with its source references.',
-                        );
-                      }}
-                    >
-                      Review against latest data <ArrowRight size={14} />
-                    </button>
-                  </article>
-                ))
-              ) : (
-                <article className="panel empty-signal">
-                  <Target size={32} strokeWidth={1} />
-                  <h2>Your next step belongs here.</h2>
-                  <p>
-                    Open a meeting brief and track a follow-up to keep it connected to future
-                    financial reviews.
+              <PracticeFollowups onFinancials={() => setPage(Page.FINANCIALS)} />
+              {workspace.milestones.length > 0 && (
+                <details className="followup-review">
+                  <summary>Financial follow-ups from meeting briefs</summary>
+                  <p className="muted">
+                    A data comparison is a review, not evidence that the underlying goal has been
+                    achieved.
                   </p>
-                  <button
-                    className="button"
-                    onClick={() => {
-                      openBrief();
-                    }}
-                  >
-                    Choose a follow-up →
-                  </button>
-                </article>
+                  {workspace.milestones.map((milestone) => (
+                    <article className="panel milestone" key={milestone.id}>
+                      <div className="milestone-head">
+                        <span className="section-label">{milestone.status}</span>
+                        <span className="muted">Review by {when(milestone.dueAt)}</span>
+                      </div>
+                      <h2>{milestone.title}</h2>
+                      <p>
+                        Compare against the saved baseline, then explain the causes with financial
+                        and cash-flow evidence.
+                      </p>
+                      {milestone.observation && (
+                        <div className="milestone-result">{milestone.observation}</div>
+                      )}
+                      <button
+                        className="button secondary"
+                        disabled={busy}
+                        onClick={() => {
+                          void action(
+                            () => command(`/milestones/${milestone.id}/review`),
+                            'Review saved with its source references.',
+                          );
+                        }}
+                      >
+                        Review against latest data <ArrowRight size={14} />
+                      </button>
+                    </article>
+                  ))}
+                </details>
               )}
             </>
           )}

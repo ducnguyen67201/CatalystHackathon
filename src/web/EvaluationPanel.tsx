@@ -290,6 +290,9 @@ function SelectedEvaluationPanel({
                   (data?.context?.sources.some((source) => source.origin === 'fictional') ?? false)
                 }
               />
+              <a className="button secondary" href="/?followups">
+                View your follow-ups
+              </a>
               {evaluation.report.coaching.comparison && (
                 <p>
                   <strong>

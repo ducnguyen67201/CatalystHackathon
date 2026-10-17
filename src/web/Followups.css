@@ -1,0 +1,76 @@
+.practice-followups {
+  display: grid;
+  gap: 24px;
+  overflow-wrap: anywhere;
+}
+.followup-session {
+  padding: clamp(20px, 3vw, 32px);
+}
+.followup-session h2 {
+  margin: 12px 0;
+}
+.followup-task {
+  border-top: 1px solid var(--border, #deded5);
+  padding: 24px 0;
+  line-height: 1.6;
+}
+.followup-task h3 {
+  font-size: 1.3rem;
+  margin: 8px 0;
+}
+.followup-task h4 {
+  margin: 14px 0 8px;
+  font-size: 1rem;
+}
+.followup-task blockquote {
+  margin: 16px 0;
+  padding: 12px 18px;
+  background: #f4f5ef;
+  border-left: 3px solid #7b886a;
+}
+.followup-task li + li {
+  margin-top: 8px;
+}
+.practice-followups .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.practice-followups details {
+  margin-block: 16px;
+}
+.practice-followups summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.followup-task label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.followup-task textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  padding: 12px;
+  font: inherit;
+  border: 1px solid #989d91;
+  border-radius: 8px;
+}
+.followup-updates {
+  border-top: 2px solid #cbd3bf;
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.followup-comparison,
+.followup-label {
+  background: #f4f5ef;
+  padding: 12px;
+  border-radius: 6px;
+}
+.practice-followups :focus-visible {
+  outline: 2px solid #4e6238;
+  outline-offset: 3px;
+}

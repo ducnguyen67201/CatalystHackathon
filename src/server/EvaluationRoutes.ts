@@ -3,9 +3,17 @@ import { z } from 'zod';
 import { evaluationResponseSchema } from '../contracts/RehearsalEvaluation.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
 import { evidenceReviewSchema } from '../contracts/EvidenceReview.js';
+import { followupQuerySchema, followupsResponseSchema } from '../contracts/Followups.js';
+import { projectFollowups } from '../features/Followups.js';
 
 const paramsSchema = z.object({ id: z.uuid(), evaluationId: z.uuid().optional() });
 export function registerEvaluationRoutes(app: FastifyInstance, service: WorkspaceService): void {
+  app.get('/api/followups', async (request, reply) => {
+    const { offset, limit } = followupQuerySchema.parse(request.query);
+    const [state, jobs] = await Promise.all([service.read(), service.store.listJobs()]);
+    reply.header('Cache-Control', 'private, no-store');
+    return followupsResponseSchema.parse(projectFollowups(state, jobs, offset, limit));
+  });
   app.get(
     '/api/rehearsals/:id/evaluations/:evaluationId/evidence',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute', groupId: 'evaluation-reads' } } },
