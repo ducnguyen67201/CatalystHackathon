@@ -151,7 +151,7 @@ export function PracticeReviewTranscript({
                           {kind === 'strength' ? '✓' : '↗'} ·{' '}
                           {turnIndex >= 0 ? `Turn ${turnIndex + 1}` : 'Passage unavailable'}
                           {timings.find((segment) => segment.turnIndex === turnIndex) &&
-                            ` · ${playbackTime(timings.find((segment) => segment.turnIndex === turnIndex)?.startSeconds ?? 0)}`}
+                            ` · starts at ${playbackTime(timings.find((segment) => segment.turnIndex === turnIndex)?.startSeconds ?? 0)}`}
                         </span>
                         <strong>{finding.title}</strong>
                         <small>
@@ -260,7 +260,7 @@ export function PracticeReviewTranscript({
                     <span>
                       Turn {index + 1}
                       {timings.find((segment) => segment.turnIndex === index) &&
-                        ` · ${playbackTime(timings.find((segment) => segment.turnIndex === index)?.startSeconds ?? 0)}`}
+                        ` · starts at ${playbackTime(timings.find((segment) => segment.turnIndex === index)?.startSeconds ?? 0)}`}
                     </span>
                   </header>
                   <p>{content}</p>

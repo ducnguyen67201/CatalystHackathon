@@ -1,19 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
+import { Check, ChevronDown, Circle } from 'lucide-react';
 import { z } from 'zod';
 import {
+  followupQuerySchema,
   followupsResponseSchema,
   type FollowupSession,
   type FollowupTask,
   type FollowupsResponse,
 } from '../contracts/Followups.js';
 import { request } from './ApiClient.js';
+import { followupObjective, preparationScenarioHref } from '../contracts/PreparationNavigation.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import './Followups.css';
 
 const statuses: Record<FollowupTask['status'], string> = {
-  open: 'Next step',
+  open: 'To practise',
   dismissed: 'Dismissed',
-  pending: 'Reviewing your response',
+  pending: 'In review',
   improved: 'Improvement observed',
   needs_evidence: 'Needs evidence',
   not_comparable: 'Comparison unavailable',
@@ -140,6 +143,12 @@ function PracticeTask({
               Open financials
             </button>
           )}
+          <a
+            className="button secondary"
+            href={preparationScenarioHref(followupObjective(task), session.investorId)}
+          >
+            Review next scenario
+          </a>
           <button
             className="button secondary"
             disabled={busy}
@@ -190,13 +199,87 @@ function PracticeTask({
   );
 }
 
+type TaskFilter = 'all' | 'attention' | 'practised' | 'dismissed';
+const needsAttention = (task: FollowupTask) =>
+  !['dismissed', 'improved', 'pending'].includes(task.status);
+
+function PracticeTaskRow(props: Parameters<typeof PracticeTask>[0]) {
+  const { task } = props;
+  const [open, setOpen] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return query.get('session') === props.session.id && query.get('task') === task.id;
+  });
+  const detailId = useId();
+  return (
+    <Fragment>
+      <tr className={open ? 'followup-row is-open' : 'followup-row'}>
+        <th scope="row" className="followup-title-cell">
+          <button
+            className="followup-row-toggle"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen(!open)}
+          >
+            <ChevronDown size={16} aria-hidden="true" />
+            <span>{task.title}</span>
+          </button>
+        </th>
+        <td>
+          <span className={`followup-practised ${task.retrySessionId ? 'is-practised' : ''}`}>
+            {task.retrySessionId ? (
+              <Check size={16} aria-hidden="true" />
+            ) : (
+              <Circle size={14} aria-hidden="true" />
+            )}
+            {task.retrySessionId ? 'Practised' : 'Not yet'}
+          </span>
+        </td>
+        <td>
+          <span className={`followup-status status-${task.status}`}>{statuses[task.status]}</span>
+        </td>
+        <td className="followup-action-cell">
+          <button
+            className="button secondary"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? 'Close details' : task.status === 'open' ? 'View & practise' : 'View details'}
+          </button>
+        </td>
+      </tr>
+      <tr hidden={!open} id={detailId} className="followup-detail-row">
+        <td colSpan={4}>
+          <PracticeTask {...props} />
+        </td>
+      </tr>
+    </Fragment>
+  );
+}
+
 export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }) {
   const [data, setData] = useState<FollowupsResponse | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useState(() => {
+    const parsed = followupQuerySchema.safeParse({
+      offset: new URLSearchParams(window.location.search).get('followupsOffset') ?? 0,
+    });
+    return parsed.success ? parsed.data.offset : 0;
+  });
+  const [filter, setFilter] = useState<TaskFilter>('all');
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState('');
   const [openReviews, setOpenReviews] = useState<Record<string, boolean>>({});
   const refresh = () => setRevision((value) => value + 1);
+  const jumpedToSession = useRef(false);
+  useEffect(() => {
+    if (!data || jumpedToSession.current) return;
+    const sessionId = new URLSearchParams(window.location.search).get('session');
+    const section = sessionId ? document.getElementById(`practice-${sessionId}`) : null;
+    if (section) {
+      section.scrollIntoView({ block: 'start' });
+      jumpedToSession.current = true;
+    }
+  }, [data]);
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -232,6 +315,21 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
     setData(null);
     setOffset(next);
   }
+  const tasks = data?.sessions.flatMap((session) => session.tasks) ?? [];
+  const counts = {
+    all: tasks.length,
+    attention: tasks.filter(needsAttention).length,
+    practised: tasks.filter((task) => task.retrySessionId !== null).length,
+    dismissed: tasks.filter((task) => task.status === 'dismissed').length,
+  };
+  const matchesFilter = (task: FollowupTask) =>
+    filter === 'all' ||
+    (filter === 'attention' && needsAttention(task)) ||
+    (filter === 'practised' && task.retrySessionId !== null) ||
+    (filter === 'dismissed' && task.status === 'dismissed');
+  const visibleSessions = data?.sessions.filter(
+    (session) => filter === 'all' || session.tasks.some(matchesFilter),
+  );
   return (
     <section className="practice-followups" aria-label="Practice next steps">
       {error && (
@@ -255,8 +353,49 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
           </a>
         </div>
       )}
-      {data?.sessions.map((session) => (
-        <section className="panel followup-session" key={session.id}>
+      {data && tasks.length > 0 && (
+        <div className="followup-overview">
+          <div className="followup-overview-heading">
+            <div>
+              <h2>Practice progress</h2>
+              <p className="muted">
+                A check means you submitted a written retry. Review outcomes show what changed.
+              </p>
+            </div>
+            <span className="followup-page-count">
+              {counts.practised} of {counts.all} practised · this page
+            </span>
+          </div>
+          <div
+            className="followup-filters"
+            role="group"
+            aria-label="Filter follow-ups on this page"
+          >
+            {(
+              [
+                ['all', 'All follow-ups'],
+                ['attention', 'Needs attention'],
+                ['practised', 'Practised'],
+                ['dismissed', 'Dismissed'],
+              ] as const
+            ).map(([value, label]) => (
+              <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>
+                {label} <span>{counts[value]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {data && data.sessions.length > 0 && visibleSessions?.length === 0 && (
+        <div className="panel empty-signal">
+          <h2>No matching follow-ups on this page.</h2>
+          <button className="button secondary" onClick={() => setFilter('all')}>
+            Show all follow-ups
+          </button>
+        </div>
+      )}
+      {visibleSessions?.map((session) => (
+        <section className="panel followup-session" key={session.id} id={`practice-${session.id}`}>
           <div className="eyebrow">
             {session.investorName ?? 'Open practice'} · {when(session.createdAt)}
           </div>
@@ -274,15 +413,41 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
             </p>
           )}
           {!session.tasks.length && <p role="status">{reviewMessages[session.reviewStatus]}</p>}
-          {session.tasks.map((task) => (
-            <PracticeTask
-              key={`${session.evaluationId}:${task.id}`}
-              session={session}
-              task={task}
-              refresh={refresh}
-              onFinancials={onFinancials}
-            />
-          ))}
+          {session.tasks.length > 0 && (
+            <div
+              className="followup-table-scroll"
+              role="region"
+              aria-label={`Follow-ups for ${session.scenario}`}
+              tabIndex={0}
+            >
+              <table className="followup-table">
+                <caption className="followup-table-caption">
+                  Next steps · {session.tasks.filter(matchesFilter).length} shown
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Follow-up</th>
+                    <th scope="col">Practice</th>
+                    <th scope="col">Review outcome</th>
+                    <th scope="col">
+                      <span className="followup-sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {session.tasks.filter(matchesFilter).map((task) => (
+                    <PracticeTaskRow
+                      key={`${session.evaluationId}:${task.id}`}
+                      session={session}
+                      task={task}
+                      refresh={refresh}
+                      onFinancials={onFinancials}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {session.evaluationId && (
             <details
               className="followup-review"

@@ -270,8 +270,8 @@ export function RecordingPlayback({
                   className={finding.kind}
                   onClick={() => onFindingSelect(finding.id)}
                 >
-                  {finding.kind === 'strength' ? '✓' : '↗'} {playbackTime(segment.startSeconds)} ·{' '}
-                  {finding.title}
+                  {finding.kind === 'strength' ? '✓' : '↗'} Turn starts at{' '}
+                  {playbackTime(segment.startSeconds)} · {finding.title}
                 </button>
               ) : null;
             })}

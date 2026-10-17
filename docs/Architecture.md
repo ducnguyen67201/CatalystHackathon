@@ -464,3 +464,36 @@ assessment markers navigate a shared audio element. `PracticeReviewTranscript.ts
 assertion details and synchronizes selected findings with matched timestamps; missing timing
 retains exact turn/quote navigation. Transcript text stays below the waveform. Fictional preview
 audio uses explicitly labeled synthesized tones and is isolated under test fixtures.
+
+## Preparation progress on the dashboard
+
+`contracts/PreparationProgress.ts` validates the private, no-store
+`GET /api/preparation-progress` projection. `features/PreparationProgress.ts` reads the
+full saved root-practice history and existing follow-up comparisons. It groups claim
+checks by their saved metric into six preparation areas; unclassified metrics remain
+under Evidence & explanation. Superseded claims are excluded from claim counts.
+Root practices are counted once; linked written retries contribute follow-up progress,
+not additional independent practice counts. Missing, pending and failed reviews remain
+separate. Dismissal preserves the retry history but does not count as improvement.
+
+The dashboard shows checked claims, submitted retries and saved improvement outcomes,
+not a skill/mastery score or a comparable cross-session rating. Up to three follow-ups
+per area prioritize unresolved work; strengths preserve saved quotations and fictional
+and partial-session labels. Five recent root sessions provide history, while counts
+cover all stored root practices. No inference, provider calls, new storage or backfill
+occurs on reads. This uses the current small workspace aggregate and should move to
+focused queries if history grows substantially.
+
+Current statement metrics reuse the evaluation evidence assembler and its exact decimal
+arithmetic. They are explicitly separated from historical reviews' frozen evidence.
+Cash runway and forecasts remain unavailable without their required documents. Source
+filename, CSV row, period and fictional labels stay visible. The founder selects a topic,
+inspects saved feedback/evidence, and can open the exact follow-up (including older
+history pages) or carry an editable objective into the existing scenario source review.
+Generating a scenario remains an explicit action after that review; opening the dashboard
+or a drill link never triggers research, scenario generation or a paid practice session.
+
+The preparation detail panel uses keyboard-accessible Feedback, Financial data and Next
+drill tabs. Status, practice, source/date, partial-session and fictional-evidence tags
+keep summaries compact; methodology and source explanations remain in disclosures.
+Tabs change presentation only and retain the existing evidence and generation controls.

@@ -1,3 +1,4 @@
+import { PreparationProgress } from './PreparationProgress.js';
 import { PeerDashboard } from './PeerDashboard.js';
 import { ArrowRight, FileText, MessageSquare, ExternalLink } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
@@ -173,6 +174,7 @@ export function DashboardPage({
           <small>Cash balance and cash-flow plan needed</small>
         </article>
       </div>
+      <PreparationProgress onFinancials={onFinancials} revision={workspace.revision} />
       <PeerDashboard key={`${snapshot?.id ?? 'none'}:${workspace.profile.version}`} />
       <div className="dashboard-lower">
         <section>
