@@ -17,6 +17,7 @@ import {
 } from '../contracts/ResearchRun.js';
 import type { StateResponse } from '../contracts/Workspace.js';
 import { request } from './ApiClient.js';
+import { InvestorMatchDialog, TargetInvestors, useGoalJourney } from './GoalJourney.js';
 import './RadarUpdates.css';
 
 const labels = {
@@ -50,7 +51,13 @@ export function RadarUpdates({
   const [code, setCode] = useState('');
   const [message, setMessage] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [tab, setTab] = useState<'updates' | 'sources'>('updates');
+  const [tab, setTab] = useState<'updates' | 'sources' | 'targets'>(() =>
+    z.uuid().safeParse(new URLSearchParams(window.location.search).get('targetId')).success
+      ? 'targets'
+      : 'updates',
+  );
+  const journey = useGoalJourney(state.workspace.revision);
+  const [matchItem, setMatchItem] = useState<RadarItem | null>(null);
   const [runs, setRuns] = useState<z.infer<typeof researchRunListSchema> | null>(null);
   const [runOffset, setRunOffset] = useState(0);
   const [run, setRun] = useState<ResearchRun | null>(null);
@@ -146,6 +153,12 @@ export function RadarUpdates({
     }
   }
   function eventCard(item: RadarItem) {
+    const match = journey.data?.assessments.findLast(
+      (entry) =>
+        entry.investorId === item.investorId &&
+        entry.goalVersionId === journey.data?.journey?.currentGoalId,
+    );
+    const target = journey.data?.targets.find((entry) => entry.investorId === item.investorId);
     return (
       <article className="radar-update" key={item.id} id={`update-${item.id}`}>
         <div className="radar-update-meta">
@@ -173,6 +186,26 @@ export function RadarUpdates({
           {item.dismissedAt && <span>Dismissed</span>}
           {item.supersedesEventId && <span>Corrects a previous update</span>}
         </div>
+        <div className="radar-actions">
+          <button className="button" onClick={() => setMatchItem(item)}>
+            Review investor fit
+          </button>
+          <button className="button secondary" onClick={() => setMatchItem(item)}>
+            {journey.data?.targets.some((target) => target.investorId === item.investorId)
+              ? 'View target investor'
+              : 'Add to target investors'}
+          </button>
+        </div>
+        <p className="muted">
+          Match to your goal:{' '}
+          {target?.matchOutdated
+            ? 'Changed evidence needs reassessment'
+            : match?.assessment.status === 'scored'
+              ? `${match.assessment.score}/10 · ${(Number(match.assessment.coverage) * 100).toFixed(0)}% weighted evidence coverage`
+              : match?.assessment.status === 'outside_mandate'
+                ? 'Outside stated mandate'
+                : 'Needs verification'}
+        </p>
         <details>
           <summary>Supporting source and passage</summary>
           <blockquote>{item.signal.supportingQuote}</blockquote>
@@ -272,6 +305,13 @@ export function RadarUpdates({
       <div className="radar-tabs">
         <button
           className="button secondary"
+          aria-pressed={tab === 'targets'}
+          onClick={() => setTab('targets')}
+        >
+          Target investors{journey.data?.targets.length ? ` · ${journey.data.targets.length}` : ''}
+        </button>
+        <button
+          className="button secondary"
           aria-pressed={tab === 'updates'}
           onClick={() => setTab('updates')}
         >
@@ -344,6 +384,8 @@ export function RadarUpdates({
         </p>
       )}
       {message && <p role="status">{message}</p>}
+      {journey.error && <p role="alert">{journey.error}</p>}
+      {tab === 'targets' && <TargetInvestors controller={journey} />}
       <div className="radar-layout">
         <div>
           {tab === 'updates' && (
@@ -605,6 +647,14 @@ export function RadarUpdates({
           )}
         </aside>
       </div>
+      {matchItem && (
+        <InvestorMatchDialog
+          key={matchItem.id}
+          item={matchItem}
+          controller={journey}
+          onClose={() => setMatchItem(null)}
+        />
+      )}
     </section>
   );
 }

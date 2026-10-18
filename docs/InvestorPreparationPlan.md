@@ -1,5 +1,10 @@
 # Investor preparation, question explanations and KPI pivoting
 
+The implemented connected product flow is specified in [Goal investor journey](GoalInvestorJourneySpec.md),
+including score provenance, target-specific briefs/practice, and goal history/current progress.
+Use that specification and its [delivery record](GoalInvestorJourneyDelivery.md) for the
+connected release. The KPI pivoting proposals below retain their original scope/status.
+
 Status: proposed implementation, October 17, 2026. This document changes no application behavior.
 
 The [question and Why specification](QuestionWhySpec.md) details the ASCII flow, joint

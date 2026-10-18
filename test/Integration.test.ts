@@ -2937,6 +2937,7 @@ it('saves a single preparation intent and investor conversation under existing a
     notes: 'Discuss retention.',
     links: { linkedin: null, x: null, website: null },
   };
+  const goalBeforeMeeting = (await service.read()).preparation?.goals.at(-1)?.id;
   expect(
     (
       await app.inject({
@@ -2949,8 +2950,11 @@ it('saves a single preparation intent and investor conversation under existing a
   ).toBe(200);
   const after = await service.read();
   expect(after.onboarding.meeting?.notes).toBe(meeting.notes);
-  expect((await service.preparation.view()).goal?.investorId).toBe(
-    after.onboarding.meeting?.investorId,
+  expect(after.preparation?.goals.at(-1)?.id).toBe(goalBeforeMeeting);
+  expect(after.preparation?.journey?.id).toBe((await service.journey.view()).journey?.id);
+  expect(after.preparation?.goals.at(-1)?.id).toBe((await service.preparation.view()).goal?.id);
+  expect(after.preparation?.goals.at(-1)?.investorId).toBe(
+    before.preparation?.goals.at(-1)?.investorId ?? null,
   );
   expect(after.snapshots).toEqual(before.snapshots);
   expect(
@@ -3203,12 +3207,16 @@ describe('Connected preparation loop API and persistence', () => {
     expect(zTestId(replayAnswer.json<unknown>())).toBe(sessionId);
     const reopened = new PrismaStore(databaseUrl.href);
     try {
-      expect((await reopened.load())?.preparation?.connected?.cycles).toHaveLength(2);
+      const persistedCycles = (await reopened.load())?.preparation?.connected?.cycles.filter(
+        (cycle) => cycle.targetId === next.cycle?.targetId,
+      );
+      expect(persistedCycles).toHaveLength(2);
     } finally {
       await reopened.close();
     }
     await service.change((state) => {
       state.profile.version++;
+      state.profile.sector = 'Changed sector requiring review';
     });
     expect((await get()).outdated).toBe(true);
     expect((await act({ action: 'approve_brief' })).statusCode).toBe(409);
@@ -3292,4 +3300,294 @@ describe('Deck claim board persistence and input boundaries', () => {
     );
     expect(Object.keys(publicState.workspace)).not.toContain('preparation');
   });
+});
+
+describe('Goal investor journey API, history, and target isolation', () => {
+  it('connects a saved goal through two targets, brief, practice, review and immutable paginated history', async () => {
+    const { goalJourneyViewSchema, goalProgressPageSchema, goalProgressEventSchema } =
+      await import('../src/contracts/GoalJourney.js');
+    const app = await createApi(
+      service,
+      readEnvironment({ DATABASE_URL: databaseUrl.href, WEB_ORIGIN: 'http://127.0.0.1:4317' }),
+    );
+    await app.ready();
+    const session = await app.inject({ method: 'POST', url: '/api/session' });
+    const cookie = session.cookies.map((item) => item.name + '=' + item.value).join('; ');
+    const headers = { cookie, origin: 'http://127.0.0.1:4317' };
+    try {
+      await service.change((state) => {
+        state.profile.goal = 'Fictional Seed fundraising preparation';
+        state.profile.stage = 'Seed';
+        state.profile.sector = 'B2B SaaS';
+        state.profile.geography = 'Canada';
+        state.discovery.frequency = 'paused';
+        state.schedule.frequency = 'paused';
+        for (const investor of state.investors) {
+          investor.frequency = 'paused';
+          investor.nextAt = null;
+        }
+      });
+      const state = await service.read();
+      await service.preparation.confirmGoal(
+        {
+          round: 'Seed',
+          previousRounds: 0,
+          amount: '1000000',
+          currency: 'CAD',
+          desiredCheck: { min: '100000', max: '250000', currency: 'CAD' },
+          targetDate: null,
+          timezone: 'America/Toronto',
+          investorId: null,
+        },
+        state.preparation?.version ?? 0,
+        true,
+      );
+      const get = async () => {
+        const response = await app.inject({ url: '/api/goal-journeys/current', headers });
+        expect(response.statusCode).toBe(200);
+        return goalJourneyViewSchema.parse(response.json<unknown>());
+      };
+      const act = async (action: Record<string, unknown>) => {
+        const view = await get();
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/goal-journeys/commands',
+          headers,
+          payload: {
+            ...action,
+            key: randomUUID(),
+            revision: view.revision,
+            journeyId: view.journey?.id,
+          },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        return goalJourneyViewSchema.parse(response.json<unknown>());
+      };
+      await act({ action: 'new_goal' });
+      const firstInvestor = await service.investors.add({
+        name: 'Fictional journey investor A',
+        url: 'https://journey-a.example/team',
+        frequency: 'paused',
+      });
+      const secondInvestor = await service.investors.add({
+        name: 'Fictional journey investor B',
+        url: 'https://journey-b.example/team',
+        frequency: 'paused',
+      });
+      await act({ action: 'assess', investorId: firstInvestor.id });
+      let view = await get();
+      const assessment = view.assessments.find((a) => a.investorId === firstInvestor.id);
+      expect(assessment?.assessment.status).toBe('needs_verification');
+      const shortlistBody = {
+        action: 'shortlist',
+        key: randomUUID(),
+        revision: view.revision,
+        journeyId: view.journey?.id,
+        investorId: firstInvestor.id,
+        assessmentId: assessment?.id,
+        rationale: 'Fictional target override: verify current mandate before contact.',
+        included: true,
+      };
+      const [shortlist, sameRequest] = await Promise.all([
+        app.inject({
+          method: 'POST',
+          url: '/api/goal-journeys/commands',
+          headers,
+          payload: shortlistBody,
+        }),
+        app.inject({
+          method: 'POST',
+          url: '/api/goal-journeys/commands',
+          headers,
+          payload: shortlistBody,
+        }),
+      ]);
+      expect(shortlist.statusCode, shortlist.body).toBe(200);
+      expect(sameRequest.statusCode, sameRequest.body).toBe(200);
+      view = await get();
+      expect(view.targets).toHaveLength(1);
+      const first = view.targets[0];
+      if (!first) throw new Error('Missing first target');
+      const firstScopePoint = view.events.at(-1);
+      await act({
+        action: 'shortlist',
+        investorId: secondInvestor.id,
+        rationale: 'Fictional second target, mandate unverified.',
+        included: true,
+      });
+      view = await get();
+      const second = view.targets.find((target) => target.investorId === secondInvestor.id);
+      if (!second) throw new Error('Missing second target');
+      expect(view.position?.required).toBe(11);
+      expect(firstScopePoint?.position.required).toBe(6);
+      const beforeFocusSequence = view.journey?.lastSequence;
+      await act({ action: 'focus', targetId: first.id });
+      expect((await get()).journey?.lastSequence).toBe(beforeFocusSequence);
+      const loop = async (targetId: string) =>
+        connectedPreparationViewSchema.parse(
+          (
+            await app.inject({ url: '/api/preparation-loop?targetId=' + targetId, headers })
+          ).json<unknown>(),
+        );
+      const prepare = async (action: Record<string, unknown>) => {
+        const current = await loop(first.id);
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/preparation-loop/commands',
+          headers,
+          payload: {
+            ...action,
+            version: current.version,
+            key: randomUUID(),
+            targetId: first.id,
+            journeyId: view.journey?.id,
+          },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+      };
+      await prepare({ action: 'start' });
+      await prepare({ action: 'approve_pitch' });
+      await prepare({ action: 'approve_brief' });
+      const selected = await loop(first.id);
+      const cycleId = selected.cycle?.id;
+      if (!cycleId) throw new Error('Missing target cycle');
+      const otherCycleId = (await loop(second.id)).cycle?.id;
+      expect(otherCycleId).toBeTruthy();
+      expect(otherCycleId).not.toBe(cycleId);
+      const preview = scenarioPreviewSchema.parse(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/preparation-loop/scenario-preview',
+            headers,
+            payload: { cycleId },
+          })
+        ).json<unknown>(),
+      );
+      expect(preview.input.preparation?.targetId).toBe(first.id);
+      expect(preview.input.preparation?.briefVersionId).toBe(selected.cycle?.briefVersionId);
+      const generatedResponse = await app.inject({
+        method: 'POST',
+        url: '/api/preparation-loop/scenarios',
+        headers,
+        payload: { cycleId, key: randomUUID(), expectedInputHash: preview.inputHash },
+      });
+      expect(generatedResponse.statusCode, generatedResponse.body).toBe(202);
+      const generation = generationSchema.parse(generatedResponse.json<unknown>());
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await store.getGeneration(generation.id))?.status === 'succeeded') break;
+        await runWorkerTick(service);
+      }
+      const scenario = (await store.getGeneration(generation.id))?.output?.scenarios[0];
+      if (!scenario) throw new Error('Fictional scenario did not complete');
+      await act({ action: 'focus', targetId: second.id });
+      const submitted = await app.inject({
+        method: 'POST',
+        url: '/api/preparation-loop/rehearsals',
+        headers,
+        payload: {
+          cycleId,
+          scenarioId: scenario.id,
+          answer:
+            'The fictional statement includes a credit; operating income and net income are separate. Cash runway remains unknown.',
+          key: randomUUID(),
+        },
+      });
+      expect(submitted.statusCode, submitted.body).toBe(202);
+      const sessionId = zTestId(submitted.json<unknown>());
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if ((await loop(first.id)).latestSession?.status === 'ready') break;
+        await runWorkerTick(service);
+      }
+      const reviewed = await loop(first.id);
+      expect(reviewed.latestSession?.status).toBe('ready');
+      expect((await loop(second.id)).cycle?.id).toBe(otherCycleId);
+      const evaluationId = reviewed.latestSession?.evaluationId;
+      if (!evaluationId) throw new Error('Missing completed evaluation');
+      await prepare({ action: 'review_feedback', sessionId, evaluationId });
+      if (reviewed.latestSession?.hasGaps) await prepare({ action: 'reject_revision' });
+      else await prepare({ action: 'finish_cycle' });
+      view = await get();
+      expect(
+        view.position?.tracks
+          .find((track) => track.targetId === first.id)
+          ?.steps.find((step) => step.id === 'feedback')?.complete,
+      ).toBe(true);
+      expect(
+        view.position?.tracks.find((track) => track.targetId === second.id)?.sessionId,
+      ).toBeNull();
+      expect(
+        view.position?.practices.some(
+          (practice) => practice.sessionId === sessionId && practice.status === 'assessed',
+        ),
+      ).toBe(true);
+      const journeyId = view.journey?.id;
+      if (!journeyId) throw new Error('Missing journey identity');
+      const unchanged = await store.load();
+      const historyResponse = await app.inject({
+        url: '/api/goal-journeys/' + journeyId + '/progress/events?limit=2',
+        headers,
+      });
+      expect(historyResponse.statusCode).toBe(200);
+      const page = goalProgressPageSchema.parse(historyResponse.json<unknown>());
+      expect(page.items).toHaveLength(2);
+      expect(page.nextCursor).not.toBeNull();
+      expect(await store.load()).toEqual(unchanged);
+      const point = page.items[0];
+      if (!point) throw new Error('Missing historical observation');
+      const exactResponse = await app.inject({
+        url: '/api/goal-journeys/' + journeyId + '/progress/events/' + point.id,
+        headers,
+      });
+      expect(exactResponse.statusCode).toBe(200);
+      expect(goalProgressEventSchema.parse(exactResponse.json<unknown>())).toEqual(point);
+      await act({ action: 'archive', targetId: second.id });
+      const afterArchive = await get();
+      expect(afterArchive.position?.required).toBe(6);
+      expect(page.items[0]?.position.required).toBe(11);
+      const reopened = new PrismaStore(databaseUrl.href);
+      try {
+        const restored = await reopened.load();
+        expect(restored?.preparation?.journey?.id).toBe(journeyId);
+        expect(restored?.preparation?.journey?.targets).toHaveLength(2);
+        expect(
+          restored?.preparation?.connected?.briefVersions.some(
+            (brief) => brief.id === selected.cycle?.briefVersionId,
+          ),
+        ).toBe(true);
+      } finally {
+        await reopened.close();
+      }
+      await act({ action: 'new_goal' });
+      const archivedHistory = await app.inject({
+        url: '/api/preparation-loop?targetId=' + first.id + '&cycleId=' + cycleId,
+        headers,
+      });
+      expect(archivedHistory.statusCode, archivedHistory.body).toBe(200);
+      const historical = connectedPreparationViewSchema.parse(archivedHistory.json<unknown>());
+      expect(historical.historical).toBe(true);
+      expect(historical.history.some((cycle) => cycle.id === cycleId)).toBe(true);
+      expect((await app.inject({ url: '/api/goal-journeys/current' })).statusCode).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/goal-journeys/commands',
+            headers: { ...headers, origin: 'https://untrusted.example' },
+            payload: shortlistBody,
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            url: '/api/goal-journeys/' + randomUUID() + '/progress/events',
+            headers,
+          })
+        ).statusCode,
+      ).toBe(404);
+    } finally {
+      await app.close();
+    }
+  }, 120000);
 });

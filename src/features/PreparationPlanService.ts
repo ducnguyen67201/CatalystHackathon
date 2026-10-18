@@ -1,4 +1,5 @@
 import { synchronizePreparationIntent } from './PreparationIntent.js';
+import { ensureGoalJourney } from './GoalProgress.js';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from 'decimal.js';
 import type { WorkspaceService } from './WorkspaceService.js';
@@ -52,8 +53,14 @@ export class PreparationPlanService {
       if (saved.version !== version) throw new ConflictError('Preparation changed.');
       if (goal.investorId && !state.investors.some((item) => item.id === goal.investorId))
         throw new Error('Preparation: selected investor is unavailable.');
-      const confirmed = { ...goal, id: randomUUID(), confirmedAt: new Date().toISOString() };
+      const confirmed = {
+        ...goal,
+        objective: state.profile.goal,
+        id: randomUUID(),
+        confirmedAt: new Date().toISOString(),
+      };
       saved.goals.push(confirmed);
+      ensureGoalJourney(state, confirmed.confirmedAt);
       saved.automatic = automatic;
       saved.plans.push(buildPreparationPlan(state, confirmed, confirmed.confirmedAt));
       saved.version++;

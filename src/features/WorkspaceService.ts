@@ -1,4 +1,8 @@
 import { synchronizePreparationIntent } from './PreparationIntent.js';
+import { GoalJourneyService } from './GoalJourneyService.js';
+import { recordGoalProgress, updateGoalScope } from './GoalProgress.js';
+import { ensureTargetPreparation } from './ConnectedPreparationService.js';
+import { buildPreparationPlan } from './PreparationPlanner.js';
 import { assertCurrentPreparedPractice } from './ConnectedPreparation.js';
 import { ConnectedPreparationService } from './ConnectedPreparationService.js';
 import { PreparationPlanService } from './PreparationPlanService.js';
@@ -39,6 +43,7 @@ import { PracticeTurnService } from './PracticeTurnService.js';
 import type { PracticeTurnProvider } from './PracticeTurnProvider.js';
 
 export class WorkspaceService {
+  readonly journey: GoalJourneyService;
   readonly investors: InvestorTrackingService;
   readonly radar: RadarDeliveryService;
   readonly evaluations: RehearsalEvaluationService;
@@ -57,6 +62,7 @@ export class WorkspaceService {
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
     turnProvider?: PracticeTurnProvider,
   ) {
+    this.journey = new GoalJourneyService(this);
     this.investors = new InvestorTrackingService(this, research);
     this.radar = new RadarDeliveryService(this);
     this.evaluations = new RehearsalEvaluationService(this, evaluator);
@@ -86,6 +92,7 @@ export class WorkspaceService {
     for (let attempt = 0; attempt < 4; attempt++) {
       const state = await this.read();
       const result = operation(state);
+      recordGoalProgress(state, await this.store.listJobs());
       try {
         await this.store.save(state, state.revision, completedJob, checkpointJob);
         return result;
@@ -179,6 +186,46 @@ export class WorkspaceService {
   async updateInvestorMeeting(meeting: MeetingInput | null): Promise<void> {
     await this.change((state) => {
       saveMeetingContext(state, meeting);
+      if (state.preparation?.journey) {
+        const journey = state.preparation.journey;
+        let target = journey.targets.find(
+          (t) => t.investorId === state.onboarding.meeting?.investorId,
+        );
+        const investorId = state.onboarding.meeting?.investorId;
+        if (!target && investorId) {
+          if (journey.targets.length >= 50)
+            throw new ConflictError('This goal has reached its 50-target limit.');
+          const now = new Date().toISOString();
+          target = {
+            id: randomUUID(),
+            investorId,
+            assessmentId: null,
+            rationale:
+              'Founder-selected investor conversation; current mandate needs verification.',
+            status: 'active',
+            included: true,
+            createdAt: now,
+            updatedAt: now,
+            eventId: null,
+          };
+          journey.targets.push(target);
+          updateGoalScope(journey, 'Investor conversation added to the preparation scope.');
+        }
+        if (target) {
+          if (target.status === 'archived') {
+            target.status = 'active';
+            target.updatedAt = new Date().toISOString();
+            updateGoalScope(journey, 'Investor conversation resumed in the preparation scope.');
+          }
+          journey.focusedTargetId = target.id;
+          ensureTargetPreparation(state, target.id, target.investorId);
+        }
+        const goal = state.preparation.goals.at(-1);
+        if (goal)
+          state.preparation.plans.push(buildPreparationPlan(state, goal, new Date().toISOString()));
+        state.preparation.version++;
+        return;
+      }
       synchronizePreparationIntent(
         state,
         new Date().toISOString(),

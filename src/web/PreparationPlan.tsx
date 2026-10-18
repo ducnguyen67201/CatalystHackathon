@@ -19,6 +19,7 @@ import {
 import { request, command } from './ApiClient.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import { preparationScenarioHref } from '../contracts/PreparationNavigation.js';
+import { investorCheckRangeSchema } from '../contracts/InvestorMatch.js';
 import './PreparationPlan.css';
 
 export function PreparationComparisonChart({ artifact }: { artifact: PreparationArtifact }) {
@@ -108,7 +109,24 @@ function GoalForm({
         const values = new FormData(event.currentTarget);
         const previousValue = values.get('previousRounds');
         const previous = typeof previousValue === 'string' ? previousValue : '';
+        const desiredMin = values.get('desiredCheckMin');
+        const desiredMax = values.get('desiredCheckMax');
+        const desiredCheck =
+          desiredMin || desiredMax
+            ? investorCheckRangeSchema.safeParse({
+                min: desiredMin,
+                max: desiredMax,
+                currency: values.get('desiredCheckCurrency'),
+              })
+            : null;
+        if (desiredCheck && !desiredCheck.success) {
+          setError(
+            'Enter a positive minimum and maximum individual check, with minimum no greater than maximum.',
+          );
+          return;
+        }
         const parsed = preparationGoalInputSchema.safeParse({
+          desiredCheck: desiredCheck?.success ? desiredCheck.data : null,
           round: values.get('round'),
           previousRounds: previous === '' ? null : Number(previous),
           amount: values.get('amount') || null,
@@ -173,6 +191,38 @@ function GoalForm({
         Desired preparation date
         <input type="date" name="targetDate" defaultValue={goal?.targetDate ?? ''} />
       </label>
+      <label>
+        Desired individual check · minimum
+        <input
+          name="desiredCheckMin"
+          inputMode="decimal"
+          placeholder="Unknown"
+          defaultValue={goal?.desiredCheck?.min ?? ''}
+        />
+      </label>
+      <label>
+        Desired individual check · maximum
+        <input
+          name="desiredCheckMax"
+          inputMode="decimal"
+          placeholder="Unknown"
+          defaultValue={goal?.desiredCheck?.max ?? ''}
+        />
+      </label>
+      <label>
+        Individual check currency
+        <select name="desiredCheckCurrency" defaultValue={goal?.desiredCheck?.currency ?? 'CAD'}>
+          {['CAD', 'USD', 'EUR', 'GBP'].map((currency) => (
+            <option key={currency} value={currency}>
+              {currency}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="muted prep-full">
+        The desired investment from one investor is separate from your total raise. Leave both
+        amounts empty when unknown; currencies are never automatically converted for matching.
+      </p>
       <label>
         Timezone
         <input
@@ -349,69 +399,77 @@ export function PreparationPlan({
       ? data.plan?.artifacts.find((item) => item.kind === 'investor')
       : financial;
   const schedule = (
-    <PreparationSchedule
-      operatingResult={
-        data.position
-          ? (data.position.financial?.operatingIncome ?? null)
-          : (latestRow?.operatingIncome ?? null)
-      }
-      period={
-        data.position ? (data.position.financial?.period ?? null) : (latestRow?.month ?? null)
-      }
-      currency={
-        (data.position ? data.position.financial?.currency : snapshot?.currency) === 'unspecified'
-          ? 'Currency unconfirmed'
-          : data.position
-            ? (data.position.financial?.currency ?? 'Currency unconfirmed')
-            : (snapshot?.currency ?? 'Currency unconfirmed')
-      }
-      busy={busy}
-      onFinancialReview={() => {
-        if (!data.goal) onFinancials();
-        else setFinancialView((value) => !value);
-      }}
-      onSave={async (assumptions) => {
-        setBusy(true);
-        try {
-          await command('/preparation-plan/schedule', {
-            assumptions,
-            version: data.version,
-            planId: data.plan?.id,
-          });
-          setReload((value) => value + 1);
-        } finally {
-          setBusy(false);
+    <details className="prep-supporting" open={!data.goal}>
+      <summary>Planning assumptions and selected-investor schedule</summary>
+      <p className="muted">
+        This schedule describes the focused investor’s preparation checklist. The graph above tracks
+        the whole goal, including all investors in the saved plan. Adjust availability and effort
+        here; these are planning assumptions, not measured performance or a funding prediction.
+      </p>
+      <PreparationSchedule
+        operatingResult={
+          data.position
+            ? (data.position.financial?.operatingIncome ?? null)
+            : (latestRow?.operatingIncome ?? null)
         }
-      }}
-      data={data}
-      onAction={(action) => {
-        if (data.connectedActive && action !== 'goal') {
-          const step =
-            data.milestones.find((item) => item.id === action)?.preparationStep ?? 'story';
-          window.location.assign(`/?preparationStep=${step}`);
-          return;
+        period={
+          data.position ? (data.position.financial?.period ?? null) : (latestRow?.month ?? null)
         }
-        if (action === 'investor' && state.workspace.investors.length === 0) {
-          onResearch();
-          return;
+        currency={
+          (data.position ? data.position.financial?.currency : snapshot?.currency) === 'unspecified'
+            ? 'Currency unconfirmed'
+            : data.position
+              ? (data.position.financial?.currency ?? 'Currency unconfirmed')
+              : (snapshot?.currency ?? 'Currency unconfirmed')
         }
-        if (action === 'goal' || action === 'investor') {
-          setEditing(true);
-          return;
-        }
-        if (action === 'refresh') {
-          void run(() => command('/preparation-plan/refresh', {}));
-          return;
-        }
-        const kind = action === 'brief' ? 'investor' : 'financial';
-        const prepared = data.plan?.artifacts.find((item) => item.kind === kind);
-        if (prepared) {
-          setArtifactId(prepared.id);
-          setSessionId(null);
-        } else if (action === 'brief') setEditing(true);
-        else onFinancials();
-      }}
-    />
+        busy={busy}
+        onFinancialReview={() => {
+          if (!data.goal) onFinancials();
+          else setFinancialView((value) => !value);
+        }}
+        onSave={async (assumptions) => {
+          setBusy(true);
+          try {
+            await command('/preparation-plan/schedule', {
+              assumptions,
+              version: data.version,
+              planId: data.plan?.id,
+            });
+            setReload((value) => value + 1);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        data={data}
+        onAction={(action) => {
+          if (data.connectedActive && action !== 'goal') {
+            const step =
+              data.milestones.find((item) => item.id === action)?.preparationStep ?? 'story';
+            window.location.assign(`/?preparationStep=${step}`);
+            return;
+          }
+          if (action === 'investor' && state.workspace.investors.length === 0) {
+            onResearch();
+            return;
+          }
+          if (action === 'goal' || action === 'investor') {
+            setEditing(true);
+            return;
+          }
+          if (action === 'refresh') {
+            void run(() => command('/preparation-plan/refresh', {}));
+            return;
+          }
+          const kind = action === 'brief' ? 'investor' : 'financial';
+          const prepared = data.plan?.artifacts.find((item) => item.kind === kind);
+          if (prepared) {
+            setArtifactId(prepared.id);
+            setSessionId(null);
+          } else if (action === 'brief') setEditing(true);
+          else onFinancials();
+        }}
+      />
+    </details>
   );
   return (
     <section className="prep-plan" aria-label="Fundraising preparation">

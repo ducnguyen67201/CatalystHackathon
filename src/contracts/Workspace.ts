@@ -17,6 +17,7 @@ import { onboardingSchema, meetingSchema } from './Onboarding.js';
 import { practiceContextSchema } from './PracticeContext.js';
 import { trackedInvestorSchema } from './InvestorTracking.js';
 import { guidedStateSchema } from './GuidedPractice.js';
+import { investorMandateFactSchema } from './InvestorMatch.js';
 
 export const ResearchMode = {
   DEMO: 'demo',
@@ -112,6 +113,7 @@ export const evidenceSchema = z.strictObject({
   signal: radarSignalSchema.nullable().optional(),
   researchRunId: z.uuid().optional(),
   supersedesEvidenceId: z.string().max(100).optional(),
+  mandateFacts: z.array(investorMandateFactSchema).max(30).optional(),
 });
 
 export type Evidence = z.infer<typeof evidenceSchema>;

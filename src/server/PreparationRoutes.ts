@@ -1,6 +1,7 @@
 import { preparationCsvSource } from '../features/PreparationSource.js';
 import { projectDeckClaims, saveDeckClaims } from '../features/DeckClaims.js';
 import { registerConnectedPreparationRoutes } from './ConnectedPreparationRoutes.js';
+import { registerGoalJourneyRoutes } from './GoalJourneyRoutes.js';
 import {
   financialPerformanceQuerySchema,
   financialPerformanceSchema,
@@ -18,6 +19,7 @@ import {
 
 export function registerPreparationRoutes(app: FastifyInstance, service: WorkspaceService) {
   registerConnectedPreparationRoutes(app, service);
+  registerGoalJourneyRoutes(app, service);
   app.get(
     '/api/deck-claims',
     { config: { rateLimit: { groupId: 'deck-claims-read' } } },

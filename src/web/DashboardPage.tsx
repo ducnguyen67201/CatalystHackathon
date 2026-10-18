@@ -1,6 +1,7 @@
 import { PreparationPlan } from './PreparationPlan.js';
 import { PreparationProgress } from './PreparationProgress.js';
 import { PeerDashboard } from './PeerDashboard.js';
+import { GoalJourney } from './GoalJourney.js';
 import { ArrowRight, FileText, MessageSquare, ExternalLink } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import type { Meeting } from '../contracts/Onboarding.js';
@@ -102,6 +103,7 @@ export function DashboardPage({
           </button>
         </div>
       </div>
+      <GoalJourney revision={workspace.revision} />
       <PreparationPlan state={state} onFinancials={onFinancials} onResearch={onResearch} />
       <details className="dashboard-supporting">
         <summary>More workspace details · meetings, financials & activity</summary>

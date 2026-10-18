@@ -2,11 +2,13 @@ import { preparationManifestSchema, preparationPositionSchema } from './Preparat
 import { z } from 'zod';
 import { connectedPreparationStateSchema } from './ConnectedPreparation.js';
 import { deckClaimsStateSchema } from './DeckClaims.js';
+import { desiredCheckSchema, goalJourneySchema } from './GoalJourney.js';
 
 const id = z.string().min(1).max(100);
 const text = z.string().max(3000);
 export const preparationIntentSchema = z.string().trim().min(1).max(1000);
 export const preparationGoalInputSchema = z.strictObject({
+  desiredCheck: desiredCheckSchema.nullable().optional(),
   round: z.string().trim().min(1).max(100),
   previousRounds: z.int().min(0).max(30).nullable(),
   amount: z
@@ -29,6 +31,7 @@ export const preparationGoalInputSchema = z.strictObject({
   investorId: z.uuid().nullable(),
 });
 export const preparationGoalSchema = preparationGoalInputSchema.extend({
+  objective: z.string().max(1000).optional(),
   id: z.uuid(),
   confirmedAt: z.iso.datetime(),
 });
@@ -110,6 +113,8 @@ export type PreparationScheduleInput = z.infer<typeof preparationScheduleInputSc
 export type PreparationSchedule = z.infer<typeof preparationScheduleSchema>;
 
 export const preparationStateSchema = z.strictObject({
+  journey: goalJourneySchema.optional(),
+  journeyHistory: z.array(goalJourneySchema).optional(),
   deckClaims: deckClaimsStateSchema.optional(),
   connected: connectedPreparationStateSchema.optional(),
   version: z.int().nonnegative().default(0),

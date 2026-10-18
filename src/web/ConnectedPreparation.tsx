@@ -69,6 +69,16 @@ export function InvestorPreparationRecommendations({
                     >
                       {candidate.label}
                     </span>
+                    {candidate.match && (
+                      <small>
+                        {candidate.match.score
+                          ? candidate.match.score + '/10 match'
+                          : 'Insufficient evidence for a score'}
+                        {' · '}
+                        {candidate.match.supportedWeight}/{candidate.match.applicableWeight}{' '}
+                        weighted evidence
+                      </small>
+                    )}
                     <small>
                       {candidate.stage ?? 'Stage unknown'} · {candidate.sector ?? 'Sector unknown'}{' '}
                       · {candidate.geography ?? 'Geography unknown'}
@@ -155,6 +165,26 @@ export function ConnectedPreparation({
   state: StateResponse;
   onChange: () => void;
 }) {
+  const [routeContext] = useState(() => {
+    const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+    const target = params.get('targetId');
+    const historicalCycle = params.get('preparationCycleId');
+    const parsed = z
+      .strictObject({ targetId: z.uuid().optional(), cycleId: z.uuid().optional() })
+      .safeParse({
+        ...(target ? { targetId: target } : {}),
+        ...(historicalCycle ? { cycleId: historicalCycle } : {}),
+      });
+    return parsed.success
+      ? { ...parsed.data, invalid: false }
+      : { targetId: undefined, cycleId: undefined, invalid: true };
+  });
+  const [targetId, setTargetId] = useState(routeContext.targetId);
+  const readQuery = new URLSearchParams({
+    ...(targetId ? { targetId } : {}),
+    ...(routeContext.cycleId ? { cycleId: routeContext.cycleId } : {}),
+  });
+  const readPath = `/preparation-loop${readQuery.size ? `?${readQuery}` : ''}`;
   const [view, setView] = useState<ConnectedPreparationView | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -163,6 +193,7 @@ export function ConnectedPreparation({
   const [answer, setAnswer] = useState('');
   const [preview, setPreview] = useState<ScenarioPreview | null>(null);
   const [scenarioId, setScenarioId] = useState('');
+  const [revisionScope, setRevisionScope] = useState<'shared' | 'target'>('target');
   const [reload, setReload] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
@@ -178,18 +209,17 @@ export function ConnectedPreparation({
     return key;
   };
   useEffect(() => {
+    if (routeContext.invalid) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       if (!document.hidden) {
         try {
-          const result = await request(
-            '/preparation-loop',
-            connectedPreparationViewSchema,
-            undefined,
-            'GET',
-          );
-          if (!cancelled) setView(result);
+          const result = await request(readPath, connectedPreparationViewSchema, undefined, 'GET');
+          if (!cancelled) {
+            setView(result);
+            if (!targetId && result.cycle?.targetId) setTargetId(result.cycle.targetId);
+          }
         } catch (caught) {
           if (!cancelled)
             setError(
@@ -207,13 +237,19 @@ export function ConnectedPreparation({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [state.workspace.revision, reload]);
+  }, [state.workspace.revision, reload, readPath, targetId, routeContext.invalid]);
   useEffect(() => {
     if (panel && !dialog.current?.open) dialog.current?.showModal();
   }, [panel]);
   useEffect(() => {
     if (panel === 'revision') setText(view?.cycle?.proposal?.text ?? view?.pitch?.text ?? '');
   }, [panel, view?.cycle?.id, view?.cycle?.proposal?.evaluationId]);
+  useEffect(() => {
+    if (panel === 'story') setText(view?.pitch?.text ?? '');
+  }, [panel, view?.pitch?.id]);
+  useEffect(() => {
+    setRevisionScope(panel === 'story' && !view?.cycle?.pitchApprovedAt ? 'shared' : 'target');
+  }, [panel, view?.cycle?.id, view?.cycle?.pitchApprovedAt]);
   useEffect(() => {
     if (!view || deepLinkHandled.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -231,7 +267,12 @@ export function ConnectedPreparation({
     if (!target) return;
     deepLinkHandled.current = true;
     const cycleId = params.get('preparationCycleId');
-    const next = cycleId && cycleId !== view.cycle?.id ? 'history' : target;
+    const next =
+      cycleId && cycleId !== view.cycle?.id
+        ? 'history'
+        : !view.cycle && target !== 'history'
+          ? 'story'
+          : target;
     trigger.current = null;
     setText(
       next === 'revision'
@@ -251,6 +292,7 @@ export function ConnectedPreparation({
     setPanel(next);
     setPreview(null);
     setError('');
+    setRevisionScope(next === 'story' && !view?.cycle?.pitchApprovedAt ? 'shared' : 'target');
     setText(
       next === 'revision'
         ? (view?.cycle?.proposal?.text ?? view?.pitch?.text ?? '')
@@ -262,12 +304,7 @@ export function ConnectedPreparation({
     setError('');
     try {
       await operation();
-      const result = await request(
-        '/preparation-loop',
-        connectedPreparationViewSchema,
-        undefined,
-        'GET',
-      );
+      const result = await request(readPath, connectedPreparationViewSchema, undefined, 'GET');
       setView(result);
       setReload((n) => n + 1);
       onChange();
@@ -281,17 +318,39 @@ export function ConnectedPreparation({
   }
   async function act(input: WithoutRequest<ConnectedPreparationCommand>) {
     if (!view) return false;
-    const body = { ...input, version: view.version };
+    if (view.historical) {
+      setError(
+        'This preparation belongs to an archived goal and is read-only. Open the current goal to continue.',
+      );
+      return false;
+    }
+    const selectedTargetId = targetId ?? view.cycle?.targetId;
+    const body = {
+      ...input,
+      version: view.version,
+      ...(view.journeyId ? { journeyId: view.journeyId } : {}),
+      ...(selectedTargetId ? { targetId: selectedTargetId } : {}),
+    };
     return run(() => command('/preparation-loop/commands', { ...body, key: keyFor(body) }));
   }
   async function action(next: Panel) {
     if (!view) return;
     if (!view.cycle) {
-      if (await act({ action: 'start' })) setReload((n) => n + 1);
+      if (await act({ action: 'start' })) {
+        setPanel('story');
+        setReload((n) => n + 1);
+      }
       return;
     }
     open(next);
   }
+  if (routeContext.invalid)
+    return (
+      <p role="alert">
+        This preparation link has an invalid target or cycle. <a href="/">Open the current goal</a>{' '}
+        to choose a saved investor track.
+      </p>
+    );
   if (!view) return <p role="status">{error || 'Loading connected preparation…'}</p>;
   const cycle = view.cycle;
   const currentScenario =
@@ -314,6 +373,21 @@ export function ConnectedPreparation({
         Complete each saved step. The next workflow becomes available automatically; approvals and
         session starts stay in your control.
       </p>
+      {view.historical && (
+        <p role="status" className="loop-warning">
+          This is a read-only preparation track from an archived goal. Its briefs, sources and
+          assessments remain available. <a href="/">Open the current goal</a> to continue preparing.
+        </p>
+      )}
+      {targetId && (
+        <p className="loop-method">
+          Preparing for{' '}
+          {state.workspace.investors.find((investor) => investor.id === view.cycle?.investorId)
+            ?.name ?? 'this target investor'}{' '}
+          under your saved goal. <a href="/?page=radar">Choose another target in Radar</a>; each
+          target retains its own brief and practice history.
+        </p>
+      )}
       {error && (
         <p role="alert">
           {error}{' '}
@@ -325,18 +399,30 @@ export function ConnectedPreparation({
       {!cycle ? (
         <div className="prep-next">
           <div>
-            <h3>Start your six-step preparation checklist</h3>
+            <h3>
+              {view.historical
+                ? 'Saved preparation history'
+                : 'Start your six-step preparation checklist'}
+            </h3>
             <p>
-              Use the confirmed goal and selected statement to prepare a sourced financial story.
+              {view.historical
+                ? 'Inspect the exact earlier cycle without changing the current goal or investor focus.'
+                : 'Use the confirmed goal and selected statement to prepare a sourced financial story.'}
             </p>
           </div>
-          <button
-            className="button"
-            disabled={busy || !view.goalId}
-            onClick={() => void action('story')}
-          >
-            Prepare my checklist <ArrowRight size={14} />
-          </button>
+          {view.historical ? (
+            <button className="button secondary" onClick={() => open('history')}>
+              Inspect saved history
+            </button>
+          ) : (
+            <button
+              className="button"
+              disabled={busy || !view.goalId}
+              onClick={() => void action('story')}
+            >
+              Prepare my checklist <ArrowRight size={14} />
+            </button>
+          )}
         </div>
       ) : (
         <>
@@ -459,6 +545,23 @@ export function ConnectedPreparation({
           </div>
           <div className="loop-dialog-body">
             {error && <p role="alert">{error}</p>}
+            {!cycle && panel !== 'history' && (
+              <section>
+                <p>
+                  Your target investor is saved. Review your company story before June prepares its
+                  tailored brief.
+                </p>
+                {state.workspace.snapshots.length ? (
+                  <button className="button" disabled={busy} onClick={() => void action('story')}>
+                    Prepare company story
+                  </button>
+                ) : (
+                  <a className="button" href="/?page=financials">
+                    Add company evidence
+                  </a>
+                )}
+              </section>
+            )}
             {view.outdated && (
               <p className="loop-warning">
                 Sources changed. Close this panel and refresh the preparation checklist before
@@ -466,7 +569,7 @@ export function ConnectedPreparation({
               </p>
             )}
             {view.pitch?.fictional && <p className="loop-tag">Fictional demo evidence</p>}
-            {panel === 'story' && (
+            {panel === 'story' && cycle && (
               <>
                 <p>
                   <a href="/#deck-claims">Inspect deck claims, calculations and saved drafts →</a>
@@ -485,6 +588,25 @@ export function ConnectedPreparation({
                   Save creates an immutable revision. Approval means founder review, not independent
                   verification of edited figures or claims.
                 </p>
+                {targetId && (
+                  <label className="loop-label">
+                    Apply this story edit to
+                    <select
+                      value={revisionScope}
+                      onChange={(event) =>
+                        setRevisionScope(z.enum(['shared', 'target']).parse(event.target.value))
+                      }
+                    >
+                      <option value="target">This investor’s preparation only</option>
+                      <option value="shared">Shared company story for the whole goal</option>
+                    </select>
+                    <small>
+                      {revisionScope === 'shared'
+                        ? 'Shared story changes reopen affected brief reviews across target investors. Earlier versions remain saved.'
+                        : 'Other investor tracks keep their current story and approvals.'}
+                    </small>
+                  </label>
+                )}
                 <details>
                   <summary>Exact sources</summary>
                   {view.pitch?.sources.map((source) => (
@@ -498,7 +620,13 @@ export function ConnectedPreparation({
                   <button
                     className="button secondary"
                     disabled={busy || view.outdated || !text.trim() || !changedText}
-                    onClick={() => void act({ action: 'save_pitch', text: text.trim() })}
+                    onClick={() =>
+                      void act({
+                        action: 'save_pitch',
+                        text: text.trim(),
+                        ...(targetId ? { scope: revisionScope } : {}),
+                      })
+                    }
                   >
                     Save revision
                   </button>
@@ -507,7 +635,7 @@ export function ConnectedPreparation({
                     disabled={busy || view.outdated || changedText}
                     onClick={() =>
                       void act({ action: 'approve_pitch' }).then((ok) => {
-                        if (ok) setPanel(cycle?.investorId ? 'brief' : 'investor');
+                        if (ok) setPanel(cycle.investorId ? 'brief' : 'investor');
                       })
                     }
                   >
@@ -519,19 +647,42 @@ export function ConnectedPreparation({
                 )}
               </>
             )}
-            {panel === 'investor' && (
-              <InvestorPreparationRecommendations
-                view={view}
-                disabled={busy || view.outdated || !cycle?.pitchApprovedAt}
-                onSelect={(investorId) => {
-                  void act({ action: 'select_investor', investorId }).then((ok) => {
-                    if (ok) setPanel('brief');
-                  });
-                }}
-              />
-            )}
+            {panel === 'investor' &&
+              (targetId ? (
+                <div>
+                  <p>
+                    This investor was selected for this goal in Radar. Review the saved match, or
+                    choose a separate target to prepare for another investor.
+                  </p>
+                  <a className="button secondary" href="/?page=radar">
+                    Review target investors
+                  </a>
+                  <button
+                    className="button"
+                    disabled={busy || !cycle?.brief}
+                    onClick={() => setPanel('brief')}
+                  >
+                    Continue to tailored brief
+                  </button>
+                </div>
+              ) : (
+                <InvestorPreparationRecommendations
+                  view={view}
+                  disabled={busy || view.outdated || !cycle?.pitchApprovedAt}
+                  onSelect={(investorId) => {
+                    void act({ action: 'select_investor', investorId }).then((ok) => {
+                      if (ok) setPanel('brief');
+                    });
+                  }}
+                />
+              ))}
             {panel === 'brief' && (
               <>
+                {cycle && !cycle.pitchApprovedAt && (
+                  <button className="button secondary" onClick={() => open('story')}>
+                    Review company story first
+                  </button>
+                )}
                 <p className="loop-prose">
                   {cycle?.brief ?? 'Select a saved investor to prepare a tailored brief.'}
                 </p>
@@ -661,7 +812,7 @@ export function ConnectedPreparation({
                         <p>{currentScenario?.objective}</p>
                         <a
                           className="button secondary"
-                          href={`/practice?generationId=${encodeURIComponent(view.generation.id)}&scenarioId=${encodeURIComponent(currentScenario?.id ?? '')}`}
+                          href={`/practice?generationId=${encodeURIComponent(view.generation.id)}&scenarioId=${encodeURIComponent(currentScenario?.id ?? '')}${targetId ? `&targetId=${encodeURIComponent(targetId)}` : ''}`}
                         >
                           Open voice / video practice room ↗
                         </a>
@@ -786,6 +937,25 @@ export function ConnectedPreparation({
                       certified as financially correct. Inspect the linked report and sources; keep
                       unknowns explicit.
                     </p>
+                    {targetId && (
+                      <label className="loop-label">
+                        Apply the accepted revision to
+                        <select
+                          value={revisionScope}
+                          onChange={(event) =>
+                            setRevisionScope(z.enum(['shared', 'target']).parse(event.target.value))
+                          }
+                        >
+                          <option value="target">This investor’s preparation only</option>
+                          <option value="shared">Shared company story for the whole goal</option>
+                        </select>
+                        <small>
+                          {revisionScope === 'shared'
+                            ? 'Shared changes reopen affected reviews for other target investors.'
+                            : 'This revision stays within the selected investor track.'}
+                        </small>
+                      </label>
+                    )}
                     <div className="prep-buttons">
                       <button
                         className="button secondary"
@@ -802,7 +972,11 @@ export function ConnectedPreparation({
                         className="button"
                         disabled={busy || view.outdated || !text.trim() || !changedText}
                         onClick={() =>
-                          void act({ action: 'accept_revision', text: text.trim() }).then((ok) => {
+                          void act({
+                            action: 'accept_revision',
+                            text: text.trim(),
+                            ...(targetId ? { scope: revisionScope } : {}),
+                          }).then((ok) => {
                             if (ok) {
                               setPanel('brief');
                               setText('');
@@ -842,12 +1016,19 @@ export function ConnectedPreparation({
                   {view.completedCycles} reviewed cycle(s). Superseded cycles remain historical, not
                   completed preparation.
                 </p>
-                {view.history.map((item, index) => (
-                  <article className="loop-history" key={item.id}>
+                {view.history.map((item) => (
+                  <article
+                    className="loop-history"
+                    key={item.id}
+                    id={`preparation-cycle-${item.id}`}
+                  >
                     <strong>
-                      {index === 0 ? 'Current / latest cycle' : 'Earlier cycle'} ·{' '}
+                      {item.id === view.cycle?.id ? 'Current / latest cycle' : 'Earlier cycle'} ·{' '}
                       {item.outcome ?? 'In progress'}
                     </strong>
+                    {routeContext.cycleId === item.id && (
+                      <p className="loop-tag">Exact cycle selected from saved history</p>
+                    )}
                     <p>
                       Started {new Date(item.createdAt).toLocaleString()} ·{' '}
                       {item.closedAt
@@ -872,6 +1053,53 @@ export function ConnectedPreparation({
                           'Pitch unavailable in this history page.'}
                       </p>
                       <p className="loop-prose">{item.brief}</p>
+                      <p className="loop-method">
+                        Cycle {item.id} · Company story {item.pitchId} · Brief version{' '}
+                        {item.briefVersionId ?? 'Legacy brief without a version ID'}
+                      </p>
+                    </details>
+                    <details>
+                      <summary>Exact saved evidence and sources</summary>
+                      {(() => {
+                        const brief = view.briefVersions.find(
+                          (entry) => entry.id === item.briefVersionId,
+                        );
+                        const pitch = view.historyPitches.find(
+                          (entry) => entry.id === item.pitchId,
+                        );
+                        const sources = brief?.sources ?? pitch?.sources ?? [];
+                        return (
+                          <>
+                            <p className="loop-method">
+                              {brief
+                                ? `Frozen brief source manifest · financial snapshot ${brief.snapshotId ?? 'not recorded'} · goal ${brief.goalId}`
+                                : 'Legacy history contains only the source snapshots saved with the story. Missing original investor passages are not reconstructed.'}
+                            </p>
+                            {sources.map((source) => (
+                              <blockquote key={source.id}>
+                                <strong>
+                                  {source.title}
+                                  {source.fictional ? ' · Fictional evidence' : ''}
+                                </strong>
+                                <pre>{source.excerpt}</pre>
+                                <small>Recorded {source.recordedAt ?? 'Unknown'}</small>
+                                {source.url && (
+                                  <p>
+                                    <a href={source.url} target="_blank" rel="noopener noreferrer">
+                                      Open original source
+                                    </a>
+                                  </p>
+                                )}
+                              </blockquote>
+                            ))}
+                            {!sources.length && (
+                              <p>
+                                No original source passages are available for this saved version.
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
                     </details>
                     {item.proposal && (
                       <details>

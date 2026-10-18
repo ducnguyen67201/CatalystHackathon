@@ -33,7 +33,7 @@ import {
   idSchema,
   stateResponseSchema,
 } from '../contracts/Workspace.js';
-import { ConflictError } from '../features/WorkspaceStore.js';
+import { ConflictError, UnavailableError } from '../features/WorkspaceStore.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
 import {
   buildVoiceContext,
@@ -122,6 +122,10 @@ export async function createApi(
     }
     if (error instanceof ConflictError) {
       void reply.code(409).send({ error: 'The workspace changed. Please retry.' });
+      return;
+    }
+    if (error instanceof UnavailableError) {
+      void reply.code(404).send({ error: 'The requested record is unavailable.' });
       return;
     }
     if (

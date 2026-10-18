@@ -30,6 +30,7 @@ model Workspace {
   researchRuns ResearchRun[]
   investors TrackedInvestor[]
   scenarioGenerations ScenarioGeneration[]
+  goalJourneys GoalJourney[]
 }
 model FinancialSnapshot {
   id String @id
@@ -172,4 +173,66 @@ model WorkerHeartbeat {
   workspaceId String @id
   workspace Workspace @relation(fields: [workspaceId], references: [id])
   payload Json
+}
+
+model GoalJourney {
+  id String @id
+  workspaceId String
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  status String
+  payload Json
+  createdAt DateTime @default(now())
+  targets GoalInvestorTarget[]
+  assessments InvestorMatchAssessment[]
+  scopes GoalPreparationScope[]
+  events GoalProgressEvent[]
+  @@index([workspaceId, status])
+}
+
+model GoalInvestorTarget {
+  id String @id
+  workspaceId String
+  journeyId String
+  journey GoalJourney @relation(fields: [journeyId], references: [id])
+  investorId String
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, journeyId, investorId])
+  @@index([workspaceId, journeyId])
+}
+
+model InvestorMatchAssessment {
+  id String @id
+  workspaceId String
+  journeyId String
+  journey GoalJourney @relation(fields: [journeyId], references: [id])
+  investorId String
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([workspaceId, journeyId, investorId, createdAt])
+}
+
+model GoalPreparationScope {
+  id String @id
+  workspaceId String
+  journeyId String
+  journey GoalJourney @relation(fields: [journeyId], references: [id])
+  version Int
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([workspaceId, journeyId, version])
+}
+
+model GoalProgressEvent {
+  id String @id
+  workspaceId String
+  journeyId String
+  journey GoalJourney @relation(fields: [journeyId], references: [id])
+  sequence Int
+  fingerprint String
+  targetIds String[]
+  payload Json
+  recordedAt DateTime @default(now())
+  @@unique([workspaceId, journeyId, sequence])
+  @@index([workspaceId, journeyId, recordedAt, sequence])
 }
