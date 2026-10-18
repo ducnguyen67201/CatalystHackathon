@@ -1,17 +1,14 @@
 import { useState } from 'react';
-import { Search, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { z } from 'zod';
 import {
   DiscoveryFrequency,
   SuggestionStatus,
-  suggestionLimit,
   investorPreferencesSchema,
 } from '../contracts/InvestorDiscovery.js';
-import { JobStatus, jobSchema, type StateResponse } from '../contracts/Workspace.js';
-import {
-  hasDiscoveryProfile,
-  listCurrentSuggestions,
-} from '../features/InvestorSuggestionRules.js';
+import type { StateResponse } from '../contracts/Workspace.js';
+import { listCurrentSuggestions } from '../features/InvestorSuggestionRules.js';
+import { InvestorDiscoveryAction } from './InvestorDiscoveryAction.js';
 import { request } from './ApiClient.js';
 import { InvestorPreferencesForm } from './InvestorPreferencesForm.js';
 import { InvestorModal } from './InvestorModal.js';
@@ -20,9 +17,11 @@ import { InvestorModal } from './InvestorModal.js';
 export function InvestorSuggestions({
   state,
   onRefresh,
+  onEditProfile,
 }: {
   state: StateResponse;
   onRefresh: () => Promise<void>;
+  onEditProfile: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -33,9 +32,6 @@ export function InvestorSuggestions({
   );
   const schedule = state.workspace.discovery;
   const suggestions = listCurrentSuggestions(state.workspace);
-  const job = state.jobs.find((item) => item.kind === 'discover-investors');
-  const pending = job?.status === JobStatus.QUEUED || job?.status === JobStatus.RUNNING;
-  const ready = hasDiscoveryProfile(state.workspace.profile);
 
   async function act(operation: () => Promise<void>): Promise<void> {
     setBusy(true);
@@ -63,21 +59,11 @@ export function InvestorSuggestions({
             for.
           </p>
         </div>
-        <button
-          className="button secondary"
-          disabled={busy || pending || !ready || suggestions.length >= suggestionLimit}
-          onClick={() => {
-            void act(async () => {
-              await request('/investors/discover', jobSchema, { key: crypto.randomUUID() });
-              setMessage(
-                'Research queued: similar companies, funding rounds, and participating investors.',
-              );
-            });
-          }}
-        >
-          <Search size={16} />
-          {pending ? 'Finding investors…' : 'Find investors'}
-        </button>
+        <InvestorDiscoveryAction
+          state={state}
+          onRefresh={onRefresh}
+          onEditProfile={onEditProfile}
+        />
       </div>
       <div className="investor-search-summary">
         <div>
@@ -168,27 +154,12 @@ export function InvestorSuggestions({
           may finish.
         </p>
       </details>
-      {!ready && (
-        <p className="investor-demo">
-          Add your company stage, sector and geography before discovering comparable companies.
-        </p>
-      )}
-      {suggestions.length >= suggestionLimit && (
-        <p className="muted">
-          Track or dismiss a suggestion to make room for another. We remember your decisions.
-        </p>
-      )}
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {job?.error && (
-        <p role="status" className="error">
-          Discovery {job.status}: {job.error}
-        </p>
-      )}
       <div className="investor-suggestion-grid">
         {suggestions.map((suggestion) => {
           const source = state.workspace.evidence.find((item) => item.id === suggestion.evidenceId);

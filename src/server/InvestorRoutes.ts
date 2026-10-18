@@ -15,6 +15,26 @@ import type { WorkspaceService } from '../features/WorkspaceService.js';
 export function registerInvestorRoutes(app: FastifyInstance, service: WorkspaceService): void {
   const paramsSchema = z.object({ id: z.uuid() });
 
+  app.get(
+    '/api/investors/:id/ai-profile',
+    {
+      config: { rateLimit: { groupId: 'state-polling' } },
+    },
+    async (request, reply) => {
+      const { id } = paramsSchema.parse(request.params);
+      reply.header('Cache-Control', 'private, no-store');
+      return service.investorProfiles.view(id);
+    },
+  );
+
+  app.post('/api/investors/:id/ai-profile', async (request, reply) => {
+    const { id } = paramsSchema.parse(request.params);
+    const { key } = z.strictObject({ key: z.uuid() }).parse(request.body);
+    const job = await service.investorProfiles.enqueue(id, key);
+    service.logger.write(LogEvent.WORKFLOW_QUEUED, { jobId: job.id, jobKind: job.kind });
+    return reply.header('Cache-Control', 'private, no-store').code(202).send(job);
+  });
+
   app.post('/api/investors', async (request, reply) => {
     const investor = await service.investors.add(investorInputSchema.parse(request.body));
     return reply.code(201).send(investor);

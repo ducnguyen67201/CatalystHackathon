@@ -10,7 +10,11 @@ import {
 import { trackedInvestorSchema, type TrackedInvestor } from '../contracts/InvestorTracking.js';
 import type { Workspace } from '../contracts/Workspace.js';
 import { assessInvestorMatch } from './InvestorMatch.js';
-import { buildInvestorMatchInput, savedMatchOutdated } from './InvestorMatchInputs.js';
+import {
+  buildInvestorMatchGoal,
+  buildInvestorMatchInput,
+  savedMatchOutdated,
+} from './InvestorMatchInputs.js';
 import { connectedHash } from './ConnectedPreparation.js';
 import { ensureTargetPreparation } from './ConnectedPreparationService.js';
 import {
@@ -105,6 +109,7 @@ export class GoalJourneyService {
     if (journeyId && !journey) throw new UnavailableError('Goal unavailable.');
     const historical = journey?.status === 'archived';
     return goalJourneyViewSchema.parse({
+      matchGoal: historical ? null : buildInvestorMatchGoal(state),
       journey: journey
         ? { ...journey, commands: undefined, assessments: undefined, events: undefined }
         : null,

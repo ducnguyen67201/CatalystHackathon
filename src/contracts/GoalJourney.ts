@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Decimal } from 'decimal.js';
-import { investorMatchAssessmentSchema } from './InvestorMatch.js';
+import { investorMatchAssessmentSchema, investorMatchGoalSchema } from './InvestorMatch.js';
 
 const id = z.uuid();
 const text = z.string().max(3000);
@@ -131,6 +131,7 @@ export const goalJourneySchema = z.strictObject({
   commands: z.array(z.strictObject({ key: id, hash: z.string(), resultId: id.nullable() })),
 });
 export const goalJourneyViewSchema = z.strictObject({
+  matchGoal: investorMatchGoalSchema.nullable().default(null),
   journey: goalJourneySchema
     .omit({ commands: true, events: true, assessments: true })
     .strip()

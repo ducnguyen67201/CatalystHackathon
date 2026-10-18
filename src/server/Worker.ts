@@ -3,6 +3,7 @@ import { LogEvent } from '../features/WorkflowLog.js';
 import { describeResearchFailure } from '../infrastructure/WorkflowLogger.js';
 import { InvestorJob } from '../features/InvestorTrackingService.js';
 import type { WorkspaceService } from '../features/WorkspaceService.js';
+import { investorProfileJobPrefix } from '../features/InvestorProfileService.js';
 export async function runWorkerTick(service: WorkspaceService): Promise<boolean> {
   await service.radar.backfill();
   await service.investors.tick(new Date());
@@ -23,6 +24,16 @@ export async function runWorkerTick(service: WorkspaceService): Promise<boolean>
       const started = Date.now();
       service.logger.write(LogEvent.WORKFLOW_STARTED);
       try {
+        if (job.kind.startsWith(investorProfileJobPrefix)) {
+          const [investorId, inputHash] = job.kind
+            .slice(investorProfileJobPrefix.length)
+            .split(':');
+          if (!investorId || !inputHash) throw new Error('Invalid investor profile job.');
+          await service.investorProfiles.run(investorId, inputHash, job);
+          await service.radar.heartbeat('waiting', null, true);
+          service.logger.write(LogEvent.WORKFLOW_SUCCEEDED, { durationMs: Date.now() - started });
+          return true;
+        }
         if (job.kind.startsWith('guided-turn:')) {
           const [, sessionId, answerId] = job.kind.split(':');
           if (!sessionId || !answerId) throw new Error('Invalid practice turn job.');

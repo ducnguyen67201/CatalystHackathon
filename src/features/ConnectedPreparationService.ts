@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { buildPracticeAnswerGuide } from './PreparedPracticeGuide.js';
 import type { WorkspaceService } from './WorkspaceService.js';
 import type { Workspace, Job } from '../contracts/Workspace.js';
 import { rehearsalSchema } from '../contracts/Workspace.js';
@@ -89,30 +90,48 @@ function addCycle(
   connected(state).cycles.push(cycle);
   return cycle;
 }
-function initialPitch(state: Workspace, now: string) {
+/** Read-only preview. It has no saved pitch ID and never creates a cycle or approval. */
+function initialStoryDraft(state: Workspace, now: string) {
   const goal = state.preparation?.goals.at(-1);
-  if (!goal) throw new ConflictError('Confirm a preparation goal first.');
+  if (!goal) return null;
   if (state.preparation?.journey) {
+    const current = state.preparation.connected?.pitches.findLast(
+      (pitch) => pitch.scope !== 'target' && pitch.sourceHash === connectedSourceHash(state),
+    );
+    if (current) {
+      const { text, reason, sources, fictional, sourceHash } = current;
+      return { text, reason, sources, fictional, sourceHash };
+    }
+  }
+  const artifact = buildPreparationPlan(state, goal, now).artifacts.find(
+    (a) => a.kind === 'financial',
+  );
+  if (!artifact) return null;
+  return {
+    text: artifact.narrative,
+    reason: artifact.why,
+    sources: artifact.sources,
+    fictional: artifact.fictional,
+    sourceHash: connectedSourceHash(state),
+  };
+}
+function initialPitch(state: Workspace, now: string) {
+  if (!state.preparation?.goals.at(-1))
+    throw new ConflictError('Confirm a preparation goal first.');
+  if (state.preparation.journey) {
     const current = connected(state).pitches.findLast(
       (pitch) => pitch.scope !== 'target' && pitch.sourceHash === connectedSourceHash(state),
     );
     if (current) return current;
   }
-  const artifact = buildPreparationPlan(state, goal, now).artifacts.find(
-    (a) => a.kind === 'financial',
-  );
-  if (!artifact)
-    throw new ConflictError('Select a financial statement before starting preparation.');
+  const draft = initialStoryDraft(state, now);
+  if (!draft) throw new ConflictError('Select a financial statement before starting preparation.');
   const pitch: ConnectedPitch = {
-    ...(state.preparation?.journey ? { scope: 'shared' as const } : {}),
+    ...(state.preparation.journey ? { scope: 'shared' as const } : {}),
     revision: connected(state).pitches.length + 1,
     id: randomUUID(),
     parentId: null,
-    text: artifact.narrative,
-    reason: artifact.why,
-    sourceHash: connectedSourceHash(state),
-    sources: artifact.sources,
-    fictional: artifact.fictional,
+    ...draft,
     createdAt: now,
   };
   connected(state).pitches.push(pitch);
@@ -327,11 +346,14 @@ export class ConnectedPreparationService {
           id: generation.id,
           status: generation.status,
           error: generation.error,
+          mode: generation.mode,
           scenarios:
-            generation.output?.scenarios.map(({ id, title, objective }) => ({
-              id,
-              title,
-              objective,
+            generation.output?.scenarios.map((scenario) => ({
+              id: scenario.id,
+              title: scenario.title,
+              objective: scenario.objective,
+              openingQuestion: scenario.openingQuestion,
+              answerGuide: buildPracticeAnswerGuide(generation.input, scenario),
             })) ?? [],
         }
       : null;
@@ -342,6 +364,7 @@ export class ConnectedPreparationService {
       goalId: historical ? null : (cycle?.goalId ?? state.preparation?.goals.at(-1)?.id ?? null),
       cycle,
       pitch: saved?.pitches.find((p) => p.id === cycle?.pitchId) ?? null,
+      storyDraft: !cycle && !historical ? initialStoryDraft(state, new Date().toISOString()) : null,
       outdated: !!cycle && cycleOutdated(state, cycle),
       paused: !state.preparation?.automatic,
       steps: connectedSteps(state, jobs, publicGeneration, targetId),

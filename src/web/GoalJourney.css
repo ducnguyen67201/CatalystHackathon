@@ -5,6 +5,39 @@
   border-radius: 8px;
   background: #fff;
 }
+.goal-table-scroll .investor-criteria-table {
+  min-width: 540px;
+  table-layout: fixed;
+}
+.investor-criteria-table th:nth-child(1) {
+  width: 16%;
+}
+.investor-criteria-table th:nth-child(2) {
+  width: 20%;
+}
+.investor-criteria-table th:nth-child(3) {
+  width: 36%;
+}
+.prep-dialog.investor-match-dialog {
+  width: min(860px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+.investor-criteria-basis {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #626b66;
+}
+.investor-criteria-note {
+  font-size: 12px;
+}
+.investor-criteria-source-note {
+  padding-block: 10px;
+  font-size: 12px;
+}
+.investor-criteria-source-note p {
+  margin-top: 5px;
+}
 .goal-heading,
 .goal-actions,
 .goal-match-summary {
@@ -246,4 +279,156 @@
     grid-template-columns: 1fr;
     gap: 3px;
   }
+}
+
+/* Keep the main journey quiet; secondary controls remain available on demand. */
+.journey-details {
+  width: 100%;
+  margin: 12px 0;
+  border-top: 1px solid #e7ece7;
+  padding-top: 6px;
+  box-sizing: border-box;
+}
+.journey-details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+  padding: 8px 0;
+  box-sizing: border-box;
+  color: #526359;
+  font-size: 13px;
+  font-weight: 600;
+}
+.journey-details > summary:focus-visible,
+.goal-heading button:focus-visible {
+  outline: 2px solid #456c59;
+  outline-offset: 4px;
+}
+.goal-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+.goal-heading h2 {
+  text-wrap: balance;
+}
+.journey-next {
+  display: grid;
+  gap: 10px;
+  max-width: 340px;
+}
+.journey-next .button {
+  white-space: normal;
+  justify-self: start;
+}
+.goal-current .journey-next > span {
+  line-height: 1.5;
+  margin: 0;
+}
+.target-management .text-button {
+  display: block;
+  margin: 10px 0;
+  min-height: 40px;
+  text-align: left;
+}
+.goal-target-card .target-management {
+  margin-bottom: 0;
+}
+.goal-target-card .goal-actions {
+  display: block;
+}
+.goal-target-card .goal-actions > .button {
+  display: inline-flex;
+  margin-block: 8px;
+}
+.simple-goal-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: 88dvh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.simple-goal-form {
+  display: grid;
+  gap: 14px;
+}
+.simple-goal-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.simple-goal-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.6;
+  border: 1px solid #ccd6ce;
+  border-radius: 6px;
+  resize: vertical;
+}
+.simple-goal-form .prep-goal-form {
+  margin: 12px 0;
+}
+.simple-goal-form .journey-details {
+  margin: 0;
+}
+.simple-goal-form > .button {
+  justify-self: start;
+  min-width: 140px;
+}
+.investor-match-dialog .goal-shortlist-form textarea {
+  min-height: 76px;
+}
+.investor-match-dialog table {
+  min-width: 0;
+  table-layout: fixed;
+}
+.investor-match-dialog table th:first-child {
+  width: 20%;
+}
+.investor-match-dialog table th:nth-child(2) {
+  width: 22%;
+}
+.investor-match-dialog .goal-heading h2 {
+  font-size: clamp(24px, 4vw, 34px);
+}
+.investor-match-dialog .goal-match-summary {
+  margin-top: 8px;
+}
+.radar-layout {
+  display: block;
+}
+.radar-email-settings .radar-email {
+  max-width: 700px;
+}
+.prep-plan > .journey-details {
+  margin-top: 0;
+}
+.connected-preparation > .journey-details {
+  border-top: 0;
+}
+.loop-dialog .loop-dialog-body > .button {
+  margin-top: 16px;
+}
+@media (max-width: 650px) {
+  .goal-heading > .button {
+    width: 100%;
+  }
+  .journey-next {
+    max-width: none;
+    width: 100%;
+  }
+  .journey-next .button {
+    width: 100%;
+  }
+  .simple-goal-dialog {
+    padding: 18px;
+  }
+}
+.radar-updates .radar-layout {
+  display: block;
+}
+.dashboard-page .dashboard-setup-actions {
+  display: block;
+  width: auto;
+  min-width: 170px;
 }

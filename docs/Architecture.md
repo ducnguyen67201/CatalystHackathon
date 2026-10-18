@@ -8,7 +8,29 @@ and limits. The journey section below supersedes earlier single-investor ownersh
 
 June is one standalone pnpm root using strict TypeScript. The React/Vite client talks to a Fastify API over same-origin `/api` requests. Prisma 7 and its PostgreSQL driver adapter own database access. The separate worker processes durable jobs from the same database.
 
+Local session cookies are namespaced by the configured frontend port, so independently running
+workspaces cannot overwrite each other's session. Local mode does not register the rate-limit
+plugin, disabling both global and route-specific request limits. Hosted mode retains request
+limits, including a separate bounded session-recovery budget. The browser shares a `Retry-After` cooldown across requests, never automatically
+replays rate-limited writes, and clears connection warnings after a successful state read.
+
 ## Goal investor journey
+
+Radar and investor research share `InvestorDiscoveryAction.tsx`: an explicit search command
+with persistent queued, running, retry, failure and completion status from the saved job.
+Opening Radar or saving preferences does not manually enqueue research. A later source
+failure in live research retains already schema-validated, quote-checked evidence. The
+immutable research run is labeled `partial` with failure metadata; zero accepted evidence
+still fails and follows the existing retry policy. Archive persistence must succeed before
+accepted evidence is published as candidates. Discovery summaries disclose partial coverage.
+
+The [simplified UI](SimpleJourneyUi.md) keeps the goal editor, graph and one next action on
+Overview. `PreparationGoalEditor.tsx` pins the opening preparation/profile versions and
+submits objective plus optional structured goal details through `/preparation-plan/intent`
+in one transaction. Existing intent-only callers remain supported. Explicit Radar review
+computes a saved-data match before showing the decision. Source inspection, target
+management and advanced preparation remain available through native details controls;
+step dialogs remain mounted outside collapsed supporting sections.
 
 `contracts/GoalJourney.ts` owns stable journey identity, independent investor targets,
 versioned preparation scope, saved assessments and immutable progress snapshots.
@@ -26,6 +48,20 @@ Radar and connected recommendations use this same projection. Insufficient cover
 identity uncertainty, conflict, exclusions or age suppress the numerical score with an
 explanation; no currency conversion is inferred.
 
+`InvestorProfileService.ts` offers a separate, explicit model-generated profile. Its
+`investor:profile:` jobs use the existing durable queue, active-job deduplication and leased
+completion transaction. `InvestorProfileGeneration.ts` uses the configured research model
+with a hypothesis prompt and strict Zod output; only public identity hints and saved live
+public excerpts are included. Immutable estimate versions live in the investor JSON payload,
+with input hashes, model and timestamp. Reads never generate, changed inputs invalidate
+current presentation, and failures do not save partial output. These hypotheses are labeled
+unverified and excluded from mandate facts, source-backed scoring, brief generation and
+progress. `InvestorCriteriaComparison.ts` projects provisional comparisons against the same
+structured goal exposed by the journey view. It uses exact stage labels, conservative text
+equality and Decimal check-range overlap, never inferred currency conversion or exclusions.
+Current sourced outcomes and conflicts take precedence. The original immutable assessment
+and its reasons remain inspectable; this read-only projection changes no score or history.
+
 `GoalJourneyService.ts` atomically assesses saved evidence, shortlists an investor,
 records a rationale, changes scope, focuses/archives/resumes tracks and starts a new goal.
 Commands carry the expected journey/revision and payload-bound idempotency key. Selecting
@@ -39,6 +75,13 @@ immutable versions. Scenario previews, saved generation inputs and all practice 
 carry optional goal/target/assessment/brief/cycle/scope lineage. Existing hash behavior
 remains valid for legacy records. Transaction guards reject stale scenario starts; late
 assessments remain attached to their originating track. Historical deep links are read-only.
+
+`PreparedPracticeGuide.ts` derives a read-only starting answer from each generation's frozen
+approved story and scenario criteria. The connected view exposes that guide and the opening
+question for existing and new scenarios without changing generation output or creating
+practice records. `PreparedPracticeCard.tsx` leads with **Start AI interview**; writing an
+answer is optional. Generated aids are never submitted as founder answers or counted as
+practice. Explicit session start, transcript verification and reviewed-feedback gates remain.
 
 `GoalProgress.ts` projects one shared story gate plus five gates per included target.
 Before the first target it reserves one empty slot. It records semantic changes and
@@ -188,6 +231,15 @@ Standalone voice does not run the existing financial topic checker or append a r
 
 No raw audio is saved by this application. ElevenLabs-side retention must be configured in the provider account. The main voice entrypoint requires API key, agent ID and webhook secret, but cannot prove callback reachability from their presence. Browser controls enforce a ten-minute limit while mounted; configure provider limits separately. Provider configuration and local startup instructions are in README.md.
 
+`VoiceBrowserSupport.ts` tests peer-connection construction before startup, immediately closing
+the probe without an offer, microphone capture or provider session. Browser voice and the legacy
+brief voice surface set `webRtc.singlePeerConnection=false`, using the SDK's supported dual-peer
+compatibility path. An authorized live check in the in-app browser connected and delivered the
+agent's first spoken question after this change; it was then stopped. This validates connection
+startup, not a final transcript callback or founder assessment. Error diagnostics distinguish
+unsupported peer configuration from audio initialization and omit raw SDK messages. Partial
+attempts without receipts do not display the separate awaiting-transcript notice.
+
 ## Live video interviewer
 
 The browser TypeScript project (`src/web/tsconfig.json`) uses Vite's bundler resolution, including the LiveAvatar SDK's extensionless type exports. Server, worker and scripts retain NodeNext resolution. Both projects inherit the same strict checks, and `pnpm typecheck` checks both.
@@ -227,9 +279,9 @@ Legacy connector sessions remain identifiable by their ElevenLabs mode and store
 
 ## Current boundaries
 
-The application has a local session cookie, CSRF/origin checks, body limits and rate limiting. It is intentionally single-user and binds only to localhost. Hosted identity/membership authorization, remote deployment, full cash-flow modeling, June accounting integration and investor outreach are not implemented. Founder email alerts are implemented as described below.
+The local application has a local session cookie, CSRF/origin checks and body limits, without API rate limiting. It is intentionally single-user and binds only to localhost. Hosted mode retains global and route-specific rate limits and the access controls described above. Full cash-flow modeling, June accounting integration and investor outreach are not implemented. Founder email alerts are implemented as described below.
 
-Local session cookies are invalidated when the API restarts. The authorization hook returns `LOCAL_SESSION_REQUIRED` before executing a protected operation. `ApiClient.ts` renews that local session and replays the same request once, sharing pending renewal across concurrent requests. This preserves mounted form drafts without a reload. Other authorization errors, network failures and server failures are not replayed, since an uncertain write outcome must not cause duplicate operations. Origin checks still apply to session creation and every retried request. Dashboard and standalone voice state polling pauses in hidden tabs so idle tabs do not exhaust the local rate limit; it resumes on the next visible polling tick. State reads have a separate rate-limit group at the same request limit, so polling does not consume the write/stop budget.
+Local session cookies are invalidated when the API restarts. The authorization hook returns `LOCAL_SESSION_REQUIRED` before executing a protected operation. `ApiClient.ts` renews that local session and replays the same request once, sharing pending renewal across concurrent requests. This preserves mounted form drafts without a reload. Other authorization errors, network failures and server failures are not replayed, since an uncertain write outcome must not cause duplicate operations. Origin checks still apply to session creation and every retried request. Dashboard and standalone voice state polling pauses in hidden tabs and resumes on the next visible polling tick. In hosted mode, state reads have a separate rate-limit group at the same request limit, so polling does not consume the write/stop budget.
 
 Every financial explanation preserves the distinction between operating results and other income. Cash runway, currency and founder-segment facts remain unknown until supported. The sample file's July credit is recorded as other income and is not proof that cash was received then.
 
@@ -350,6 +402,17 @@ is not implemented. No migration or new provider is required.
 Every new session freezes evaluation context, and its final transcript automatically queues a model review. There is no mode toggle or demo execution path. Missing OpenAI credentials fail the review job without losing the transcript. Provider-delivered context, the legacy topic checker and brief mutation rules remain separate. See [Evaluator workflow](EvaluatorWorkflowPlan.md) for ASCII flow, prompt contracts, limitations and extension points.
 
 ## Scenario generation and investor preparation
+
+The Why inspector presents the saved question, its explanation and numbered answer focus as
+separate cards. `QuestionSourceCard.tsx` uses a validated preparation snapshot to show the
+goal, investor and exact approved story; full briefs, source excerpts and technical lineage
+remain in closed disclosures. `QuestionEvidence.ts` retains the original company payload
+beside this display projection without modifying persisted context or hashes. Unrecognized
+legacy records retain their existing readable fallback. Financial sources show exact decimal
+amounts in metric cards, with the original worksheet and row/cell inspection below. Fictional
+labels follow saved provenance. Responsive panes, native disclosures, keyboard close/focus
+return and the existing pause/resume callback remain available. Opening this UI starts no
+generation, interview or assessment.
 
 `QuestionWhy.ts` defines public, source-linked teaching explanations. New scenario generation
 requires opening and branch explanations in the same structured model output; the persisted

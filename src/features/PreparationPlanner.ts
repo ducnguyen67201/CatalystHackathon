@@ -141,7 +141,7 @@ export function buildPreparationPlan(
       url: item.url,
       recordedAt: item.discoveredAt,
       publishedAt: item.publishedAt,
-      researchRunId: item.researchRunId,
+      ...(item.researchRunId ? { researchRunId: item.researchRunId } : {}),
       investorName: item.investor,
       interpretation: item.explanation.slice(0, 3000),
       fictional: item.mode === 'demo',

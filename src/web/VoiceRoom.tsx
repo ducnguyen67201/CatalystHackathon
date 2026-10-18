@@ -69,6 +69,7 @@ export function VoiceRoom({ state, brief, onRefresh, onBrief, onError }: Props) 
         conversation.startSession({
           conversationToken: response.token,
           connectionType: 'webrtc',
+          webRtc: { singlePeerConnection: false },
           dynamicVariables: {
             company_name: state.workspace.profile.name,
             brief_context: response.context,

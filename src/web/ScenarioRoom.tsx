@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoaderCircle } from 'lucide-react';
 import {
   generationViewSchema,
   type ScenarioGenerationView,
@@ -10,6 +11,7 @@ import { request } from './ApiClient.js';
 import { ScenarioDetails } from './ScenarioDetails.js';
 import { VoicePractice } from './VoicePractice.js';
 import { VoiceRoom } from './VoiceRoom.js';
+import { recoverSavedRead } from './RecoverSavedRead.js';
 
 export function ScenarioRoom({
   state,
@@ -23,6 +25,8 @@ export function ScenarioRoom({
   const [route, setRoute] = useState(() => readScenarioRoute(window.location.search));
   const [generation, setGeneration] = useState<ScenarioGenerationView | null>(null);
   const [error, setError] = useState('');
+  const [waiting, setWaiting] = useState(false);
+  const [retry, setRetry] = useState(0);
   const selection = route.kind === 'scenario' ? route.selection : undefined;
   const scenario =
     generation?.id === selection?.generationId
@@ -43,18 +47,20 @@ export function ScenarioRoom({
     };
   }, []);
   useEffect(() => {
-    let alive = true;
     setGeneration(null);
     setError('');
+    setWaiting(false);
     if (!selection) return;
-    void request(
-      '/scenario-generations/' + encodeURIComponent(selection.generationId),
-      generationViewSchema,
-      undefined,
-      'GET',
-    )
-      .then((result) => {
-        if (!alive) return;
+    return recoverSavedRead(
+      () =>
+        request(
+          '/scenario-generations/' + encodeURIComponent(selection.generationId),
+          generationViewSchema,
+          undefined,
+          'GET',
+        ),
+      (result) => {
+        setWaiting(false);
         if (
           result.status !== 'succeeded' ||
           !result.output?.scenarios.some((item) => item.id === selection.scenarioId)
@@ -63,15 +69,14 @@ export function ScenarioRoom({
           return;
         }
         setGeneration(result);
-      })
-      .catch((caught: unknown) => {
-        if (alive)
-          setError(caught instanceof Error ? caught.message : 'Could not load this scenario.');
-      });
-    return () => {
-      alive = false;
-    };
-  }, [selection?.generationId, selection?.scenarioId]);
+      },
+      (caught) => {
+        setWaiting(false);
+        setError(caught instanceof Error ? caught.message : 'Could not load this scenario.');
+      },
+      () => setWaiting(true),
+    );
+  }, [selection?.generationId, selection?.scenarioId, retry]);
 
   function selectSaved(next: ScenarioSelection | undefined) {
     window.history.replaceState(null, '', next ? practiceHref(next) : '/practice');
@@ -110,11 +115,19 @@ export function ScenarioRoom({
         )}
         {error && (
           <p className="error" role="alert">
-            {error}
+            {error}{' '}
+            <button className="text-button" onClick={() => setRetry((value) => value + 1)}>
+              Retry loading scenario
+            </button>
           </p>
         )}
         {route.kind === 'scenario' && !ready && !error && (
-          <p role="status">Loading the saved scenario and its source context…</p>
+          <p role="status">
+            <LoaderCircle className="spin" size={16} aria-hidden="true" />{' '}
+            {waiting
+              ? 'Waiting for June’s API. Your saved scenario will retry automatically…'
+              : 'Loading your saved scenario…'}
+          </p>
         )}
         {scenario && (
           <p className="muted">

@@ -22,4 +22,16 @@ describe('voice failure diagnostics', () => {
       'Diagnostic categories',
     );
   });
+
+  it('identifies a rejected WebRTC configuration without mislabeling it as audio initialization', () => {
+    const result = describeVoiceFailure(
+      new Error(
+        'Could not establish connection: Failed RTCPeerConnection configuration unsupported',
+      ),
+    );
+    expect(result.code).toBe('webrtc_configuration');
+    expect(result.message).toContain('connection configuration');
+    expect(result.message).not.toContain('initialize browser audio');
+    expect(describeVoiceFailure('undefined is not a function').code).toBe('unknown');
+  });
 });

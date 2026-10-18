@@ -60,9 +60,10 @@ export function registerPreparationRoutes(app: FastifyInstance, service: Workspa
         intent: preparationIntentSchema,
         version: z.int().nonnegative(),
         profileVersion: z.int().positive(),
+        goal: preparationGoalInputSchema.optional(),
       })
       .parse(request.body);
-    await service.preparation.setIntent(body.intent, body.version, body.profileVersion);
+    await service.preparation.setIntent(body.intent, body.version, body.profileVersion, body.goal);
     return { ok: true };
   });
   app.post('/api/preparation-plan/goal', async (request) => {

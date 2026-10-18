@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { preparationFixture } from './PreparationProgressFixtures.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { ResearchFixture } from './fixtures/ResearchFixture.js';
@@ -295,6 +296,64 @@ function fixture() {
 }
 
 describe('Goal-led investor journey and durable progress', () => {
+  it('keeps worker preparation drafts JSON-safe when investor sources have no archive ID', async () => {
+    const f = fixture();
+    await f.confirm();
+    await f.shortlist();
+    await f.service.preparation.reconcile(true);
+    expect(z.json().safeParse(f.preparation().plans).success).toBe(true);
+  });
+
+  it('saves the simple goal and optional funding details in one versioned change', async () => {
+    const f = fixture();
+    await f.confirm();
+    const target = await f.shortlist();
+    const prior = structuredClone(f.journey().events);
+    const journeyId = f.journey().id;
+    const view = await f.service.preparation.view();
+    const profileVersion = f.state().profile.version;
+    const details = preparationGoalInputSchema.parse({
+      round: 'Seed',
+      previousRounds: 0,
+      amount: '1500000',
+      currency: 'CAD',
+      desiredCheck: { min: '150000', max: '300000', currency: 'CAD' },
+      targetDate: '2026-12-01',
+      timezone: 'America/Toronto',
+      investorId: null,
+    });
+    const saves = f.save.mock.calls.length;
+    await f.service.preparation.setIntent(
+      'Fictional updated fundraising goal',
+      view.version,
+      profileVersion,
+      details,
+    );
+    expect(f.save).toHaveBeenCalledTimes(saves + 1);
+    expect(f.state().profile.goal).toBe('Fictional updated fundraising goal');
+    expect(f.preparation().goals.at(-1)).toMatchObject({
+      ...details,
+      objective: 'Fictional updated fundraising goal',
+    });
+    expect(f.journey().id).toBe(journeyId);
+    expect(f.journey().targets[0]?.id).toBe(target.id);
+    expect(f.journey().events.slice(0, prior.length)).toEqual(prior);
+    const current = structuredClone(f.state());
+    await expect(
+      f.service.preparation.setIntent('Stale edit', view.version, profileVersion, details),
+    ).rejects.toThrow(ConflictError);
+    expect(f.state()).toEqual(current);
+    await expect(
+      f.service.preparation.setIntent(
+        'Invalid amount',
+        f.preparation().version,
+        f.state().profile.version,
+        { ...details, amount: '0' },
+      ),
+    ).rejects.toThrow('positive');
+    expect(f.state()).toEqual(current);
+  });
+
   it('keeps reads pure before activation and captures only one current baseline after goal confirmation', async () => {
     const f = fixture();
     const original = structuredClone(f.state());

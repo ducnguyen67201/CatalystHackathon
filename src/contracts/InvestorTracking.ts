@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { publicProfileUrlSchema } from './ProfileLinks.js';
+import { savedInvestorProfileEstimateSchema } from './InvestorProfileEstimate.js';
 
 export const InvestorOrigin = {
   ADDED: 'added',
@@ -41,6 +42,7 @@ export const trackedInvestorSchema = z.strictObject({
   frequency: z.enum(CheckFrequency),
   nextAt: z.iso.datetime().nullable(),
   checks: z.array(investorCheckSchema),
+  profileEstimates: z.array(savedInvestorProfileEstimateSchema).max(50).optional(),
 });
 
 export type TrackedInvestor = z.infer<typeof trackedInvestorSchema>;

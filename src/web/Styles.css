@@ -1622,3 +1622,12 @@ td:first-child {
     overflow-x: auto;
   }
 }
+.investor-search-action {
+  margin: 16px 0;
+  max-width: 720px;
+}
+.investor-search-action p {
+  margin: 10px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}

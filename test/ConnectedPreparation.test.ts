@@ -96,7 +96,7 @@ function fixture(journey = false) {
       version: (await service.connected.view()).version,
       key: randomUUID(),
     });
-  const start = async () => {
+  const start = async (prepareCycle = true) => {
     await service.preparation.confirmGoal(
       preparationGoalInputSchema.parse({
         round: 'Seed',
@@ -145,7 +145,7 @@ function fixture(journey = false) {
         });
       });
     }
-    await act({ action: 'start' });
+    if (prepareCycle) await act({ action: 'start' });
   };
   const throughBrief = async () => {
     await start();
@@ -224,6 +224,40 @@ function fixture(journey = false) {
   };
 }
 describe('Connected six-step preparation', () => {
+  it('previews the first company story without saving a cycle, approval or progress, then starts from that exact draft', async () => {
+    const f = fixture(true);
+    await f.start(false);
+    const before = structuredClone(f.state());
+    const saves = f.save.mock.calls.length;
+    const preview = await f.service.connected.view();
+    expect(preview.cycle).toBeNull();
+    expect(preview.pitch).toBeNull();
+    expect(preview.storyDraft?.text).toBeTruthy();
+    expect(preview.storyDraft?.fictional).toBe(true);
+    expect(preview.storyDraft).not.toHaveProperty('id');
+    expect((await f.service.connected.view()).storyDraft).toEqual(preview.storyDraft);
+    expect(f.state()).toEqual(before);
+    expect(f.save).toHaveBeenCalledTimes(saves);
+    await f.act({ action: 'start' });
+    const started = await f.service.connected.view();
+    expect(started.pitch).toMatchObject(preview.storyDraft ?? {});
+    expect(started.cycle?.pitchApprovedAt).toBeNull();
+    expect(started.storyDraft).toBeNull();
+  });
+
+  it('does not invent a story preview without the selected financial evidence', async () => {
+    const f = fixture(true);
+    await f.start(false);
+    await f.service.change((state) => {
+      state.snapshots = [];
+    });
+    const before = structuredClone(f.state());
+    const view = await f.service.connected.view();
+    expect(view.storyDraft).toBeNull();
+    expect(view.pitch).toBeNull();
+    expect(view.cycle).toBeNull();
+    expect(f.state()).toEqual(before);
+  });
   it('opens archived goal artifacts read-only and rejects stale-goal preparation commands', async () => {
     const f = fixture(true);
     await f.throughBrief();

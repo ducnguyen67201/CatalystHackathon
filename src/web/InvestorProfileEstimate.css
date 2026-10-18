@@ -1,0 +1,64 @@
+.investor-profile-estimate {
+  padding: 16px;
+  margin: 18px 0;
+  border: 1px solid #dce3de;
+  border-radius: 10px;
+  background: #f7f8f4;
+}
+.investor-profile-estimate h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+.investor-profile-estimate h3 span {
+  display: inline-block;
+  padding: 3px 7px;
+  margin-left: 7px;
+  border-radius: 4px;
+  background: #eee8d9;
+  color: #645738;
+  font-size: 11px;
+  font-weight: 500;
+}
+.investor-estimate-notice,
+.investor-estimate-status,
+.investor-estimate-details {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #626b66;
+}
+.investor-estimate-notice {
+  margin: 0 0 12px;
+}
+.investor-estimate-values {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+.investor-estimate-values > div {
+  display: grid;
+  grid-template-columns: minmax(85px, 24%) minmax(0, 1fr);
+  gap: 12px;
+}
+.investor-estimate-values dt {
+  color: #626b66;
+}
+.investor-estimate-values dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.investor-estimate-details {
+  margin-top: 12px;
+}
+.investor-estimate-details summary {
+  cursor: pointer;
+}
+.investor-estimate-details ul {
+  padding-left: 18px;
+}
+.investor-estimate-details .button {
+  margin-top: 10px;
+}
+.investor-estimate-status:empty {
+  display: none;
+}

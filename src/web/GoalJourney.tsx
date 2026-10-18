@@ -13,6 +13,10 @@ import {
 import type { RadarItem } from '../contracts/RadarDelivery.js';
 import { request } from './ApiClient.js';
 import './GoalJourney.css';
+import { InvestorProfileEstimate } from './InvestorProfileEstimate.js';
+import type { InvestorProfileEstimateView } from '../contracts/InvestorProfileEstimate.js';
+import { InvestorCriteriaTable } from './InvestorCriteriaTable.js';
+import { targetPreparationHref } from '../contracts/PreparationNavigation.js';
 
 type WithoutReceipt<T> = T extends unknown ? Omit<T, 'key' | 'revision'> : never;
 type JourneyAction = WithoutReceipt<JourneyCommand>;
@@ -81,7 +85,8 @@ export function useGoalJourney(revision: number) {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [revision, reload]);
+    // Workspace revisions can change on every worker tick. Keep one steady polling clock.
+  }, [reload]);
   const act = async (action: JourneyAction): Promise<GoalJourneyView> => {
     if (!data || mutation.current) throw new Error('Wait for the saved goal to finish loading.');
     mutation.current = true;
@@ -107,7 +112,14 @@ export function useGoalJourney(revision: number) {
       setBusy(false);
     }
   };
-  return { data, error, busy, act, refresh: () => setReload((value) => value + 1) };
+  return {
+    data,
+    error,
+    busy,
+    act,
+    workspaceRevision: revision,
+    refresh: () => setReload((value) => value + 1),
+  };
 }
 
 type JourneyController = ReturnType<typeof useGoalJourney>;
@@ -132,7 +144,7 @@ export function GoalJourneyChart({
   onSelect,
 }: {
   events: GoalProgressEvent[];
-  position: GoalPosition;
+  position: GoalPosition | null;
   targetId?: string;
   selectedId?: string | undefined;
   onSelect: (event: GoalProgressEvent) => void;
@@ -143,7 +155,7 @@ export function GoalJourneyChart({
       const value = displayPosition(event.position, targetId);
       return value ? [{ event, value }] : [];
     });
-  const current = displayPosition(position, targetId);
+  const current = position ? displayPosition(position, targetId) : null;
   const earliest = ordered[0]?.event.recordedAt;
   const latest = ordered.at(-1)?.event.recordedAt;
   const start = earliest ? Date.parse(earliest) : 0;
@@ -155,8 +167,7 @@ export function GoalJourneyChart({
   return (
     <figure className="goal-journey-chart">
       <figcaption>
-        Reviewed preparation steps over recorded time ·{' '}
-        {targetId ? 'selected investor track' : 'goal-wide saved scope'}
+        Preparation progress · {targetId ? 'selected investor track' : 'whole goal'}
       </figcaption>
       <div
         className="goal-chart-scroll"
@@ -262,16 +273,23 @@ export function GoalJourneyChart({
               </text>
             </>
           )}
+          {!position && (
+            <text x="685" y="110" textAnchor="end" fontSize="12">
+              Not tracked yet
+            </text>
+          )}
           <text x="760" y="85" fontSize="13">
-            {position.remainingHours} estimated hours
+            {position ? <>{position.remainingHours} estimated hours</> : 'Estimate not set'}
           </text>
           <text x="760" y="110" fontSize="12">
             Preparation ready:
           </text>
           <text x="760" y="132" fontSize="13">
-            {position.estimatedReadyDate
+            {position?.estimatedReadyDate
               ? dateLabel(position.estimatedReadyDate)
-              : 'Review remaining work'}
+              : position
+                ? 'Review remaining work'
+                : 'Save goal to estimate'}
           </text>
           <text x="760" y="175" fontSize="11">
             Estimate · not recorded progress
@@ -288,9 +306,9 @@ export function GoalJourneyChart({
         </svg>
       </div>
       <p className="muted">
-        Solid steps are recorded observations. Dashed vertical boundaries indicate changed goals or
-        scope. Counts describe reviewed work; they do not measure mastery or funding likelihood.
-        Future work is an estimate, never a saved observation.
+        {position
+          ? 'History tracks reviewed preparation. Future work is estimated.'
+          : 'No progress is recorded in this workspace yet. Save your goal to start the graph.'}
       </p>
       {targetId && (
         <p className="muted">
@@ -458,9 +476,15 @@ function HistoricalTrack({ track }: { track: GoalTrackPosition }) {
   );
 }
 
-export function GoalJourney({ revision }: { revision: number }) {
+export function GoalJourney({
+  revision,
+  onEditGoal,
+}: {
+  revision: number;
+  onEditGoal?: () => void;
+}) {
   const controller = useGoalJourney(revision);
-  const { data, error, busy, act } = controller;
+  const { data, error } = controller;
   const [targetId, setTargetId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -554,17 +578,43 @@ export function GoalJourney({ revision }: { revision: number }) {
     )
       void latestLoad.current();
   }, [lastSequence, snapshotSequence, olderLoaded, selected]);
+  const activeTargets = data?.targets.filter((target) => target.status === 'active') ?? [];
+  const actionHref =
+    activeTargets.length && data?.position ? internalHref(data.position.href) : '/?page=radar';
+  const reviewed = data?.position?.readiness === 'preparation_reviewed';
+  const nextHref = reviewed
+    ? actionHref.replace('preparationStep=revision', 'preparationStep=history')
+    : actionHref;
+  const nextStep = new URLSearchParams(nextHref.split('?')[1] ?? '').get('preparationStep');
+  const nextLabels: Record<string, string> = {
+    story: 'Review company story',
+    investor: 'Review investor',
+    brief: 'Review tailored brief',
+    practice: 'Start practice',
+    feedback: 'Review feedback',
+    revision: 'Review next steps',
+    history: 'Review progress',
+  };
+  const nextLabel = !activeTargets.length
+    ? 'Find investors'
+    : reviewed
+      ? 'Review progress'
+      : nextHref.includes('page=radar')
+        ? 'Review investor match'
+        : (nextLabels[nextStep ?? ''] ?? 'Continue preparation');
   return (
     <section className="goal-journey" aria-labelledby="goal-journey-title">
       <div className="goal-heading">
         <div>
-          <div className="eyebrow">Your goal, connected</div>
+          <div className="eyebrow">Your goal</div>
           <h2 id="goal-journey-title">Your preparation journey</h2>
-          <p>{data?.intent || 'Confirm the goal you are preparing for below.'}</p>
+          <p>{data?.intent || 'What do you want to achieve?'}</p>
         </div>
-        <a className="button secondary" href="/?page=radar">
-          Find matching investors →
-        </a>
+        {onEditGoal && (
+          <button className="button secondary" onClick={onEditGoal}>
+            {data?.intent.trim() ? 'Edit goal' : 'Set goal'}
+          </button>
+        )}
       </div>
       <ol className="goal-flow" aria-label="Goal to progress flow">
         {[
@@ -588,19 +638,15 @@ export function GoalJourney({ revision }: { revision: number }) {
       )}
       {!data && !error && <p role="status">Loading saved goal progress…</p>}
       {data && !data.journey && (
-        <div className="goal-empty">
-          <h3>Start recording this goal’s journey</h3>
-          <p>
-            Confirm your goal in the preparation plan below, then capture the current baseline.
-            Earlier briefs and practice stay in history; past graph points are never invented.
-          </p>
-          <button
-            className="button"
-            disabled={busy}
-            onClick={() => void act({ action: 'activate' }).catch(() => undefined)}
-          >
-            Start tracking current preparation
-          </button>
+        <div className="goal-current" aria-label="Preparation tracking has not started">
+          <div>
+            <span>Current position</span>
+            <strong>Not tracked yet</strong>
+          </div>
+          <div>
+            <span>Estimated preparation ready</span>
+            <strong>Save goal to estimate</strong>
+          </div>
         </div>
       )}
       {data?.position && (
@@ -623,130 +669,152 @@ export function GoalJourney({ revision }: { revision: number }) {
               </strong>
               <small>{data.position.remainingHours} hours remaining · goal-wide plan</small>
             </div>
-            <a className="button" href={internalHref(data.position.href)}>
-              {data.position.nextAction} →
-            </a>
-          </div>
-          <p className="muted">{data.position.estimateReason}</p>
-          <div className="goal-history-controls">
-            <label>
-              Graph scope
-              <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-                <option value="">Whole goal</option>
-                {data.targets.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                    {item.status === 'archived' ? ' · archived' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              History from
-              <input
-                type="date"
-                value={from}
-                max={to || undefined}
-                onChange={(event) => setFrom(event.target.value)}
-              />
-            </label>
-            <label>
-              History through
-              <input
-                type="date"
-                value={to}
-                min={from || undefined}
-                onChange={(event) => setTo(event.target.value)}
-              />
-            </label>
-            <button
-              className="button secondary"
-              disabled={historyBusy}
-              onClick={() => setHistoryReload((value) => value + 1)}
-            >
-              Refresh history
-            </button>
-          </div>
-          {historyError && <p role="alert">{historyError}</p>}
-          <GoalJourneyChart
-            events={history}
-            position={data.position}
-            targetId={targetId}
-            selectedId={selected?.id}
-            onSelect={select}
-          />
-          {lastSequence !== snapshotSequence && snapshotSequence !== undefined && (
-            <p role="status">
-              New progress is available. Refresh history to include the latest saved events; the
-              current position above is up to date.
-            </p>
-          )}
-          <details className="goal-history-table">
-            <summary>Inspect chronological history · {history.length} loaded observations</summary>
-            <div
-              className="goal-table-scroll"
-              tabIndex={0}
-              role="region"
-              aria-label="Chronological preparation history"
-            >
-              <table>
-                <caption>
-                  Saved observations with their original goal and scope. Select a row to inspect
-                  exact versions.
-                </caption>
-                <thead>
-                  <tr>
-                    <th>Recorded at</th>
-                    <th>Reviewed steps</th>
-                    <th>Scope</th>
-                    <th>Change</th>
-                    <th>Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...history]
-                    .sort((a, b) => a.sequence - b.sequence)
-                    .map((event) => {
-                      const value = displayPosition(event.position, targetId);
-                      return (
-                        value && (
-                          <tr key={event.id}>
-                            <td>{timestamp(event.recordedAt)}</td>
-                            <td>
-                              {value.completed}/{value.required} · {value.percentage}%
-                            </td>
-                            <td>Version {event.position.scopeVersion}</td>
-                            <td>{event.reason}</td>
-                            <td>
-                              <button className="text-button" onClick={() => select(event)}>
-                                Inspect #{event.sequence}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      );
-                    })}
-                </tbody>
-              </table>
+            <div className="journey-next">
+              <span>
+                Next:{' '}
+                {activeTargets.length
+                  ? data.position.nextAction
+                  : 'Choose an investor for this goal.'}
+              </span>
+              <a className="button" href={nextHref}>
+                {nextLabel} →
+              </a>
             </div>
-          </details>
-          {history.length === 0 && !historyBusy && (
-            <p>
-              No saved observations in this history filter. Current preparation is shown separately
-              above.
+          </div>
+        </>
+      )}
+      {historyError && <p role="alert">{historyError}</p>}
+      <GoalJourneyChart
+        events={data?.position ? history : []}
+        position={data?.position ?? null}
+        targetId={targetId}
+        selectedId={selected?.id}
+        onSelect={select}
+      />
+      {data?.position && (
+        <>
+          <details className="journey-details goal-progress-details">
+            <summary>History, filters & planning details</summary>
+            <p className="muted">
+              Solid steps are saved observations. Dashed boundaries mark changed goals or scope;
+              earlier counts retain their original denominator. Preparation counts do not measure
+              mastery or funding likelihood.
             </p>
-          )}
-          {cursor !== null && (
-            <button
-              className="button secondary"
-              disabled={historyBusy}
-              onClick={() => void loadPage(cursor)}
-            >
-              Load older saved observations
-            </button>
-          )}
-          {historyBusy && <p role="status">Loading saved history…</p>}
-          <PracticeEvidenceHistory position={data.position} targetId={targetId} />
+            <p className="muted">{data.position.estimateReason}</p>
+            <div className="goal-history-controls">
+              <label>
+                Graph scope
+                <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                  <option value="">Whole goal</option>
+                  {data.targets.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                      {item.status === 'archived' ? ' · archived' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                History from
+                <input
+                  type="date"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(event) => setFrom(event.target.value)}
+                />
+              </label>
+              <label>
+                History through
+                <input
+                  type="date"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(event) => setTo(event.target.value)}
+                />
+              </label>
+              <button
+                className="button secondary"
+                disabled={historyBusy}
+                onClick={() => setHistoryReload((value) => value + 1)}
+              >
+                Refresh history
+              </button>
+            </div>
+            {lastSequence !== snapshotSequence && snapshotSequence !== undefined && (
+              <p role="status">
+                New progress is available. Refresh history to include the latest saved events; the
+                current position above is up to date.
+              </p>
+            )}
+            <details className="goal-history-table">
+              <summary>
+                Inspect chronological history · {history.length} loaded observations
+              </summary>
+              <div
+                className="goal-table-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label="Chronological preparation history"
+              >
+                <table>
+                  <caption>
+                    Saved observations with their original goal and scope. Select a row to inspect
+                    exact versions.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th>Recorded at</th>
+                      <th>Reviewed steps</th>
+                      <th>Scope</th>
+                      <th>Change</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...history]
+                      .sort((a, b) => a.sequence - b.sequence)
+                      .map((event) => {
+                        const value = displayPosition(event.position, targetId);
+                        return (
+                          value && (
+                            <tr key={event.id}>
+                              <td>{timestamp(event.recordedAt)}</td>
+                              <td>
+                                {value.completed}/{value.required} · {value.percentage}%
+                              </td>
+                              <td>Version {event.position.scopeVersion}</td>
+                              <td>{event.reason}</td>
+                              <td>
+                                <button className="text-button" onClick={() => select(event)}>
+                                  Inspect #{event.sequence}
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            {history.length === 0 && !historyBusy && (
+              <p>
+                No saved observations in this history filter. Current preparation is shown
+                separately above.
+              </p>
+            )}
+            {cursor !== null && (
+              <button
+                className="button secondary"
+                disabled={historyBusy}
+                onClick={() => void loadPage(cursor)}
+              >
+                Load older saved observations
+              </button>
+            )}
+            {historyBusy && <p role="status">Loading saved history…</p>}
+            <PracticeEvidenceHistory position={data.position} targetId={targetId} />
+          </details>
           <TargetInvestors controller={controller} />
         </>
       )}
@@ -823,6 +891,7 @@ function TargetMatchReview({
   controller: JourneyController;
 }) {
   const { data, busy, act } = controller;
+  const [profileView, setProfileView] = useState<InvestorProfileEstimateView | null>(null);
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [rationale, setRationale] = useState(target.rationale);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -889,6 +958,11 @@ function TargetMatchReview({
       {message && <p role="status">{message}</p>}
       {assessment && (
         <>
+          <InvestorProfileEstimate
+            investorId={target.investorId}
+            revision={controller.workspaceRevision}
+            onView={setProfileView}
+          />
           <p>
             <strong>
               {outdated
@@ -906,34 +980,12 @@ function TargetMatchReview({
             describes goal alignment, not investment probability. Current inputs are checked again
             when you save.
           </p>
-          <div className="goal-table-scroll">
-            <table>
-              <caption>Current candidate assessment · review before saving</caption>
-              <thead>
-                <tr>
-                  <th>Criterion</th>
-                  <th>Result</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assessment.criteria.map((criterion) => (
-                  <tr key={criterion.criterion}>
-                    <th scope="row">{criterion.criterion.replaceAll('_', ' ')}</th>
-                    <td>{criterion.state.replaceAll('_', ' ')}</td>
-                    <td>{criterion.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {assessment.unknowns.length > 0 && (
-            <ul>
-              {assessment.unknowns.map((unknown) => (
-                <li key={unknown}>{unknown}</li>
-              ))}
-            </ul>
-          )}
+          <InvestorCriteriaTable
+            assessment={assessment}
+            goal={data?.matchGoal ?? null}
+            profile={profileView}
+            outdated={outdated}
+          />
           <details>
             <summary>Original sources and dates · {assessment.sources.length}</summary>
             {assessment.sources.map((source, index) => (
@@ -1010,15 +1062,11 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
       card?.focus({ preventScroll: true });
     }
   }, [selectedTarget]);
-  const operate = async (action: JourneyAction, navigate = false) => {
+  const operate = async (action: JourneyAction) => {
     setMessage('');
     try {
       const next = await act(action);
-      if (navigate && 'targetId' in action)
-        window.location.assign(
-          `/?preparationStep=brief&targetId=${encodeURIComponent(action.targetId)}`,
-        );
-      else setMessage(`Investor plan updated. ${next.position?.nextAction ?? ''}`);
+      setMessage(`Investor plan updated. ${next.position?.nextAction ?? ''}`);
     } catch {
       /* The shared controller preserves the saved view and shows the error. */
     }
@@ -1061,7 +1109,7 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
                   : 'Saved · outside current plan'}
             </div>
             <h4>{target.name}</h4>
-            <p>{target.rationale}</p>
+
             <p>
               <strong>
                 {target.matchOutdated
@@ -1086,36 +1134,44 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
                 <p>{target.track.nextAction}</p>
               </>
             )}
-            <TargetMatchReview target={target} controller={controller} />
             <div className="goal-actions">
               {target.status === 'active' ? (
                 <>
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() => void operate({ action: 'focus', targetId: target.id }, true)}
-                  >
-                    Open tailored preparation
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() =>
-                      void operate({
-                        action: target.included ? 'exclude' : 'include',
-                        targetId: target.id,
-                      })
-                    }
-                  >
-                    {target.included ? 'Remove from plan scope' : 'Include in plan scope'}
-                  </button>
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() => void operate({ action: 'archive', targetId: target.id })}
-                  >
-                    Archive target
-                  </button>
+                  <a className="button" href={targetPreparationHref(target)}>
+                    Continue preparation →
+                  </a>
+                  <details className="journey-details target-management">
+                    <summary>Investor details & options</summary>
+                    <p>{target.rationale}</p>
+                    <TargetMatchReview target={target} controller={controller} />
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() =>
+                        void operate({
+                          action: target.included ? 'exclude' : 'include',
+                          targetId: target.id,
+                        })
+                      }
+                    >
+                      {target.included ? 'Remove from plan scope' : 'Include in plan scope'}
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => void operate({ action: 'archive', targetId: target.id })}
+                    >
+                      Archive target
+                    </button>
+                    {target.track?.cycleId && (
+                      <a
+                        className="text-button"
+                        href={`/?preparationStep=history&preparationCycleId=${encodeURIComponent(target.track.cycleId)}&targetId=${encodeURIComponent(target.id)}`}
+                      >
+                        Saved preparation history
+                      </a>
+                    )}
+                  </details>
                 </>
               ) : (
                 <button
@@ -1125,14 +1181,6 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
                 >
                   Resume target
                 </button>
-              )}
-              {target.track?.cycleId && (
-                <a
-                  className="text-button"
-                  href={`/?preparationStep=history&preparationCycleId=${encodeURIComponent(target.track.cycleId)}&targetId=${encodeURIComponent(target.id)}`}
-                >
-                  Saved preparation history
-                </a>
               )}
             </div>
           </article>
@@ -1152,10 +1200,15 @@ export function InvestorMatchDialog({
   onClose: () => void;
 }) {
   const { data, busy, act } = controller;
+  const [profileView, setProfileView] = useState<InvestorProfileEstimateView | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
-  const [rationale, setRationale] = useState('');
-  const [included, setIncluded] = useState(true);
+  const [rationale, setRationale] = useState(
+    () => data?.targets.find((target) => target.investorId === item.investorId)?.rationale ?? '',
+  );
+  const [included, setIncluded] = useState(
+    () => data?.targets.find((target) => target.investorId === item.investorId)?.included ?? true,
+  );
   const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState('');
   const [localError, setLocalError] = useState('');
@@ -1171,7 +1224,9 @@ export function InvestorMatchDialog({
     (entry) => entry.investorId === (saved?.investorId ?? item.investorId),
   );
   const outdated =
-    target?.matchOutdated || (saved && saved.goalVersionId !== data?.journey?.currentGoalId);
+    (target?.matchOutdated && target.assessmentId === saved?.id) ||
+    (saved && saved.goalVersionId !== data?.journey?.currentGoalId) ||
+    (!!assessment?.nextReviewAt && Date.parse(assessment.nextReviewAt) <= Date.now());
   const needsOverride = assessment?.status !== 'scored' || outdated;
   useEffect(() => {
     focus.current = document.activeElement;
@@ -1198,13 +1253,18 @@ export function InvestorMatchDialog({
   async function shortlist() {
     setLocalError('');
     try {
-      await act({
+      const next = await act({
         action: 'shortlist',
         eventId: item.id,
         ...(saved ? { investorId: saved.investorId, assessmentId: saved.id } : {}),
         rationale,
         included,
       });
+      const chosen = next.targets.find(
+        (entry) =>
+          entry.investorId === (saved?.investorId ?? item.investorId) || entry.eventId === item.id,
+      );
+      if (chosen) window.location.assign(targetPreparationHref(chosen));
       setMessage(
         'Investor saved under this goal. Open tailored preparation to review the brief or complete its company-story prerequisite.',
       );
@@ -1231,7 +1291,7 @@ export function InvestorMatchDialog({
           Close
         </button>
       </div>
-      <p>Goal: {data?.intent || 'Confirm a preparation goal on Overview first.'}</p>
+      <p className="muted">Choose whether to prepare for this investor under your saved goal.</p>
       {item.fictional && <p className="progress-tag tone-demo">Fictional example evidence</p>}
       {(localError || controller.error) && <p role="alert">{localError || controller.error}</p>}
       {!data?.journey ? (
@@ -1241,12 +1301,11 @@ export function InvestorMatchDialog({
         </p>
       ) : (
         <>
-          <button className="button secondary" disabled={busy} onClick={() => void assess()}>
-            {saved ? 'Reassess using saved research' : 'Check match using saved research'}
-          </button>
-          <p className="muted">
-            Uses saved evidence and deterministic rules. This starts no research or paid practice.
-          </p>
+          {!assessment && (
+            <button className="button" disabled={busy} onClick={() => void assess()}>
+              Review saved match
+            </button>
+          )}
           {assessment ? (
             <>
               <div className="goal-match-summary">
@@ -1262,67 +1321,72 @@ export function InvestorMatchDialog({
                 </span>
               </div>
               <p className="muted">
-                {assessment.rubricVersion} · Assessed {timestamp(assessment.assessedAt)}. Match
-                measures alignment with your goal, not the probability of investment.
-                {outdated &&
-                  ' This assessment is outdated; reassess before treating it as current.'}
+                {assessment.status === 'scored' && !outdated
+                  ? 'Supported alignment with your goal. Review the sources before choosing.'
+                  : 'Some eligibility details are unconfirmed. You can research them or choose this investor with the gaps acknowledged.'}
               </p>
-              <div className="goal-table-scroll">
-                <table>
-                  <caption>Investor priorities and eligibility compared with this goal</caption>
-                  <thead>
-                    <tr>
-                      <th>Criterion</th>
-                      <th>Result</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assessment.criteria.map((criterion) => (
-                      <tr key={criterion.criterion}>
-                        <th scope="row">{criterion.criterion.replaceAll('_', ' ')}</th>
-                        <td>{criterion.state.replaceAll('_', ' ')}</td>
-                        <td>{criterion.reason}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {assessment.unknowns.length > 0 && (
-                <div>
-                  <h3>What remains unknown</h3>
-                  <ul>
-                    {assessment.unknowns.map((unknown) => (
-                      <li key={unknown}>{unknown}</li>
-                    ))}
-                  </ul>
-                </div>
+              <InvestorProfileEstimate
+                key={saved.investorId}
+                investorId={saved.investorId}
+                revision={controller.workspaceRevision}
+                onView={setProfileView}
+              />
+              {needsOverride && (
+                <a
+                  className="button secondary"
+                  href={`/?page=investors&investor=${encodeURIComponent(saved.investorId)}`}
+                >
+                  Research missing details →
+                </a>
               )}
-              <details>
-                <summary>
-                  Supporting sources and exact passages · {assessment.sources.length}
-                </summary>
-                {assessment.sources.map((source, index) => (
-                  <div key={`${source.evidenceId}-${index}`} className="goal-match-source">
-                    {source.fictional && <strong>Fictional evidence</strong>}
-                    <blockquote>{source.quote}</blockquote>
+              <details className="journey-details">
+                <summary>Match criteria, goal & sources</summary>
+                <p>Goal: {data.intent}</p>
+                <p className="muted">
+                  {assessment.rubricVersion} · Assessed {timestamp(assessment.assessedAt)}. Match
+                  measures alignment with your goal, not the probability of investment.
+                  {outdated &&
+                    ' This assessment is outdated; reassess before treating it as current.'}
+                </p>
+                <InvestorCriteriaTable
+                  assessment={assessment}
+                  goal={data.matchGoal}
+                  profile={profileView}
+                  outdated={outdated}
+                />
+                <details>
+                  <summary>
+                    Supporting sources and exact passages · {assessment.sources.length}
+                  </summary>
+                  {assessment.sources.map((source, index) => (
+                    <div key={`${source.evidenceId}-${index}`} className="goal-match-source">
+                      {source.fictional && <strong>Fictional evidence</strong>}
+                      <blockquote>{source.quote}</blockquote>
+                      <p>
+                        Published {source.publishedAt ?? 'Unknown'} · Retrieved{' '}
+                        {timestamp(source.retrievedAt)}
+                      </p>
+                      {source.url && (
+                        <a href={source.url} target="_blank" rel="noopener noreferrer">
+                          Open supporting source
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                  {!assessment.sources.length && (
                     <p>
-                      Published {source.publishedAt ?? 'Unknown'} · Retrieved{' '}
-                      {timestamp(source.retrievedAt)}
+                      No qualifying mandate source was saved. A news announcement alone does not
+                      establish eligibility.
                     </p>
-                    {source.url && (
-                      <a href={source.url} target="_blank" rel="noopener noreferrer">
-                        Open supporting source
-                      </a>
-                    )}
-                  </div>
-                ))}
-                {!assessment.sources.length && (
-                  <p>
-                    No qualifying mandate source was saved. A news announcement alone does not
-                    establish eligibility.
-                  </p>
-                )}
+                  )}
+                </details>
+                <button className="text-button" disabled={busy} onClick={() => void assess()}>
+                  Refresh match from saved research
+                </button>
+                <p className="muted">
+                  Uses saved evidence only. New research is available through Research missing
+                  details.
+                </p>
               </details>
             </>
           ) : (
@@ -1331,24 +1395,14 @@ export function InvestorMatchDialog({
               unknowns.
             </p>
           )}
-          {target ? (
+          {target && target.assessmentId === saved?.id && !outdated ? (
             <div role="status">
               <p>{message || 'Already saved as a target for this goal.'}</p>
-              <button
-                className="button"
-                disabled={busy || target.status === 'archived'}
-                onClick={() =>
-                  void act({ action: 'focus', targetId: target.id })
-                    .then(() =>
-                      window.location.assign(
-                        `/?preparationStep=brief&targetId=${encodeURIComponent(target.id)}`,
-                      ),
-                    )
-                    .catch(() => undefined)
-                }
-              >
-                Open tailored preparation
-              </button>
+              {target.status === 'active' && (
+                <a className="button" href={targetPreparationHref(target)}>
+                  Continue preparation →
+                </a>
+              )}
               {target.status === 'archived' && (
                 <p>Resume this target in Target investors to continue preparing.</p>
               )}
@@ -1361,16 +1415,17 @@ export function InvestorMatchDialog({
                 void shortlist();
               }}
             >
-              <h3>Add to target investors</h3>
+              <h3>Prepare for this investor?</h3>
               <label>
-                Why do you want to work with this investor?
+                Why this investor?
                 <textarea
                   required
                   minLength={1}
                   maxLength={1000}
                   value={rationale}
                   onChange={(event) => setRationale(event.target.value)}
-                  placeholder="Save your reason and what you still need to verify."
+                  placeholder="Your reason, and anything you still want to confirm."
+                  rows={2}
                 />
               </label>
               {needsOverride && (
@@ -1384,19 +1439,22 @@ export function InvestorMatchDialog({
                   My rationale does not verify the mandate.
                 </label>
               )}
-              <label className="goal-check">
-                <input
-                  type="checkbox"
-                  checked={included}
-                  onChange={(event) => setIncluded(event.target.checked)}
-                />
-                Include this investor’s preparation in my goal plan.
-              </label>
+              <details className="journey-details">
+                <summary>Preparation plan options</summary>
+                <label className="goal-check">
+                  <input
+                    type="checkbox"
+                    checked={included}
+                    onChange={(event) => setIncluded(event.target.checked)}
+                  />
+                  Include this investor’s preparation in my goal plan.
+                </label>
+              </details>
               <button
                 className="button"
                 disabled={busy || !saved || !rationale.trim() || (needsOverride && !acknowledged)}
               >
-                Add to target investors
+                Choose investor & continue →
               </button>
             </form>
           )}

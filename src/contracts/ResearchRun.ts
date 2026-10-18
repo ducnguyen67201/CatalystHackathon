@@ -9,6 +9,7 @@ export const ResearchRunKind = {
 } as const;
 export const ResearchRunStatus = {
   SUCCEEDED: 'succeeded',
+  PARTIAL: 'partial',
   FAILED: 'failed',
   SOURCE_ONLY: 'source_only',
 } as const;
