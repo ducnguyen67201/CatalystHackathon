@@ -54,9 +54,11 @@ function SourceCard({ evidence, state }: { evidence: Evidence; state: StateRespo
 export function InvestorTrackingPage({
   state,
   onRefresh,
+  onEditProfile,
 }: {
   state: StateResponse;
   onRefresh: () => Promise<void>;
+  onEditProfile: () => void;
 }) {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -123,7 +125,7 @@ export function InvestorTrackingPage({
         </p>
       )}
       <InvestorPreparationRecommendationPanel revision={state.workspace.revision} />
-      <InvestorSuggestions state={state} onRefresh={onRefresh} />
+      <InvestorSuggestions state={state} onRefresh={onRefresh} onEditProfile={onEditProfile} />
       <div className="investor-section-heading">
         <div>
           <h2>Your investors</h2>

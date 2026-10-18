@@ -1,0 +1,463 @@
+.question-why-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  border-radius: 18px;
+  box-shadow:
+    0 20px 80px #172b2726,
+    0 4px 16px #172b2712;
+}
+.question-why-head {
+  padding: 20px 24px;
+  background: #fffefa;
+}
+.question-why-head h2 {
+  font-size: 25px;
+  text-wrap: balance;
+}
+.question-why-head small {
+  font-size: 12px;
+}
+.why-fictional-notice {
+  display: inline-block;
+  margin-top: 7px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #f8efd9;
+  color: #796332;
+  font-size: 10px;
+}
+.question-why-close {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.question-why-workspace {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+.question-why-body {
+  padding: 22px;
+  background: #fffefa;
+}
+.why-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font:
+    600 11px/1.5 system-ui,
+    sans-serif;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--green);
+}
+.why-question-card {
+  padding: 18px;
+  border: 1px solid #d6e2d6;
+  border-radius: 12px;
+  background: #edf4eb;
+}
+.question-why-body .why-question-card blockquote {
+  margin: 9px 0 0;
+  padding: 0;
+  border: 0;
+  font: 20px/1.4 var(--serif);
+  text-wrap: pretty;
+}
+.why-connection-path {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px 0;
+  color: #6c7e70;
+  font-size: 10px;
+}
+.why-connection-path > span:first-child {
+  height: 1px;
+  width: 24px;
+  background: #bbcdbd;
+}
+.question-why-body .why-explanation-card,
+.question-why-body .why-answer-card {
+  margin: 0 0 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.question-why-body .why-explanation-card {
+  background: #fcf8ef;
+  border-color: #e9e0ce;
+}
+.question-why-body .why-explanation-card h3 {
+  color: #76603d;
+}
+.question-why-body .why-explanation-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.question-why-body .why-explanation-card p {
+  color: #56605c;
+  font-size: 12px;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+.question-why-body h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #344a3e;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 13px;
+}
+.question-why-body .why-answer-card {
+  background: white;
+}
+.why-answer-card ol {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.why-answer-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.why-answer-card li > span {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #edf2ea;
+  color: var(--green);
+  font:
+    600 11px/1 system-ui,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.question-why-body .why-answer-card li p {
+  margin: 1px 0 0;
+  line-height: 1.6;
+  font-size: 12px;
+}
+.question-why-body .why-sources-section {
+  border: 0;
+  padding: 7px 0;
+}
+.why-source-count {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #eef1e9;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.question-source-list {
+  gap: 8px;
+}
+.question-source-button {
+  border-radius: 9px;
+  min-height: 52px;
+  padding: 11px 12px;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
+}
+.question-source-button:hover {
+  background: #f1f5ed;
+  border-color: #afc0aa;
+}
+.question-source-button[aria-pressed='true'] {
+  border-color: #91aa83;
+  background: #eaf1e3;
+  box-shadow: inset 3px 0 #6f8b5f;
+}
+.question-source-button svg {
+  flex-shrink: 0;
+  color: #6b8263;
+}
+.question-source-button span {
+  line-height: 1.5;
+}
+.question-why-body .why-preparation-note {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.question-evidence-pane {
+  padding: 22px;
+  background: #f5f6f1;
+}
+.question-evidence-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #526659;
+  font-size: 12px;
+}
+.question-evidence-heading small {
+  font-size: 10px;
+}
+.why-source-card {
+  padding: 20px;
+  background: white;
+  border: 1px solid #dfe5d8;
+  border-radius: 13px;
+  box-shadow: 0 2px 4px #23372d04;
+}
+.why-source-card-head {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+.why-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  background: #eff3eb;
+  border-radius: 10px;
+  color: #59714d;
+}
+.why-source-card h3 {
+  margin: 3px 0 0;
+  font:
+    600 17px/1.4 system-ui,
+    sans-serif;
+  text-wrap: balance;
+}
+.why-source-card h4 {
+  margin: 0 0 7px;
+  font:
+    600 11px/1.5 system-ui,
+    sans-serif;
+  color: #6d786c;
+}
+.why-source-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0;
+}
+.why-source-tags > span {
+  background: #eef3e9;
+  color: #506441;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.why-source-tags > .why-fictional {
+  background: #f8efd9;
+  color: #796332;
+}
+.why-audience {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  background: #f5f6f1;
+  border-radius: 8px;
+  color: #415b49;
+  font-size: 12px;
+}
+.why-audience svg {
+  flex-shrink: 0;
+}
+.why-source-section {
+  margin-top: 17px;
+}
+.why-source-card p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.why-story-quote {
+  border: 1px solid #dde6d6;
+  border-left: 3px solid #8da57a;
+  border-radius: 8px;
+  background: #f7faf3;
+  padding: 16px;
+  margin: 17px 0;
+}
+.why-story-quote p {
+  margin-top: 9px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.why-source-card blockquote {
+  font:
+    13px/1.8 system-ui,
+    sans-serif;
+}
+.why-source-disclosure {
+  border-top: 1px solid #e5e9e0;
+  margin-top: 3px;
+  padding: 12px 0;
+}
+.why-source-disclosure summary,
+.why-statement-disclosure > summary {
+  font:
+    500 12px/1.6 system-ui,
+    sans-serif;
+  cursor: pointer;
+  color: #526549;
+  min-height: 24px;
+}
+.why-source-disclosure[open] > summary {
+  margin-bottom: 12px;
+}
+.why-source-disclosure p {
+  margin: 10px 0;
+}
+.why-source-disclosure ul {
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.why-source-disclosure details {
+  margin-top: 10px;
+}
+.why-source-disclosure pre {
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: #f6f7f3;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow-y: auto;
+  font:
+    10px/1.7 ui-monospace,
+    monospace;
+}
+.why-saved-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.why-source-link,
+.why-nested-source a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--green);
+}
+.why-source-card .why-source-date {
+  color: var(--muted);
+  font-size: 10px;
+  margin: 12px 0;
+}
+.why-technical-details {
+  padding-bottom: 0;
+}
+.why-technical-details > summary {
+  color: var(--muted);
+  font-size: 11px;
+}
+.why-technical-details dl {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.why-technical-details dl > div {
+  margin-bottom: 8px;
+}
+.why-technical-details dt {
+  font-weight: 600;
+}
+.why-technical-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.why-financial-overview {
+  border: 1px solid #dfe5d8;
+  background: white;
+  border-radius: 12px;
+  padding: 17px;
+}
+.why-financial-overview > p {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: #687461;
+}
+.why-financial-overview dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.why-financial-overview dt {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.why-financial-overview dd {
+  margin: 6px 0 0;
+  font:
+    600 17px/1.4 system-ui,
+    sans-serif;
+  color: #354c3b;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.why-financial-overview .why-negative-value {
+  color: #975241;
+}
+.why-statement-disclosure {
+  margin-top: 16px;
+}
+.why-statement-disclosure > summary {
+  padding: 11px 0;
+}
+.why-empty-source {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .question-why-dialog {
+    border-radius: 12px;
+  }
+  .question-why-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .question-why-body,
+  .question-evidence-pane {
+    padding: 16px;
+  }
+  .question-why-head {
+    padding: 14px 16px;
+  }
+  .question-why-head h2 {
+    font-size: 23px;
+  }
+  .question-why-mobile-switch button {
+    min-height: 44px;
+    border-radius: 7px;
+  }
+  .question-why-body .why-question-card blockquote {
+    font-size: 18px;
+  }
+  .why-source-card {
+    padding: 16px;
+  }
+  .why-financial-overview dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .why-financial-overview dl > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+}

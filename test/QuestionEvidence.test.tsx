@@ -5,8 +5,80 @@ import { evaluationWhySources, scenarioWhySources } from '../src/features/Questi
 import { QuestionEvidenceSheet, formatEvidenceAmount } from '../src/web/QuestionEvidenceSheet.js';
 import { QuestionExplanation } from '../src/web/QuestionExplanation.js';
 import { scenarioInputSchema } from '../src/contracts/Scenario.js';
+import { preparedPitchContextSchema } from '../src/contracts/ConnectedPreparation.js';
+import { QuestionSourceCard } from '../src/web/QuestionSourceCard.js';
+import { randomUUID } from 'node:crypto';
 
 describe('question source evidence presentation', () => {
+  it('presents a saved preparation as story and goal cards, keeping exact lineage and full text inside disclosures', () => {
+    const { context } = evidenceFixture();
+    const preparation = preparedPitchContextSchema.parse({
+      cycleId: randomUUID(),
+      pitchId: randomUUID(),
+      goalId: randomUUID(),
+      sourceHash: 'exact-source-hash',
+      investorSourceHash: 'exact-investor-hash',
+      pitch: 'Fictional operating income was -59797.0001 CAD. Cash receipt remains unknown.',
+      brief:
+        'Prepare for Fictional Fund for Pre-seed.\n\nCompany objective: Explain our fictional operating result. Desired individual check size is unconfirmed.\n\nPreparation hypotheses: explain use of funds. Questions to ask: confirm mandate and check range.',
+      sources: [
+        {
+          id: 'fictional-original',
+          title: 'Fictional statement',
+          excerpt: 'Exact original passage 182300.0000',
+          url: null,
+          recordedAt: null,
+          fictional: true,
+        },
+      ],
+      fictional: false,
+    });
+    const raw = JSON.stringify(preparation);
+    context.sources.push({
+      id: 'approved-preparation',
+      kind: 'company',
+      title: 'Founder-reviewed pitch and investor brief',
+      text: raw,
+      url: null,
+      recordedAt: null,
+      origin: 'founder',
+    });
+    const before = JSON.stringify(context);
+    const source = evaluationWhySources(context).find((item) => item.id === 'approved-preparation');
+    const html = renderToStaticMarkup(<QuestionSourceCard source={source} />);
+    const overview = html.split('<details')[0] ?? '';
+    expect(overview).toContain('Your goal');
+    expect(overview).toContain(preparation.pitch);
+    expect(overview).toContain('Fictional demo evidence');
+    expect(overview).not.toContain(preparation.cycleId);
+    expect(overview).not.toContain(preparation.sourceHash);
+    expect(html).toContain('Investor talking points');
+    expect(html).toContain('Saved record &amp; technical details');
+    expect(html).toContain(preparation.cycleId);
+    expect(html).toContain('182300.0000');
+    expect(html).not.toContain('<details open');
+    expect(source?.originalText).toBe(raw);
+    expect(JSON.stringify(context)).toBe(before);
+  });
+
+  it('does not label an unrecognized legacy company record as an approved story', () => {
+    const { context } = evidenceFixture();
+    context.sources.push({
+      id: 'legacy-context',
+      kind: 'company',
+      title: 'Saved company context',
+      text: '{"goal":"Fictional goal","pitch":"Unapproved draft"}',
+      url: null,
+      recordedAt: null,
+      origin: 'founder',
+    });
+    const source = evaluationWhySources(context).find((item) => item.id === 'legacy-context');
+    expect(source?.preparation).toBeUndefined();
+    const html = renderToStaticMarkup(<QuestionSourceCard source={source} />);
+    expect(html).toContain('Unapproved draft');
+    expect(html).not.toContain('Approved company story');
+    expect(html).not.toContain('Founder reviewed');
+  });
   it('projects saved financial rows without changing evidence and renders readable amounts instead of JSON', () => {
     const { context } = evidenceFixture();
     const before = JSON.stringify(context);

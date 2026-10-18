@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
-import { ArrowRight, Check, Circle } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight, Circle } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import {
   connectedPreparationViewSchema,
@@ -16,6 +16,9 @@ import { request, command } from './ApiClient.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import { ScenarioSourcesView } from './ScenarioSourcesView.js';
 import './ConnectedPreparation.css';
+import { StorySourceExcerpt } from './StorySourceExcerpt.js';
+import { TailoredBriefReview } from './TailoredBriefReview.js';
+import { PreparedPracticeCard } from './PreparedPracticeCard.js';
 
 type WithoutRequest<T> = T extends object ? Omit<T, 'version' | 'key'> : never;
 type Panel = 'story' | 'investor' | 'brief' | 'practice' | 'feedback' | 'revision' | 'history';
@@ -161,9 +164,11 @@ export function InvestorPreparationRecommendations({
 export function ConnectedPreparation({
   state,
   onChange,
+  compact = false,
 }: {
   state: StateResponse;
   onChange: () => void;
+  compact?: boolean;
 }) {
   const [routeContext] = useState(() => {
     const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
@@ -187,6 +192,7 @@ export function ConnectedPreparation({
   const readPath = `/preparation-loop${readQuery.size ? `?${readQuery}` : ''}`;
   const [view, setView] = useState<ConnectedPreparationView | null>(null);
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [text, setText] = useState('');
@@ -199,6 +205,8 @@ export function ConnectedPreparation({
   const trigger = useRef<HTMLElement | null>(null);
   const keys = useRef(new Map<string, string>());
   const deepLinkHandled = useRef(false);
+  const refreshedDraft = useRef<string | null>(null);
+  const savingStory = useRef(false);
   const keyFor = (value: unknown) => {
     const identity = JSON.stringify(value);
     let key = keys.current.get(identity);
@@ -218,11 +226,12 @@ export function ConnectedPreparation({
           const result = await request(readPath, connectedPreparationViewSchema, undefined, 'GET');
           if (!cancelled) {
             setView(result);
+            setConnectionError('');
             if (!targetId && result.cycle?.targetId) setTargetId(result.cycle.targetId);
           }
         } catch (caught) {
           if (!cancelled)
-            setError(
+            setConnectionError(
               caught instanceof Error ? caught.message : 'Cannot load preparation checklist.',
             );
         }
@@ -230,14 +239,14 @@ export function ConnectedPreparation({
       if (!cancelled)
         timer = setTimeout(() => {
           void load();
-        }, 3000);
+        }, 5000);
     };
     void load();
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [state.workspace.revision, reload, readPath, targetId, routeContext.invalid]);
+  }, [reload, readPath, targetId, routeContext.invalid]);
   useEffect(() => {
     if (panel && !dialog.current?.open) dialog.current?.showModal();
   }, [panel]);
@@ -245,7 +254,11 @@ export function ConnectedPreparation({
     if (panel === 'revision') setText(view?.cycle?.proposal?.text ?? view?.pitch?.text ?? '');
   }, [panel, view?.cycle?.id, view?.cycle?.proposal?.evaluationId]);
   useEffect(() => {
-    if (panel === 'story') setText(view?.pitch?.text ?? '');
+    if (panel === 'story') {
+      if (savingStory.current) return;
+      setText(refreshedDraft.current ?? view?.pitch?.text ?? view?.storyDraft?.text ?? '');
+      refreshedDraft.current = null;
+    }
   }, [panel, view?.pitch?.id]);
   useEffect(() => {
     setRevisionScope(panel === 'story' && !view?.cycle?.pitchApprovedAt ? 'shared' : 'target');
@@ -272,16 +285,26 @@ export function ConnectedPreparation({
         ? 'history'
         : !view.cycle && target !== 'history'
           ? 'story'
-          : target;
+          : target === 'brief' && !view.cycle?.pitchApprovedAt
+            ? 'story'
+            : target;
     trigger.current = null;
     setText(
       next === 'revision'
         ? (view.cycle?.proposal?.text ?? view.pitch?.text ?? '')
-        : (view.pitch?.text ?? ''),
+        : (view.pitch?.text ?? view.storyDraft?.text ?? ''),
     );
     setPanel(next);
   }, [view]);
   function close() {
+    if (busy) return;
+    if (
+      panel === 'story' &&
+      text.trim() !== (view?.pitch?.text ?? view?.storyDraft?.text ?? '') &&
+      !window.confirm('Close without saving your company story edits?')
+    )
+      return;
+    refreshedDraft.current = null;
     dialog.current?.close();
     setPanel(null);
     setPreview(null);
@@ -296,7 +319,7 @@ export function ConnectedPreparation({
     setText(
       next === 'revision'
         ? (view?.cycle?.proposal?.text ?? view?.pitch?.text ?? '')
-        : (view?.pitch?.text ?? ''),
+        : (view?.pitch?.text ?? view?.storyDraft?.text ?? ''),
     );
   }
   async function run(operation: () => Promise<unknown>) {
@@ -333,6 +356,52 @@ export function ConnectedPreparation({
     };
     return run(() => command('/preparation-loop/commands', { ...body, key: keyFor(body) }));
   }
+  async function approveStory() {
+    if (!view || view.historical || view.outdated) return;
+    const submitted = text.trim();
+    savingStory.current = true;
+    const ok = await run(async () => {
+      let current = view;
+      const context = {
+        ...(view.journeyId ? { journeyId: view.journeyId } : {}),
+        ...((targetId ?? view.cycle?.targetId)
+          ? { targetId: targetId ?? view.cycle?.targetId }
+          : {}),
+      };
+      if (!current.cycle) {
+        const start = { action: 'start', version: current.version, ...context };
+        await command('/preparation-loop/commands', { ...start, key: keyFor(start) });
+        current = await request(readPath, connectedPreparationViewSchema, undefined, 'GET');
+        if (
+          current.outdated ||
+          !current.pitch ||
+          current.pitch.sourceHash !== view.storyDraft?.sourceHash
+        )
+          throw new Error(
+            'Sources changed. Refresh and review the company story before approving.',
+          );
+      }
+      if (submitted !== current.pitch?.text) {
+        const save = {
+          action: 'save_pitch',
+          version: current.version,
+          text: submitted,
+          ...context,
+          ...(context.targetId ? { scope: revisionScope } : {}),
+        };
+        await command('/preparation-loop/commands', { ...save, key: keyFor(save) });
+        current = await request(readPath, connectedPreparationViewSchema, undefined, 'GET');
+        if (current.outdated || current.pitch?.text !== submitted)
+          throw new Error(
+            'The story changed while saving. Review the latest version before approving.',
+          );
+      }
+      const approval = { action: 'approve_pitch', version: current.version, ...context };
+      await command('/preparation-loop/commands', { ...approval, key: keyFor(approval) });
+    });
+    savingStory.current = false;
+    if (ok) setPanel(targetId || view.cycle?.investorId ? 'brief' : 'investor');
+  }
   async function action(next: Panel) {
     if (!view) return;
     if (!view.cycle) {
@@ -351,179 +420,187 @@ export function ConnectedPreparation({
         to choose a saved investor track.
       </p>
     );
-  if (!view) return <p role="status">{error || 'Loading connected preparation…'}</p>;
+  if (!view)
+    return <p role="status">{connectionError || error || 'Loading connected preparation…'}</p>;
   const cycle = view.cycle;
   const currentScenario =
     view.generation?.scenarios.find((s) => s.id === scenarioId) ?? view.generation?.scenarios[0];
   const currentStep = view.steps.find((s) => s.status !== 'complete' && s.status !== 'blocked');
   const nextPanel: Panel = currentStep?.id ?? 'history';
-  const changedText = text.trim() !== (view.pitch?.text ?? '');
+  const story = view.pitch ?? view.storyDraft;
+  const briefVersion = view.briefVersions.find((brief) => brief.id === cycle?.briefVersionId);
+  const changedText = text.trim() !== (story?.text ?? '');
+  const visibleError = error || connectionError;
   return (
     <section className="connected-preparation" aria-label="Six-step preparation loop">
-      <div className="loop-section-heading">
-        <div>
-          <span className="eyebrow">One connected preparation loop</span>
-          <h3>Review → prepare → practise → improve</h3>
-        </div>
-        <span className="loop-tag">
-          {view.completedCycles} reviewed cycle{view.completedCycles === 1 ? '' : 's'}
-        </span>
-      </div>
-      <p className="loop-method">
-        Complete each saved step. The next workflow becomes available automatically; approvals and
-        session starts stay in your control.
-      </p>
-      {view.historical && (
-        <p role="status" className="loop-warning">
-          This is a read-only preparation track from an archived goal. Its briefs, sources and
-          assessments remain available. <a href="/">Open the current goal</a> to continue preparing.
-        </p>
-      )}
-      {targetId && (
-        <p className="loop-method">
-          Preparing for{' '}
-          {state.workspace.investors.find((investor) => investor.id === view.cycle?.investorId)
-            ?.name ?? 'this target investor'}{' '}
-          under your saved goal. <a href="/?page=radar">Choose another target in Radar</a>; each
-          target retains its own brief and practice history.
-        </p>
-      )}
-      {error && (
-        <p role="alert">
-          {error}{' '}
-          <button className="text-button" onClick={() => setReload((n) => n + 1)}>
-            Refresh
-          </button>
-        </p>
-      )}
-      {!cycle ? (
-        <div className="prep-next">
+      <details className="journey-details" open={!compact}>
+        <summary>All preparation steps & saved cycles</summary>
+        <div className="loop-section-heading">
           <div>
-            <h3>
-              {view.historical
-                ? 'Saved preparation history'
-                : 'Start your six-step preparation checklist'}
-            </h3>
-            <p>
-              {view.historical
-                ? 'Inspect the exact earlier cycle without changing the current goal or investor focus.'
-                : 'Use the confirmed goal and selected statement to prepare a sourced financial story.'}
-            </p>
+            <span className="eyebrow">One connected preparation loop</span>
+            <h3>Review → prepare → practise → improve</h3>
           </div>
-          {view.historical ? (
-            <button className="button secondary" onClick={() => open('history')}>
-              Inspect saved history
-            </button>
-          ) : (
-            <button
-              className="button"
-              disabled={busy || !view.goalId}
-              onClick={() => void action('story')}
-            >
-              Prepare my checklist <ArrowRight size={14} />
-            </button>
-          )}
+          <span className="loop-tag">
+            {view.completedCycles} reviewed cycle{view.completedCycles === 1 ? '' : 's'}
+          </span>
         </div>
-      ) : (
-        <>
-          <div className="loop-position">
-            <span>
-              <strong>Current story · v{view.pitch?.revision}</strong>{' '}
-              {view.pitch?.createdAt ? new Date(view.pitch.createdAt).toLocaleString() : ''}
-            </span>
-            <span>
-              {view.pitch?.fictional ? 'Fictional demo evidence · ' : ''}Cycle {view.cycleNumber} ·{' '}
-              {view.steps.filter((s) => s.status === 'complete').length} / 6 steps
-            </span>
-          </div>
-          {view.outdated && (
-            <div className="loop-warning">
-              <strong>Saved inputs changed.</strong> Previous drafts and sessions stay in history.
-              Refresh before accepting or practising.
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() => void act({ action: 'refresh' })}
-              >
-                Review current sources & refresh
-              </button>
+        <p className="loop-method">
+          Complete each saved step. The next workflow becomes available automatically; approvals and
+          session starts stay in your control.
+        </p>
+        {view.historical && (
+          <p role="status" className="loop-warning">
+            This is a read-only preparation track from an archived goal. Its briefs, sources and
+            assessments remain available. <a href="/">Open the current goal</a> to continue
+            preparing.
+          </p>
+        )}
+        {targetId && (
+          <p className="loop-method">
+            Preparing for{' '}
+            {state.workspace.investors.find((investor) => investor.id === view.cycle?.investorId)
+              ?.name ?? 'this target investor'}{' '}
+            under your saved goal. <a href="/?page=radar">Choose another target in Radar</a>; each
+            target retains its own brief and practice history.
+          </p>
+        )}
+        {visibleError && (
+          <p role="alert">
+            {visibleError}{' '}
+            <button className="text-button" onClick={() => setReload((n) => n + 1)}>
+              Refresh
+            </button>
+          </p>
+        )}
+        {!cycle ? (
+          <div className="prep-next">
+            <div>
+              <h3>
+                {view.historical
+                  ? 'Saved preparation history'
+                  : 'Start your six-step preparation checklist'}
+              </h3>
+              <p>
+                {view.historical
+                  ? 'Inspect the exact earlier cycle without changing the current goal or investor focus.'
+                  : 'Use the confirmed goal and selected statement to prepare a sourced financial story.'}
+              </p>
             </div>
-          )}
-          <ol className="loop-checklist">
-            {view.steps.map((step, index) => (
-              <li key={step.id} data-status={step.status}>
-                <span className="loop-check">
-                  {step.status === 'complete' ? <Check size={15} /> : <Circle size={15} />}
-                </span>
-                <div>
-                  <button
-                    className="loop-step-button"
-                    disabled={busy || view.outdated || step.status === 'blocked'}
-                    onClick={() => open(step.id)}
-                  >
-                    {index + 1}. {step.title}
-                  </button>
-                  <small>{step.detail}</small>
-                  <small className="loop-handoff">Next workflow: {step.workflow}</small>
-                </div>
-                <span className="loop-tag">{labels[step.status]}</span>
-              </li>
-            ))}
-          </ol>
-          {!view.outdated && (
-            <div className="prep-next">
-              <div>
-                <span className="eyebrow">Recommended next action</span>
-                <h3>
-                  {cycle.closedAt
-                    ? 'Cycle reviewed. Watch for new evidence or practise again.'
-                    : (currentStep?.title ?? 'Continue your saved preparation.')}
-                </h3>
-                <p className="loop-method">
-                  {cycle.outcome === 'rejected'
-                    ? 'You kept the previous pitch. The unresolved feedback remains in the saved report.'
-                    : view.paused
-                      ? 'Automatic proposal drafting is paused. Explicit review still prepares the next action.'
-                      : 'June prepares revision proposals from completed saved feedback; unchanged inputs do not create more work.'}
-                </p>
-              </div>
-              <div className="prep-buttons">
-                {cycle.closedAt ? (
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() => void act({ action: 'repeat' })}
-                  >
-                    Start next practice cycle
-                  </button>
-                ) : (
-                  <button className="button" disabled={busy} onClick={() => open(nextPanel)}>
-                    Continue <ArrowRight size={14} />
-                  </button>
-                )}
-                <button className="text-button" onClick={() => open('history')}>
-                  Cycle history ↗
+            {view.historical ? (
+              <button className="button secondary" onClick={() => open('history')}>
+                Inspect saved history
+              </button>
+            ) : (
+              <button
+                className="button"
+                disabled={busy || !view.goalId}
+                onClick={() => void action('story')}
+              >
+                Prepare my checklist <ArrowRight size={14} />
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="loop-position">
+              <span>
+                <strong>Current story · v{view.pitch?.revision}</strong>{' '}
+                {view.pitch?.createdAt ? new Date(view.pitch.createdAt).toLocaleString() : ''}
+              </span>
+              <span>
+                {view.pitch?.fictional ? 'Fictional demo evidence · ' : ''}Cycle {view.cycleNumber}{' '}
+                · {view.steps.filter((s) => s.status === 'complete').length} / 6 steps
+              </span>
+            </div>
+            {view.outdated && (
+              <div className="loop-warning">
+                <strong>Saved inputs changed.</strong> Previous drafts and sessions stay in history.
+                Refresh before accepting or practising.
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => void act({ action: 'refresh' })}
+                >
+                  Review current sources & refresh
                 </button>
               </div>
-            </div>
-          )}
-          {!cycle.investorId && (
-            <InvestorPreparationRecommendations
-              view={view}
-              disabled={busy || !cycle.pitchApprovedAt || view.outdated}
-              onSelect={(investorId) => {
-                void act({ action: 'select_investor', investorId }).then((ok) => {
-                  if (ok) open('brief');
-                });
-              }}
-            />
-          )}
-        </>
-      )}
+            )}
+            <ol className="loop-checklist">
+              {view.steps.map((step, index) => (
+                <li key={step.id} data-status={step.status}>
+                  <span className="loop-check">
+                    {step.status === 'complete' ? <Check size={15} /> : <Circle size={15} />}
+                  </span>
+                  <div>
+                    <button
+                      className="loop-step-button"
+                      disabled={busy || view.outdated || step.status === 'blocked'}
+                      onClick={() => open(step.id)}
+                    >
+                      {index + 1}. {step.title}
+                    </button>
+                    <small>{step.detail}</small>
+                    <small className="loop-handoff">Next workflow: {step.workflow}</small>
+                  </div>
+                  <span className="loop-tag">{labels[step.status]}</span>
+                </li>
+              ))}
+            </ol>
+            {!view.outdated && (
+              <div className="prep-next">
+                <div>
+                  <span className="eyebrow">Recommended next action</span>
+                  <h3>
+                    {cycle.closedAt
+                      ? 'Cycle reviewed. Watch for new evidence or practise again.'
+                      : (currentStep?.title ?? 'Continue your saved preparation.')}
+                  </h3>
+                  <p className="loop-method">
+                    {cycle.outcome === 'rejected'
+                      ? 'You kept the previous pitch. The unresolved feedback remains in the saved report.'
+                      : view.paused
+                        ? 'Automatic proposal drafting is paused. Explicit review still prepares the next action.'
+                        : 'June prepares revision proposals from completed saved feedback; unchanged inputs do not create more work.'}
+                  </p>
+                </div>
+                <div className="prep-buttons">
+                  {cycle.closedAt ? (
+                    <button
+                      className="button"
+                      disabled={busy}
+                      onClick={() => void act({ action: 'repeat' })}
+                    >
+                      Start next practice cycle
+                    </button>
+                  ) : (
+                    <button className="button" disabled={busy} onClick={() => open(nextPanel)}>
+                      Continue <ArrowRight size={14} />
+                    </button>
+                  )}
+                  <button className="text-button" onClick={() => open('history')}>
+                    Cycle history ↗
+                  </button>
+                </div>
+              </div>
+            )}
+            {!cycle.investorId && (
+              <InvestorPreparationRecommendations
+                view={view}
+                disabled={busy || !cycle.pitchApprovedAt || view.outdated}
+                onSelect={(investorId) => {
+                  void act({ action: 'select_investor', investorId }).then((ok) => {
+                    if (ok) open('brief');
+                  });
+                }}
+              />
+            )}
+          </>
+        )}
+      </details>
       {panel && (
         <dialog
           ref={dialog}
-          className="loop-dialog"
+          className={`loop-dialog${panel === 'story' || panel === 'brief' || panel === 'practice' ? ' loop-compact-modal' : ''}${panel === 'story' ? ' loop-story-modal' : ''}`}
           aria-labelledby="loop-panel-title"
           onCancel={(event) => {
             event.preventDefault();
@@ -532,20 +609,26 @@ export function ConnectedPreparation({
         >
           <div className="loop-dialog-heading">
             <div>
-              <div className="eyebrow">Preparation checklist · {panel}</div>
+              <div className="eyebrow">
+                {view.historical ? 'Saved preparation' : 'Your next step'}
+              </div>
               <h2 id="loop-panel-title">
-                {panel === 'history'
-                  ? 'Saved preparation cycles'
-                  : view.steps.find((step) => step.id === panel)?.title}
+                {panel === 'story'
+                  ? 'Review company story'
+                  : panel === 'practice'
+                    ? 'Practise with an AI investor'
+                    : panel === 'history'
+                      ? 'Saved preparation cycles'
+                      : view.steps.find((step) => step.id === panel)?.title}
               </h2>
             </div>
-            <button className="button secondary" onClick={close}>
+            <button className="button secondary" disabled={busy} onClick={close}>
               Close
             </button>
           </div>
           <div className="loop-dialog-body">
-            {error && <p role="alert">{error}</p>}
-            {!cycle && panel !== 'history' && (
+            {visibleError && <p role="alert">{visibleError}</p>}
+            {!cycle && panel !== 'history' && !view.storyDraft && (
               <section>
                 <p>
                   Your target investor is saved. Review your company story before June prepares its
@@ -563,88 +646,142 @@ export function ConnectedPreparation({
               </section>
             )}
             {view.outdated && (
-              <p className="loop-warning">
-                Sources changed. Close this panel and refresh the preparation checklist before
-                saving.
-              </p>
+              <div className="loop-warning" role="status">
+                <strong>New sources need review.</strong>
+                <p>
+                  Refresh this step to use the latest saved evidence. Earlier versions remain in
+                  history.
+                </p>
+                {changedText && <p>Your unsaved story edits will be kept for review.</p>}
+                <button
+                  className="button"
+                  disabled={busy}
+                  onClick={() => {
+                    refreshedDraft.current = changedText && panel === 'story' ? text : null;
+                    void act({ action: 'refresh' }).then((ok) => {
+                      if (ok) {
+                        setPreview(null);
+                        setPanel('story');
+                      } else refreshedDraft.current = null;
+                    });
+                  }}
+                >
+                  Refresh this step
+                </button>
+                <a
+                  className="text-button"
+                  href={`/?page=radar${targetId ? `&targetId=${encodeURIComponent(targetId)}` : ''}`}
+                >
+                  Review investor match
+                </a>
+              </div>
             )}
-            {view.pitch?.fictional && <p className="loop-tag">Fictional demo evidence</p>}
-            {panel === 'story' && cycle && (
+            {story?.fictional && <p className="loop-tag">Fictional demo evidence</p>}
+            {panel === 'story' && story && (
               <>
                 <p>
-                  <a href="/#deck-claims">Inspect deck claims, calculations and saved drafts →</a>
+                  Review the draft. Saving confirms your review and prepares your investor brief.
                 </p>
                 <label className="loop-label" htmlFor="loop-pitch">
-                  Financial story · editable revision
+                  Company story
                 </label>
                 <textarea
                   id="loop-pitch"
                   value={text}
                   maxLength={3000}
+                  rows={8}
                   onChange={(event) => setText(event.target.value)}
                 />
-                <p>{view.pitch?.reason}</p>
-                <p className="loop-method">
-                  Save creates an immutable revision. Approval means founder review, not independent
-                  verification of edited figures or claims.
-                </p>
-                {targetId && (
-                  <label className="loop-label">
-                    Apply this story edit to
-                    <select
-                      value={revisionScope}
-                      onChange={(event) =>
-                        setRevisionScope(z.enum(['shared', 'target']).parse(event.target.value))
-                      }
-                    >
-                      <option value="target">This investor’s preparation only</option>
-                      <option value="shared">Shared company story for the whole goal</option>
-                    </select>
-                    <small>
-                      {revisionScope === 'shared'
-                        ? 'Shared story changes reopen affected brief reviews across target investors. Earlier versions remain saved.'
-                        : 'Other investor tracks keep their current story and approvals.'}
-                    </small>
-                  </label>
-                )}
-                <details>
-                  <summary>Exact sources</summary>
-                  {view.pitch?.sources.map((source) => (
-                    <blockquote key={source.id}>
-                      <strong>{source.title}</strong>
-                      <pre>{source.excerpt}</pre>
-                    </blockquote>
-                  ))}
+                <details className="journey-details story-support">
+                  <summary>Sources & editing options</summary>
+                  <div className="story-support-content">
+                    {targetId && (
+                      <fieldset
+                        className="story-edit-scope"
+                        disabled={busy || view.outdated || view.historical}
+                      >
+                        <legend>Apply edits to</legend>
+                        <div className="story-scope-choices">
+                          <label>
+                            <input
+                              type="radio"
+                              name="story-edit-scope"
+                              value="target"
+                              checked={revisionScope === 'target'}
+                              onChange={() => setRevisionScope('target')}
+                            />
+                            This investor
+                          </label>
+                          <label>
+                            <input
+                              type="radio"
+                              name="story-edit-scope"
+                              value="shared"
+                              checked={revisionScope === 'shared'}
+                              onChange={() => setRevisionScope('shared')}
+                            />
+                            Whole goal
+                          </label>
+                        </div>
+                        <p className="story-support-hint">
+                          {revisionScope === 'shared'
+                            ? 'Updates affected investor briefs. Previous versions stay saved.'
+                            : 'Keeps other investor stories and approvals unchanged.'}
+                        </p>
+                      </fieldset>
+                    )}
+                    <section className="story-source-list" aria-label="Company story sources">
+                      <div className="story-source-heading">
+                        <h3>
+                          Sources <span>{story.sources.length}</span>
+                        </h3>
+                        <a href="/?preparationTools=claims#deck-claims">Check calculations →</a>
+                      </div>
+                      {story.sources.map((source) => (
+                        <details className="story-source-card" key={source.id}>
+                          <summary>
+                            <ChevronRight
+                              size={16}
+                              className="story-source-chevron"
+                              aria-hidden="true"
+                            />
+                            <span>{source.title}</span>
+                            {source.fictional && <small>Fictional</small>}
+                          </summary>
+                          <div className="story-source-content">
+                            {source.recordedAt && (
+                              <p className="story-support-hint">Recorded {source.recordedAt}</p>
+                            )}
+                            <StorySourceExcerpt excerpt={source.excerpt} />
+                            {source.url?.startsWith('https://') && (
+                              <a href={source.url} target="_blank" rel="noreferrer">
+                                Open original source ↗
+                              </a>
+                            )}
+                          </div>
+                        </details>
+                      ))}
+                      {!story.sources.length && (
+                        <p className="story-support-hint">No sources saved for this story.</p>
+                      )}
+                    </section>
+                    <details className="story-review-notes">
+                      <summary>Review notes</summary>
+                      <p>{story.reason}</p>
+                      <p>
+                        Saving keeps prior versions. Your review does not independently verify
+                        edited claims.
+                      </p>
+                    </details>
+                  </div>
                 </details>
-                <div className="prep-buttons">
-                  <button
-                    className="button secondary"
-                    disabled={busy || view.outdated || !text.trim() || !changedText}
-                    onClick={() =>
-                      void act({
-                        action: 'save_pitch',
-                        text: text.trim(),
-                        ...(targetId ? { scope: revisionScope } : {}),
-                      })
-                    }
-                  >
-                    Save revision
-                  </button>
-                  <button
-                    className="button"
-                    disabled={busy || view.outdated || changedText}
-                    onClick={() =>
-                      void act({ action: 'approve_pitch' }).then((ok) => {
-                        if (ok) setPanel(cycle.investorId ? 'brief' : 'investor');
-                      })
-                    }
-                  >
-                    Approve saved story & continue
-                  </button>
-                </div>
-                {changedText && (
-                  <p className="loop-method">Save your edited text before approving it.</p>
-                )}
+                <button
+                  className="button"
+                  disabled={busy || view.outdated || !text.trim()}
+                  onClick={() => void approveStory()}
+                >
+                  {busy ? 'Saving…' : 'Save & continue →'}
+                </button>
               </>
             )}
             {panel === 'investor' &&
@@ -683,17 +820,16 @@ export function ConnectedPreparation({
                     Review company story first
                   </button>
                 )}
-                <p className="loop-prose">
-                  {cycle?.brief ?? 'Select a saved investor to prepare a tailored brief.'}
-                </p>
-                <p className="loop-method">
-                  The brief preserves this exact story and investor source set. A new story or new
-                  research requires a fresh review.
-                </p>
+                {cycle?.brief ? (
+                  <TailoredBriefReview
+                    brief={cycle.brief}
+                    sources={briefVersion?.sources ?? story?.sources ?? []}
+                    fictional={briefVersion?.fictional ?? story?.fictional ?? false}
+                  />
+                ) : (
+                  <p>Select a saved investor to prepare a tailored brief.</p>
+                )}
                 <div className="prep-buttons">
-                  <button className="button secondary" onClick={() => setPanel('investor')}>
-                    Compare alternatives
-                  </button>
                   <button
                     className="button"
                     disabled={busy || view.outdated || !cycle?.brief || !cycle.pitchApprovedAt}
@@ -703,18 +839,14 @@ export function ConnectedPreparation({
                       })
                     }
                   >
-                    Approve brief & review scenario sources
+                    {busy ? 'Approving…' : 'Approve & continue →'}
                   </button>
                 </div>
               </>
             )}
             {panel === 'practice' && (
               <>
-                <p>
-                  The saved scenario carries your approved story, investor brief and evidence into
-                  both the interviewer and evaluator.
-                </p>
-                {!view.generation && (
+                {!view.generation && !preview && (
                   <button
                     className="button"
                     disabled={busy || view.outdated || !cycle?.briefApprovedAt}
@@ -729,7 +861,7 @@ export function ConnectedPreparation({
                       })
                     }
                   >
-                    Review generation sources
+                    Review practice inputs →
                   </button>
                 )}
                 {preview && (
@@ -769,13 +901,15 @@ export function ConnectedPreparation({
                         })
                       }
                     >
-                      Generate reviewed scenario
+                      Create practice →
                     </button>
                   </div>
                 )}
                 {view.generation && (
                   <>
-                    <p role="status">Scenario generation: {view.generation.status}</p>
+                    {view.generation.status !== 'succeeded' && (
+                      <p role="status">Preparing your practice: {view.generation.status}</p>
+                    )}
                     {view.generation.error && <p role="alert">{view.generation.error}</p>}
                     {view.generation.status === 'failed' && (
                       <button
@@ -795,31 +929,39 @@ export function ConnectedPreparation({
                     )}
                     {view.generation.status === 'succeeded' && (
                       <>
-                        <label className="loop-label" htmlFor="loop-scenario">
-                          Saved scenario
-                        </label>
-                        <select
-                          id="loop-scenario"
-                          value={currentScenario?.id ?? ''}
-                          onChange={(event) => setScenarioId(event.target.value)}
-                        >
-                          {view.generation.scenarios.map((scenario) => (
-                            <option key={scenario.id} value={scenario.id}>
-                              {scenario.title}
-                            </option>
-                          ))}
-                        </select>
-                        <p>{currentScenario?.objective}</p>
-                        <a
-                          className="button secondary"
-                          href={`/practice?generationId=${encodeURIComponent(view.generation.id)}&scenarioId=${encodeURIComponent(currentScenario?.id ?? '')}${targetId ? `&targetId=${encodeURIComponent(targetId)}` : ''}`}
-                        >
-                          Open voice / video practice room ↗
-                        </a>
+                        {currentScenario && (
+                          <PreparedPracticeCard
+                            generationId={view.generation.id}
+                            mode={view.generation.mode}
+                            scenario={currentScenario}
+                            targetId={targetId ?? null}
+                            disabled={busy || view.outdated || !cycle?.briefApprovedAt}
+                          />
+                        )}
+                        {view.generation.scenarios.length > 1 && (
+                          <details className="journey-details">
+                            <summary>Change practice scenario</summary>
+                            <label className="loop-label" htmlFor="loop-scenario">
+                              Saved scenario
+                            </label>
+                            <select
+                              id="loop-scenario"
+                              value={currentScenario?.id ?? ''}
+                              onChange={(event) => setScenarioId(event.target.value)}
+                            >
+                              {view.generation.scenarios.map((scenario) => (
+                                <option key={scenario.id} value={scenario.id}>
+                                  {scenario.title}
+                                </option>
+                              ))}
+                            </select>
+                          </details>
+                        )}
                         {(!view.latestSession || view.latestSession.status === 'unavailable') && (
-                          <>
+                          <details className="journey-details">
+                            <summary>Write an answer instead · optional</summary>
                             <label className="loop-label" htmlFor="loop-answer">
-                              Or complete the same exercise in writing
+                              Your practice answer
                             </label>
                             <textarea
                               id="loop-answer"
@@ -851,9 +993,9 @@ export function ConnectedPreparation({
                                 })
                               }
                             >
-                              Submit answer & queue review
+                              Save answer & review →
                             </button>
-                          </>
+                          </details>
                         )}
                       </>
                     )}
@@ -877,7 +1019,10 @@ export function ConnectedPreparation({
                       {view.latestSession.summary ??
                         `Assessment status: ${view.latestSession.status.replaceAll('_', ' ')}`}
                     </p>
-                    <EvaluationPanel sessionId={view.latestSession.id} receipt="written" />
+                    <details className="journey-details">
+                      <summary>Full assessment, evidence & retries</summary>
+                      <EvaluationPanel sessionId={view.latestSession.id} receipt="written" />
+                    </details>
                     <button
                       className="button"
                       disabled={
@@ -901,7 +1046,7 @@ export function ConnectedPreparation({
                           });
                       }}
                     >
-                      I reviewed this assessment · continue
+                      Reviewed · continue →
                     </button>
                   </>
                 ) : (

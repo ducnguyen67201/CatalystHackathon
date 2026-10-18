@@ -110,6 +110,10 @@ export class InvestorDiscoveryService {
       },
       { jobId, attempt },
     );
+    const runId = records[0]?.researchRunId;
+    const partial = runId
+      ? (await this.workspace.researchRuns?.findResearchRun(runId))?.status === 'partial'
+      : false;
     let addedCount = 0;
     const result = await this.workspace.change((state) => {
       if (state.profile.version !== initial.profile.version) {
@@ -178,6 +182,9 @@ export class InvestorDiscoveryService {
       state.discovery.note = added
         ? `${added} new suggestions backed by comparable funding rounds. Choose who to track.`
         : 'No new supported suggestions found. Existing, dismissed and unsupported candidates were excluded.';
+      if (partial)
+        state.discovery.note +=
+          ' Some sources could not be checked; these are the supported results.';
       if (added) {
         state.notices.push({
           id: randomUUID(),

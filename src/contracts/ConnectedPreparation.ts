@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { investorMatchAssessmentSchema } from './InvestorMatch.js';
+import { practiceAnswerGuideSchema } from './PracticeAnswerGuide.js';
 
 const ref = z.string().min(1).max(100);
 const prose = z.string().trim().min(1).max(3000);
@@ -115,6 +116,10 @@ export const connectedPreparationViewSchema = z.strictObject({
   goalId: z.uuid().nullable(),
   cycle: preparationCycleSchema.nullable(),
   pitch: connectedPitchSchema.nullable(),
+  storyDraft: connectedPitchSchema
+    .pick({ text: true, reason: true, sources: true, fictional: true, sourceHash: true })
+    .nullable()
+    .default(null),
   outdated: z.boolean(),
   paused: z.boolean(),
   steps: z
@@ -151,8 +156,17 @@ export const connectedPreparationViewSchema = z.strictObject({
       id: z.uuid(),
       status: z.enum(['queued', 'running', 'succeeded', 'failed']),
       error: z.string().nullable(),
+      mode: z.enum(['demo', 'live']).optional(),
       scenarios: z
-        .array(z.strictObject({ id: z.string(), title: z.string(), objective: z.string() }))
+        .array(
+          z.strictObject({
+            id: z.string(),
+            title: z.string(),
+            objective: z.string(),
+            openingQuestion: z.string().max(2000).optional(),
+            answerGuide: practiceAnswerGuideSchema.nullable().default(null),
+          }),
+        )
         .max(3),
     })
     .nullable(),

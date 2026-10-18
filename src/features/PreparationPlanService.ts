@@ -34,14 +34,28 @@ export class PreparationPlanService {
     ]);
     return projectPreparationPlan(state, jobs, heartbeat?.at ?? null);
   }
-  async setIntent(intent: string, version: number, profileVersion: number) {
+  async setIntent(
+    intent: string,
+    version: number,
+    profileVersion: number,
+    input?: PreparationGoalInput,
+  ) {
     const objective = preparationIntentSchema.parse(intent);
+    const details = input ? preparationGoalInputSchema.parse(input) : undefined;
+    if (
+      details?.amount !== null &&
+      details?.amount !== undefined &&
+      new Decimal(details.amount).lte(0)
+    )
+      throw new Error('Preparation: raise amount must be positive.');
     await this.service.change((state) => {
       const saved = preparationState(state);
       if (saved.version !== version || state.profile.version !== profileVersion)
         throw new ConflictError('Preparation changed. Refresh before editing your goal.');
+      if (details?.investorId && !state.investors.some((item) => item.id === details.investorId))
+        throw new Error('Preparation: selected investor is unavailable.');
       state.profile = { ...state.profile, goal: objective, version: state.profile.version + 1 };
-      synchronizePreparationIntent(state);
+      synchronizePreparationIntent(state, new Date().toISOString(), undefined, details);
     });
   }
   async confirmGoal(input: PreparationGoalInput, version: number, automatic: boolean) {

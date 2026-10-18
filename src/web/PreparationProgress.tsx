@@ -39,13 +39,7 @@ const outcomes: Record<PreparationAction['task']['status'], string> = {
   dismissed: 'Dismissed',
 };
 
-export function PreparationProgress({
-  onFinancials,
-  revision,
-}: {
-  onFinancials: () => void;
-  revision: number;
-}) {
+export function PreparationProgress({ onFinancials }: { onFinancials: () => void }) {
   const [pane, setPane] = useState<Pane>('feedback');
   const paneId = useId();
   const [data, setData] = useState<Progress | null>(null);
@@ -83,7 +77,7 @@ export function PreparationProgress({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [revision, retry]);
+  }, [retry]);
   const area = data?.areas.find((item) => item.id === selected);
   return (
     <section className="preparation-progress" aria-labelledby="preparation-progress-title">

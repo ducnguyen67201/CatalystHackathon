@@ -19,6 +19,7 @@ import type { StateResponse } from '../contracts/Workspace.js';
 import { request } from './ApiClient.js';
 import { InvestorMatchDialog, TargetInvestors, useGoalJourney } from './GoalJourney.js';
 import './RadarUpdates.css';
+import { InvestorDiscoveryAction } from './InvestorDiscoveryAction.js';
 
 const labels = {
   new_candidate: 'New candidate',
@@ -33,10 +34,12 @@ const ok = z.object({ ok: z.boolean() });
 export function RadarUpdates({
   state,
   onRefresh,
+  onEditProfile,
   children,
 }: {
   state: StateResponse;
   onRefresh: () => Promise<void>;
+  onEditProfile: () => void;
   children?: ReactNode;
 }) {
   const [feed, setFeed] = useState<RadarFeed | null>(null);
@@ -152,6 +155,23 @@ export function RadarUpdates({
       setBusy(false);
     }
   }
+  async function reviewInvestor(item: RadarItem) {
+    if (!journey.data?.journey) {
+      setMatchItem(item);
+      return;
+    }
+    try {
+      const next = await journey.act({ action: 'assess', eventId: item.id });
+      const saved =
+        next.assessments.findLast(
+          (entry) =>
+            entry.investorId === item.investorId || entry.evidenceIds.includes(item.evidenceId),
+        ) ?? next.assessments.at(-1);
+      setMatchItem(saved ? { ...item, investorId: saved.investorId } : item);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to review this investor.');
+    }
+  }
   function eventCard(item: RadarItem) {
     const match = journey.data?.assessments.findLast(
       (entry) =>
@@ -187,13 +207,12 @@ export function RadarUpdates({
           {item.supersedesEventId && <span>Corrects a previous update</span>}
         </div>
         <div className="radar-actions">
-          <button className="button" onClick={() => setMatchItem(item)}>
-            Review investor fit
-          </button>
-          <button className="button secondary" onClick={() => setMatchItem(item)}>
-            {journey.data?.targets.some((target) => target.investorId === item.investorId)
-              ? 'View target investor'
-              : 'Add to target investors'}
+          <button
+            className="button"
+            disabled={journey.busy}
+            onClick={() => void reviewInvestor(item)}
+          >
+            {target ? 'Review target investor' : 'Review investor'} →
           </button>
         </div>
         <p className="muted">
@@ -219,49 +238,54 @@ export function RadarUpdates({
             Observed {when(item.observedAt)} · Saved {when(item.committedAt)}
           </p>
         </details>
-        <div className="radar-card-bottom">
-          <span>
-            <Mail size={13} />{' '}
-            {item.delivery
-              ? `Email: ${item.delivery.status === 'sent' ? 'sent (provider accepted)' : item.delivery.status.replaceAll('_', ' ')}`
-              : 'Email not queued'}
-          </span>
-          <div className="radar-actions">
-            <button
-              className="button secondary"
-              disabled={busy}
-              onClick={() =>
-                void act(() =>
-                  request(`/radar/events/${item.id}/read`, ok, { read: !item.readAt }, 'PATCH'),
-                )
-              }
-            >
-              {item.readAt ? 'Mark unread' : 'Mark read'}
-            </button>
-            {!item.dismissedAt && (
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() => void act(() => request(`/radar/events/${item.id}/dismiss`, ok, {}))}
-              >
-                Dismiss update
-              </button>
-            )}
-            {item.delivery?.status === 'failed' && (
+        <details className="journey-details">
+          <summary>Update options & email status</summary>
+          <div className="radar-card-bottom">
+            <span>
+              <Mail size={13} />{' '}
+              {item.delivery
+                ? `Email: ${item.delivery.status === 'sent' ? 'sent (provider accepted)' : item.delivery.status.replaceAll('_', ' ')}`
+                : 'Email not queued'}
+            </span>
+            <div className="radar-actions">
               <button
                 className="button secondary"
                 disabled={busy}
                 onClick={() =>
                   void act(() =>
-                    request(`/notification-deliveries/${item.delivery?.id ?? ''}/retry`, ok, {}),
+                    request(`/radar/events/${item.id}/read`, ok, { read: !item.readAt }, 'PATCH'),
                   )
                 }
               >
-                Retry email
+                {item.readAt ? 'Mark unread' : 'Mark read'}
               </button>
-            )}
+              {!item.dismissedAt && (
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(() => request(`/radar/events/${item.id}/dismiss`, ok, {}))
+                  }
+                >
+                  Dismiss update
+                </button>
+              )}
+              {item.delivery?.status === 'failed' && (
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(() =>
+                      request(`/notification-deliveries/${item.delivery?.id ?? ''}/retry`, ok, {}),
+                    )
+                  }
+                >
+                  Retry email
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        </details>
         {item.delivery?.error && (
           <p className="muted" role="status">
             {item.delivery.error}
@@ -291,17 +315,26 @@ export function RadarUpdates({
           Refresh feed
         </button>
       </div>
-      {children}
-      <div className="radar-health" role="status">
-        <Radio size={17} />
-        <strong>{feed ? `Worker: ${feed.status.state}` : 'Loading worker status…'}</strong>
-        <span>Last completed: {when(feed?.status.lastCompletedAt ?? null)}</span>
-        <span>Next due: {when(feed?.status.nextAt ?? null)}</span>
-        <span>{feed?.unreadCount ?? 0} unread</span>
-      </div>
-      <p className="radar-health-note">
-        Checks continue while the local worker runs. Reading this feed reuses saved research.
-      </p>
+      <InvestorDiscoveryAction state={state} onRefresh={onRefresh} onEditProfile={onEditProfile} />
+      {children && (
+        <details className="journey-details">
+          <summary>Investor conversation details · optional</summary>
+          {children}
+        </details>
+      )}
+      <details className="journey-details">
+        <summary>Research status</summary>
+        <div className="radar-health" role="status">
+          <Radio size={17} />
+          <strong>{feed ? `Worker: ${feed.status.state}` : 'Loading worker status…'}</strong>
+          <span>Last completed: {when(feed?.status.lastCompletedAt ?? null)}</span>
+          <span>Next due: {when(feed?.status.nextAt ?? null)}</span>
+          <span>{feed?.unreadCount ?? 0} unread</span>
+        </div>
+        <p className="radar-health-note">
+          Checks continue while the local worker runs. Reading this feed reuses saved research.
+        </p>
+      </details>
       <div className="radar-tabs">
         <button
           className="button secondary"
@@ -325,59 +358,63 @@ export function RadarUpdates({
           Sources & check history
         </button>
       </div>
-      <div className="radar-controls">
-        <label>
-          Investor
-          <select
-            value={investor}
-            onChange={(e) => {
-              setInvestor(e.target.value);
-              setCursor('');
-              setRunOffset(0);
-              setRun(null);
-            }}
-          >
-            <option value="">All investors & candidates</option>
-            {state.workspace.investors.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {tab === 'updates' && (
-          <>
-            <label>
-              News type
-              <select
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setCursor('');
-                }}
-              >
-                <option value="">All updates</option>
-                {radarCategories.map((c) => (
-                  <option key={c} value={c}>
-                    {labels[c]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="radar-checkbox">
-              <input
-                type="checkbox"
-                checked={unread}
-                onChange={(e) => {
-                  setUnread(e.target.checked);
-                  setCursor('');
-                }}
-              />
-              Unread only
-            </label>
-          </>
-        )}
-      </div>
+      <details className="journey-details">
+        <summary>Filter investors & updates</summary>
+        <div className="radar-controls">
+          <label>
+            Investor
+            <select
+              value={investor}
+              onChange={(e) => {
+                setInvestor(e.target.value);
+                setCursor('');
+                setRunOffset(0);
+                setRun(null);
+              }}
+            >
+              <option value="">All investors & candidates</option>
+              {state.workspace.investors.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {tab === 'updates' && (
+            <>
+              <label>
+                News type
+                <select
+                  value={category}
+                  onChange={(e) => {
+                    setCategory(e.target.value);
+                    setCursor('');
+                  }}
+                >
+                  <option value="">All updates</option>
+                  {radarCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {labels[c]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="radar-checkbox">
+                <input
+                  type="checkbox"
+                  checked={unread}
+                  onChange={(e) => {
+                    setUnread(e.target.checked);
+                    setCursor('');
+                  }}
+                />
+                Unread only
+              </label>
+            </>
+          )}
+        </div>{' '}
+      </details>
+
       {error && (
         <p className="error" role="alert">
           {error}
@@ -507,145 +544,152 @@ export function RadarUpdates({
             </div>
           )}
         </div>
-        <aside className="radar-email">
-          <h2>
-            <Mail size={18} /> Email alerts
-          </h2>
-          <p>Get meaningful new updates in your inbox.</p>
-          {!preferences && <p>Loading preferences…</p>}
-          {preferences && (
-            <>
-              {!preferences.ready && (
-                <p className="radar-email-note">
-                  Email is not configured. Add RESEND_API_KEY and NOTIFICATION_FROM to the backend,
-                  then restart API and worker.
+        <details className="journey-details radar-email-settings">
+          <summary>Email alert settings</summary>
+          <aside className="radar-email">
+            <h2>
+              <Mail size={18} /> Email alerts
+            </h2>
+            <p>Get meaningful new updates in your inbox.</p>
+            {!preferences && <p>Loading preferences…</p>}
+            {preferences && (
+              <>
+                {!preferences.ready && (
+                  <p className="radar-email-note">
+                    Email is not configured. Add RESEND_API_KEY and NOTIFICATION_FROM to the
+                    backend, then restart API and worker.
+                  </p>
+                )}
+                <p>
+                  {preferences.recipient
+                    ? `Confirmed: ${preferences.recipient}`
+                    : 'No confirmed email address'}
                 </p>
-              )}
-              <p>
-                {preferences.recipient
-                  ? `Confirmed: ${preferences.recipient}`
-                  : 'No confirmed email address'}
-              </p>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void act(
-                    () =>
-                      request('/notification-preferences/confirmations', ok, { recipient: email }),
-                    'Confirmation queued. Enter the code from your inbox.',
-                  );
-                }}
-              >
-                <label>
-                  Your email
-                  <input
-                    type="email"
-                    required
-                    maxLength={254}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                  />
-                </label>
-                <button
-                  className="button secondary"
-                  disabled={busy || !preferences.ready}
-                  type="submit"
-                >
-                  Send confirmation code
-                </button>
-              </form>
-              {preferences.confirmationPending && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     void act(
-                      () => request('/notification-preferences/confirm', ok, { code }),
-                      'Address confirmed. Enable alerts when ready.',
+                      () =>
+                        request('/notification-preferences/confirmations', ok, {
+                          recipient: email,
+                        }),
+                      'Confirmation queued. Enter the code from your inbox.',
                     );
                   }}
                 >
                   <label>
-                    Six-digit code
+                    Your email
                     <input
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      pattern="[0-9]{6}"
+                      type="email"
                       required
-                      maxLength={6}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
+                      maxLength={254}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@company.com"
                     />
                   </label>
-                  <button className="button" disabled={busy}>
-                    Confirm address
+                  <button
+                    className="button secondary"
+                    disabled={busy || !preferences.ready}
+                    type="submit"
+                  >
+                    Send confirmation code
                   </button>
-                  <p className="muted">
-                    Confirmation email: {preferences.confirmationDelivery?.status ?? 'pending'}
-                    {preferences.confirmationDelivery?.error
-                      ? ` · ${preferences.confirmationDelivery.error}`
-                      : ''}
-                  </p>
                 </form>
-              )}
-              <label className="radar-checkbox">
-                <input
-                  type="checkbox"
-                  checked={preferences.enabled}
-                  disabled={
-                    busy || (!preferences.enabled && (!preferences.ready || !preferences.recipient))
-                  }
-                  onChange={(e) =>
-                    void act(() =>
-                      request(
-                        '/notification-preferences',
-                        ok,
-                        { enabled: e.target.checked, categories: preferences.categories },
-                        'PUT',
-                      ),
-                    )
-                  }
-                />
-                <strong>Email me new updates</strong>
-              </label>
-              <fieldset disabled={busy}>
-                <legend>Notify me about</legend>
-                {radarCategories.map((c) => (
-                  <label className="radar-checkbox" key={c}>
-                    <input
-                      type="checkbox"
-                      checked={preferences.categories.includes(c)}
-                      onChange={(e) => {
-                        const categories = e.target.checked
-                          ? [...preferences.categories, c]
-                          : preferences.categories.filter((item) => item !== c);
-                        void act(() =>
-                          request(
-                            '/notification-preferences',
-                            ok,
-                            {
-                              enabled: preferences.enabled,
-                              categories: z.array(radarCategorySchema).parse(categories),
-                            },
-                            'PUT',
-                          ),
-                        );
-                      }}
-                    />
-                    {labels[c]}
-                  </label>
-                ))}
-              </fieldset>
-              <p className="muted">
-                <Check size={13} /> Saved history stays in the radar. Enabling email sends future
-                updates only.
-              </p>
-              <p className="muted">
-                Emails link to this local workspace. Open those links on the computer running June.
-              </p>
-            </>
-          )}
-        </aside>
+                {preferences.confirmationPending && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void act(
+                        () => request('/notification-preferences/confirm', ok, { code }),
+                        'Address confirmed. Enable alerts when ready.',
+                      );
+                    }}
+                  >
+                    <label>
+                      Six-digit code
+                      <input
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        pattern="[0-9]{6}"
+                        required
+                        maxLength={6}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                      />
+                    </label>
+                    <button className="button" disabled={busy}>
+                      Confirm address
+                    </button>
+                    <p className="muted">
+                      Confirmation email: {preferences.confirmationDelivery?.status ?? 'pending'}
+                      {preferences.confirmationDelivery?.error
+                        ? ` · ${preferences.confirmationDelivery.error}`
+                        : ''}
+                    </p>
+                  </form>
+                )}
+                <label className="radar-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={preferences.enabled}
+                    disabled={
+                      busy ||
+                      (!preferences.enabled && (!preferences.ready || !preferences.recipient))
+                    }
+                    onChange={(e) =>
+                      void act(() =>
+                        request(
+                          '/notification-preferences',
+                          ok,
+                          { enabled: e.target.checked, categories: preferences.categories },
+                          'PUT',
+                        ),
+                      )
+                    }
+                  />
+                  <strong>Email me new updates</strong>
+                </label>
+                <fieldset disabled={busy}>
+                  <legend>Notify me about</legend>
+                  {radarCategories.map((c) => (
+                    <label className="radar-checkbox" key={c}>
+                      <input
+                        type="checkbox"
+                        checked={preferences.categories.includes(c)}
+                        onChange={(e) => {
+                          const categories = e.target.checked
+                            ? [...preferences.categories, c]
+                            : preferences.categories.filter((item) => item !== c);
+                          void act(() =>
+                            request(
+                              '/notification-preferences',
+                              ok,
+                              {
+                                enabled: preferences.enabled,
+                                categories: z.array(radarCategorySchema).parse(categories),
+                              },
+                              'PUT',
+                            ),
+                          );
+                        }}
+                      />
+                      {labels[c]}
+                    </label>
+                  ))}
+                </fieldset>
+                <p className="muted">
+                  <Check size={13} /> Saved history stays in the radar. Enabling email sends future
+                  updates only.
+                </p>
+                <p className="muted">
+                  Emails link to this local workspace. Open those links on the computer running
+                  June.
+                </p>
+              </>
+            )}
+          </aside>
+        </details>
       </div>
       {matchItem && (
         <InvestorMatchDialog

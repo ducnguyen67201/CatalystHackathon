@@ -27,7 +27,8 @@ export function PreparationSchedule({
   period: string | null;
   currency: string;
 }) {
-  const [pace, setPace] = useState(1);
+  const [previewPace, setPace] = useState(1);
+  const pace = data.journeyPace ?? previewPace;
   const [full, setFull] = useState(false);
   const [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
@@ -90,7 +91,9 @@ export function PreparationSchedule({
                   : projection.workOnly
                     ? 'Work only · evidence delivery unconfirmed'
                     : 'Conditional on saved assumptions'
-                : 'What-if scenario · not saved'}
+                : data.journeyPace !== undefined
+                  ? 'Saved goal pace · planning estimate'
+                  : 'What-if scenario · not saved'}
           </small>
         </div>
         <div>
@@ -121,18 +124,24 @@ export function PreparationSchedule({
           <button className="text-button" ref={trigger} onClick={() => dialog.current?.showModal()}>
             Review suggested plan ↗
           </button>
-          <label>
-            Pace · what if{' '}
-            <select
-              value={pace}
-              onChange={(event) => setPace(Number(event.target.value))}
-              disabled={data.outdated}
-            >
-              <option value={1}>Planned availability</option>
-              <option value={0.75}>25% slower</option>
-              <option value={1.25}>25% faster</option>
-            </select>
-          </label>
+          {data.journeyPace === undefined ? (
+            <label>
+              Pace · what if{' '}
+              <select
+                value={pace}
+                onChange={(event) => setPace(Number(event.target.value))}
+                disabled={data.outdated}
+              >
+                <option value={1}>Planned availability</option>
+                <option value={0.75}>25% slower</option>
+                <option value={1.25}>25% faster</option>
+              </select>
+            </label>
+          ) : (
+            <a className="text-button" href="/#goal-pace">
+              Adjust goal pace ↑
+            </a>
+          )}
           <button className="text-button" aria-expanded={full} onClick={() => setFull(!full)}>
             {full ? 'Show active work only' : 'Show completed steps'}
           </button>

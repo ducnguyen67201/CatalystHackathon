@@ -10,13 +10,6 @@ export function buildInvestorMatchInput(
   investor: TrackedInvestor,
   now = new Date().toISOString(),
 ): InvestorMatchInput {
-  const goal = state.preparation?.goals.at(-1);
-  const preferences = state.profile.investorPreferences ?? {
-    types: [],
-    firmSize: 'Any size',
-    referenceFirms: [],
-    priorities: '',
-  };
   const identity: InvestorMatchInput['identity'] = {
     investorId: investor.id,
     subjectKey: investor.key,
@@ -24,6 +17,17 @@ export function buildInvestorMatchInput(
   };
   const facts = matchFactsFromEvidence(investorSources(state, investor.id), identity);
   if (facts.length) identity.status = 'confirmed';
+  return { goal: buildInvestorMatchGoal(state), identity, facts, now };
+}
+
+export function buildInvestorMatchGoal(state: Workspace): InvestorMatchInput['goal'] {
+  const goal = state.preparation?.goals.at(-1);
+  const preferences = state.profile.investorPreferences ?? {
+    types: [],
+    firmSize: 'Any size',
+    referenceFirms: [],
+    priorities: '',
+  };
   const selected: InvestorMatchInput['goal']['preferences'] = [];
   if (preferences.types.length)
     selected.push({ key: 'type', values: preferences.types, required: false });
@@ -32,16 +36,11 @@ export function buildInvestorMatchInput(
   const known = (value: string | undefined) =>
     value && value !== 'Not confirmed' && value !== 'Next round' ? value : null;
   return {
-    goal: {
-      round: known(goal?.round) ?? known(state.profile.stage),
-      sector: known(state.profile.sector),
-      geography: known(state.profile.geography),
-      desiredCheck: goal?.desiredCheck ?? null,
-      preferences: selected,
-    },
-    identity,
-    facts,
-    now,
+    round: known(goal?.round) ?? known(state.profile.stage),
+    sector: known(state.profile.sector),
+    geography: known(state.profile.geography),
+    desiredCheck: goal?.desiredCheck ?? null,
+    preferences: selected,
   };
 }
 

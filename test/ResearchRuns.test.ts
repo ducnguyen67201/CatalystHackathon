@@ -164,6 +164,70 @@ describe('research output archives', () => {
     expect(runs[0]?.searches).toHaveLength(1);
   });
 
+  it('returns accepted evidence when a later extraction times out and archives partial coverage', async () => {
+    const { research, runs } = fixture();
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ results: [page, { ...page, url: 'https://example.com/other' }] }),
+      )
+      .mockResolvedValueOnce(completion())
+      .mockRejectedValueOnce(new DOMException('Private diagnostic', 'TimeoutError'));
+    vi.stubGlobal('fetch', fetcher);
+    const evidence = await research.discover(
+      profile,
+      undefined,
+      { knownInvestors: [], excludedInvestors: [] },
+      { jobId: 'partial-job', attempt: 1 },
+    );
+    expect(evidence).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      status: 'partial',
+      jobId: 'partial-job',
+      evidence,
+      failure: { reason: 'timeout' },
+    });
+    expect(evidence[0]?.researchRunId).toBe(runs[0]?.id);
+    expect(runs[0]?.searches[0]?.sources).toHaveLength(2);
+    expect(runs[0]?.decisions).toHaveLength(1);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(runs)).not.toContain('Private diagnostic');
+  });
+
+  it('does not turn an extraction timeout with no accepted evidence into an empty success', async () => {
+    const { research, runs } = fixture();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json({ results: [page] }))
+        .mockRejectedValueOnce(new DOMException('Timed out', 'TimeoutError')),
+    );
+    await expect(research.discover(profile)).rejects.toThrow('Timed out');
+    expect(runs[0]).toMatchObject({
+      status: 'failed',
+      evidence: [],
+      failure: { reason: 'timeout' },
+    });
+  });
+
+  it('requires partial-result archival to succeed before publishing accepted evidence', async () => {
+    const { research, save } = fixture();
+    save.mockRejectedValue(new Error('Storage unavailable'));
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          Response.json({ results: [page, { ...page, url: 'https://example.com/other' }] }),
+        )
+        .mockResolvedValueOnce(completion())
+        .mockRejectedValueOnce(new DOMException('Timed out', 'TimeoutError')),
+    );
+    await expect(research.discover(profile)).rejects.toThrow('Storage unavailable');
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it('does not report research success if archive persistence fails', async () => {
     const { research, save } = fixture();
     save.mockRejectedValue(new Error('Storage unavailable'));

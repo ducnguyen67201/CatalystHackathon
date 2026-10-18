@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ScenarioInput } from '../contracts/Scenario.js';
 import type { EvaluationContext } from '../contracts/RehearsalEvaluation.js';
+import { preparedPitchContextSchema } from '../contracts/ConnectedPreparation.js';
 
 const decimal = z
   .string()
@@ -35,6 +36,8 @@ export interface WhySource {
   date: string | null;
   kind: 'financial' | 'investor' | 'context';
   financialRows: QuestionFinancialRow[];
+  preparation?: z.infer<typeof preparedPitchContextSchema>;
+  originalText?: string;
 }
 
 /** Display saved context as readable fields without inventing metadata or exposing JSON. */
@@ -114,6 +117,16 @@ export function scenarioWhySources(input: ScenarioInput): WhySource[] {
 export function evaluationWhySources(context: EvaluationContext): WhySource[] {
   return context.sources.map((source) => {
     const financialRows: QuestionFinancialRow[] = [];
+    let preparation: z.infer<typeof preparedPitchContextSchema> | undefined;
+    if (source.kind === 'company') {
+      try {
+        const raw: unknown = JSON.parse(source.text);
+        const parsed = preparedPitchContextSchema.safeParse(raw);
+        if (parsed.success) preparation = parsed.data;
+      } catch {
+        // Legacy prose remains readable without pretending to be an approved preparation record.
+      }
+    }
     if (source.kind === 'financial') {
       try {
         const raw: unknown = JSON.parse(source.text);
@@ -165,6 +178,8 @@ export function evaluationWhySources(context: EvaluationContext): WhySource[] {
             ? 'investor'
             : 'context',
       financialRows,
+      ...(preparation ? { preparation } : {}),
+      ...(source.kind === 'company' ? { originalText: source.text } : {}),
     };
   });
 }

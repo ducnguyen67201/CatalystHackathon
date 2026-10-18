@@ -137,6 +137,7 @@ export class LiveResearch implements ResearchProvider {
       this.logger.write(LogEvent.RESEARCH_RUN_SAVED, { runId: id, count: trace.evidence.length });
     };
     this.logger.write(LogEvent.RESEARCH_STARTED, { mode: this.mode });
+    let failure: ResearchRun['failure'] = null;
     try {
       await this.collectEvidence(profile, trace, target, discovery);
     } catch (error) {
@@ -146,19 +147,24 @@ export class LiveResearch implements ResearchProvider {
         { mode: this.mode, ...diagnostic, durationMs: Date.now() - started },
         'error',
       );
-      await save(ResearchRunStatus.FAILED, {
+      failure = {
         reason: diagnostic.reason ?? LogReason.UNKNOWN,
         ...(diagnostic.provider ? { provider: diagnostic.provider } : {}),
         ...(diagnostic.statusCode ? { statusCode: diagnostic.statusCode } : {}),
-      });
-      throw error;
+      };
+      if (!trace.evidence.length) {
+        await save(ResearchRunStatus.FAILED, failure);
+        throw error;
+      }
     }
     for (const evidence of trace.evidence) {
       evidence.researchRunId = id;
       for (const fact of evidence.mandateFacts ?? []) fact.source.researchRunId = id;
     }
     // Persistence must succeed before the caller may finish the workflow job.
-    await save(ResearchRunStatus.SUCCEEDED, null);
+    // A later source failure must not discard evidence already parsed and quote-checked.
+    // The archive remains explicitly partial, including its failure and exact source snapshot.
+    await save(failure ? ResearchRunStatus.PARTIAL : ResearchRunStatus.SUCCEEDED, failure);
     this.logger.write(LogEvent.RESEARCH_COMPLETED, {
       mode: this.mode,
       count: trace.evidence.length,

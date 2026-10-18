@@ -1,9 +1,27 @@
 import { z } from 'zod';
 import { Decimal } from 'decimal.js';
-import { investorMatchAssessmentSchema } from './InvestorMatch.js';
+import { investorMatchAssessmentSchema, investorMatchGoalSchema } from './InvestorMatch.js';
 
 const id = z.uuid();
 const text = z.string().max(3000);
+export const goalPaceSchema = z.union([z.literal(0.75), z.literal(1), z.literal(1.25)]);
+export const goalPracticeUpdateSchema = z.strictObject({
+  targetId: id,
+  name: z.string(),
+  sessionId: id,
+  createdAt: z.iso.datetime(),
+  status: z.enum(['awaiting_transcript', 'queued', 'failed', 'skipped', 'ready', 'unavailable']),
+  assessedSessionId: id.nullable(),
+  assessedAt: z.iso.datetime().nullable(),
+  fictional: z.boolean(),
+  partial: z.boolean(),
+  outdated: z.boolean(),
+  summary: text.nullable(),
+  strengths: z.array(text).max(3),
+  improvements: z.array(text).max(3),
+  nextPractice: z.strictObject({ question: text, reason: text, href: z.string() }).nullable(),
+  reviewHref: z.string(),
+});
 export const desiredCheckSchema = z
   .strictObject({
     min: z.string().regex(/^\d{1,16}(?:\.\d{1,4})?$/),
@@ -105,6 +123,18 @@ export const goalPositionSchema = z.strictObject({
   remainingHours: z.string(),
   estimatedReadyDate: z.iso.date().nullable(),
   estimateReason: text,
+  pace: goalPaceSchema.optional(),
+  paceScenarios: z
+    .array(
+      z.strictObject({
+        pace: goalPaceSchema,
+        dailyHours: z.string(),
+        workDays: z.string(),
+        estimatedReadyDate: z.iso.date().nullable(),
+      }),
+    )
+    .length(3)
+    .optional(),
 });
 export const goalProgressEventSchema = z.strictObject({
   id,
@@ -122,6 +152,7 @@ export const goalJourneySchema = z.strictObject({
   createdAt: z.iso.datetime(),
   revision: z.int().nonnegative(),
   focusedTargetId: id.nullable(),
+  pace: goalPaceSchema.optional(),
   targets: z.array(goalInvestorTargetSchema).max(50),
   assessments: z.array(savedInvestorMatchSchema),
   scopes: z.array(goalScopeSchema).min(1),
@@ -131,6 +162,7 @@ export const goalJourneySchema = z.strictObject({
   commands: z.array(z.strictObject({ key: id, hash: z.string(), resultId: id.nullable() })),
 });
 export const goalJourneyViewSchema = z.strictObject({
+  matchGoal: investorMatchGoalSchema.nullable().default(null),
   journey: goalJourneySchema
     .omit({ commands: true, events: true, assessments: true })
     .strip()
@@ -149,6 +181,19 @@ export const goalJourneyViewSchema = z.strictObject({
   ),
   events: z.array(goalProgressEventSchema),
   historyAvailable: z.boolean(),
+  practiceUpdates: z.array(goalPracticeUpdateSchema).max(50).default([]),
+  radarOpportunities: z
+    .array(
+      z.strictObject({
+        eventId: z.string(),
+        name: z.string(),
+        headline: z.string(),
+        fictional: z.boolean(),
+        href: z.string(),
+      }),
+    )
+    .max(3)
+    .default([]),
 });
 export const goalProgressQuerySchema = z.strictObject({
   cursor: z.coerce.number().int().nonnegative().optional(),
@@ -167,6 +212,7 @@ const base = { key: id, revision: z.int().nonnegative(), journeyId: id.optional(
 export const journeyCommandSchema = z.discriminatedUnion('action', [
   z.strictObject({ ...base, action: z.literal('activate') }),
   z.strictObject({ ...base, action: z.literal('new_goal') }),
+  z.strictObject({ ...base, action: z.literal('set_pace'), pace: goalPaceSchema }),
   z.strictObject({
     ...base,
     action: z.literal('assess'),
@@ -198,3 +244,4 @@ export type GoalProgressQuery = z.infer<typeof goalProgressQuerySchema>;
 export type GoalProgressPage = z.infer<typeof goalProgressPageSchema>;
 export type GoalJourneyView = z.infer<typeof goalJourneyViewSchema>;
 export type JourneyCommand = z.infer<typeof journeyCommandSchema>;
+export type GoalPracticeUpdate = z.infer<typeof goalPracticeUpdateSchema>;

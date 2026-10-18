@@ -4,6 +4,12 @@ A local TypeScript application for connecting financial evidence, investor resea
 
 ## Goal-to-investor journey
 
+The simplified interface puts **Edit goal** beside your goal on Overview. One **Save goal**
+updates the objective and optional funding details together. Radar has one **Review investor**
+action per update, followed by **Choose investor & continue**. Preparation then guides you
+through story approval, brief approval, practice and feedback. Sources, advanced settings
+and history filters remain behind details controls. See the [simple UI flow](docs/SimpleJourneyUi.md).
+
 The connected flow is implemented locally and specified in [Goal investor journey](docs/GoalInvestorJourneySpec.md):
 **Goal → Investor match → Add target investor → Tailored brief → Practice → Review progress**.
 One goal owns independent investor tracks. The homepage graph connects saved preparation
@@ -212,6 +218,14 @@ Try the standalone voice slice:
 
 Use a browser that exposes WebRTC and AudioContext (Chrome is a useful fallback for embedded browsers), and allow its microphone prompt. An unavailable browser API disables voice start before a provider token is requested. SDK connection failures emit one `voice_connection_failed` console event with the session ID, stage and recognized category flags; raw provider messages, tokens and audio are excluded. Errors clear when switching interview modes or retrying, so a voice-only failure does not appear to be a video failure.
 
+Voice startup also probes a peer connection and closes it without requesting audio or a provider
+token. Both browser-voice entrypoints explicitly use the SDK's dual peer connection compatibility
+mode; its newer single-connection default failed with an unsupported `RTCPeerConnection`
+configuration in the in-app browser. Connection details expose a bounded diagnostic code,
+including `webrtc_configuration`, rather than classifying every undefined-value error as an
+audio failure. A partial attempt without a verified transcript shows a retry message; only
+`awaiting_transcript` sessions show the webhook-wait message.
+
 1. Open http://127.0.0.1:4317/voice (works before onboarding), or choose a scenario in **Practice scenario** and click **Start Practicing**, select **Voice only**, and click **Start voice practice**. Permit the microphone.
 2. June asks a general question. Speak, mute/unmute if needed, then choose **Finish & save transcript**.
 3. Live captions are an unsaved preview. The signed post-call webhook supplies the saved transcript; the page refreshes automatically.
@@ -294,8 +308,8 @@ The default worker uses a PostgreSQL job queue with idempotency keys, claim toke
 
 An optional Trigger.dev task entrypoint is included in `src/jobs/RadarTasks.ts`. Configure `TRIGGER_PROJECT_REF`, the deployment environment and database access before using its CLI. Hosted tasks must reach PostgreSQL; a localhost Docker URL is not remotely reachable. Use either the local worker or the hosted runner for a deployment. The local worker already runs these workflows; do not start a hosted runner alongside it for the same deployment. For optional Trigger.dev development, inject `TRIGGER_PROJECT_REF` and `TRIGGER_SECRET_KEY` into its CLI process through `doppler run -- <your Trigger.dev CLI command>`. Hosted deployments need their own remotely reachable database and runtime environment configuration; running a local deployment command through Doppler does not automatically sync secrets into hosted tasks. No Trigger.dev project or schedule was deployed.
 
-Local mode uses a local session cookie, origin checks, loopback-only listening and rate limits.
-Hosted mode requires HTTPS. Its default access mode uses configured demo accounts; the
+Local mode uses a local session cookie, origin checks and loopback-only listening, with no API rate limits.
+Hosted mode retains global and per-route rate limits and requires HTTPS. Its default access mode uses configured demo accounts; the
 explicit `public-demo` mode opens the one shared workspace without login. Neither mode
 provides separate private workspaces or self-service registration. Provider webhooks retain
 their signature verification in both modes.

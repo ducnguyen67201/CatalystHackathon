@@ -21,7 +21,7 @@ import type { ReactNode } from 'react';
 import type { Brief, Evidence, Profile, StateResponse } from '../contracts/Workspace.js';
 import { Stage, profileSchema } from '../contracts/Workspace.js';
 import { evaluateInvestorFit } from '../features/InvestorFit.js';
-import { command, fetchState, startLocalSession, startRadar } from './ApiClient.js';
+import { command, fetchState, startRadar } from './ApiClient.js';
 import { InvestorTrackingPage } from './InvestorTrackingPage.js';
 import { ScenarioPractice } from './ScenarioPractice.js';
 import { ScenarioRoom } from './ScenarioRoom.js';
@@ -136,6 +136,7 @@ export function App() {
   }, []);
   const [editingOnboarding, setEditingOnboarding] = useState(false);
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState<'profile' | 'upload' | 'notices' | null>(null);
@@ -164,33 +165,41 @@ export function App() {
   }
   useEffect(() => {
     let alive = true;
-    void startLocalSession()
-      .then(fetchState)
-      .then((data) => {
+    let loading = false;
+    const load = async () => {
+      if (loading || document.visibilityState === 'hidden') return;
+      loading = true;
+      try {
+        // fetchState renews only an explicitly rejected session, sharing concurrent renewal.
+        const data = await fetchState();
         if (alive) {
           setState(data);
+          setConnectionError('');
         }
-      })
-      .catch(() => {
+      } catch (caught) {
         if (alive) {
-          setError('Cannot connect to June. Start the API and database with pnpm dev.');
+          setConnectionError(
+            caught instanceof TypeError
+              ? 'June is reconnecting. Please keep this tab open.'
+              : caught instanceof Error
+                ? caught.message
+                : 'June is reconnecting. Please keep this tab open.',
+          );
         }
-      });
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'hidden') {
-        return;
+      } finally {
+        loading = false;
       }
-      void fetchState()
-        .then((data) => {
-          if (alive) {
-            setState(data);
-          }
-        })
-        .catch(() => undefined);
+    };
+    void load();
+    const timer = setInterval(() => {
+      void load();
     }, 3000);
+    const visible = () => void load();
+    document.addEventListener('visibilitychange', visible);
     return () => {
       alive = false;
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', visible);
     };
   }, []);
   useEffect(() => {
@@ -211,7 +220,7 @@ export function App() {
           <img className="brand-wordmark" src={juneWordmark} alt="June" width={459} height={150} />
         </div>
         <LoaderCircle className="spin" />
-        <p>{error || 'Opening your workspace…'}</p>
+        <p>{connectionError || 'Opening your workspace…'}</p>
         <button
           className="button secondary"
           onClick={() => {
@@ -276,6 +285,11 @@ export function App() {
     >
       <main className="main">
         <div className="content">
+          {connectionError && (
+            <div className="error" role="status">
+              {connectionError}
+            </div>
+          )}
           {error && (
             <div className="error" role="alert">
               <span>{error}</span>
@@ -316,10 +330,26 @@ export function App() {
               }}
             />
           )}
-          {page === Page.INVESTORS && <InvestorTrackingPage state={state} onRefresh={refresh} />}
+          {page === Page.INVESTORS && (
+            <InvestorTrackingPage
+              state={state}
+              onRefresh={refresh}
+              onEditProfile={() => {
+                setDraft({ ...workspace.profile });
+                setModal('profile');
+              }}
+            />
+          )}
           {page === Page.RADAR && (
             <>
-              <RadarUpdates state={state} onRefresh={refresh}>
+              <RadarUpdates
+                state={state}
+                onRefresh={refresh}
+                onEditProfile={() => {
+                  setDraft({ ...workspace.profile });
+                  setModal('profile');
+                }}
+              >
                 <InvestorMeetingContext
                   state={state}
                   onRefresh={refresh}
@@ -787,7 +817,6 @@ export function App() {
                     onChange={(event) => {
                       setDraft({ ...draft, raiseTarget: event.target.value || null });
                     }}
-                    required
                   />
                 </label>
               </div>

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { GoalPosition, GoalProgressEvent } from '../src/contracts/GoalJourney.js';
-import { GoalJourneyChart } from '../src/web/GoalJourney.js';
+import { GoalJourney, GoalJourneyChart } from '../src/web/GoalJourney.js';
 
 const goalId = randomUUID();
 const scopeId = randomUUID();
@@ -39,6 +39,30 @@ function observation(sequence: number, savedPosition: GoalPosition): GoalProgres
 }
 
 describe('goal journey history graph', () => {
+  it('keeps the homepage graph mounted before goal tracking starts', () => {
+    const html = renderToStaticMarkup(<GoalJourney revision={0} onEditGoal={() => undefined} />);
+    expect(html).toContain(
+      'Saved preparation history, current position, and separate remaining-work estimate',
+    );
+    expect(html).toContain('Recorded history');
+    expect(html).toContain('Current');
+    expect(html).toContain('Planned remaining work');
+    expect(html).toContain('Set goal');
+  });
+
+  it('shows an untracked graph without inventing counts, dates or historical points', () => {
+    const html = renderToStaticMarkup(
+      <GoalJourneyChart position={null} events={[]} onSelect={() => undefined} />,
+    );
+    expect(html).toContain('Not tracked yet');
+    expect(html).toContain('Save goal to estimate');
+    expect(html).toContain('No saved observations yet');
+    expect(html).not.toContain('role="button"');
+    expect(html).not.toContain('<path');
+    expect(html).not.toContain('0/6');
+    expect(html).not.toContain('2026-');
+  });
+
   it('preserves original denominators and breaks the line when the scope changes', () => {
     const initial = observation(1, position({ completed: 4, percentage: '66.7' }));
     const expanded = observation(

@@ -2,6 +2,7 @@ import { PreparationPlan } from './PreparationPlan.js';
 import { PreparationProgress } from './PreparationProgress.js';
 import { PeerDashboard } from './PeerDashboard.js';
 import { GoalJourney } from './GoalJourney.js';
+import { useState } from 'react';
 import { ArrowRight, FileText, MessageSquare, ExternalLink } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import type { Meeting } from '../contracts/Onboarding.js';
@@ -67,6 +68,8 @@ export function DashboardPage({
   onPractice,
   busy,
 }: Props) {
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalUpdates, setGoalUpdates] = useState(0);
   const workspace = state.workspace;
   const snapshot =
     workspace.snapshots.find((item) => item.id === workspace.onboarding.snapshotId) ??
@@ -89,7 +92,8 @@ export function DashboardPage({
             {workspace.profile.name} · Financial evidence, a clear story, and a little practice.
           </p>
         </div>
-        <div className="dashboard-setup-actions">
+        <details className="dashboard-setup-actions journey-details">
+          <summary>Workspace settings</summary>
           <button className="button secondary" onClick={onEdit} disabled={busy}>
             Edit context
           </button>
@@ -101,10 +105,22 @@ export function DashboardPage({
           >
             Restart onboarding
           </button>
-        </div>
+        </details>
       </div>
-      <GoalJourney revision={workspace.revision} />
-      <PreparationPlan state={state} onFinancials={onFinancials} onResearch={onResearch} />
+      <GoalJourney
+        revision={workspace.revision + goalUpdates}
+        onEditGoal={() => setEditingGoal(true)}
+      />
+      <PreparationPlan
+        state={state}
+        onFinancials={onFinancials}
+        onResearch={onResearch}
+        editingGoal={editingGoal}
+        onEditGoal={() => setEditingGoal(true)}
+        onCloseGoal={() => setEditingGoal(false)}
+        onJourneyChange={() => setGoalUpdates((value) => value + 1)}
+        onEditContext={onEdit}
+      />
       <details className="dashboard-supporting">
         <summary>More workspace details · meetings, financials & activity</summary>
         <div className="dashboard-hero-grid">
@@ -180,7 +196,7 @@ export function DashboardPage({
             <small>Cash balance and cash-flow plan needed</small>
           </article>
         </div>
-        <PreparationProgress onFinancials={onFinancials} revision={workspace.revision} />
+        <PreparationProgress onFinancials={onFinancials} />
         <PeerDashboard key={`${snapshot?.id ?? 'none'}:${workspace.profile.version}`} />
         <div className="dashboard-lower">
           <section>

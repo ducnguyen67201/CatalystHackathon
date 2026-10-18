@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { StateResponse, TranscriptTurn } from '../contracts/Workspace.js';
 import { endVoicePractice, startVoicePractice } from './VoicePracticeClient.js';
 import { describeVoiceFailure } from './VoiceFailure.js';
+import { checkVoiceBrowserSupport } from './VoiceBrowserSupport.js';
 import './AvatarPractice.css';
 import type { ScenarioSelection } from '../contracts/Scenario.js';
 import { LiveGuidance } from './LiveGuidance.js';
@@ -116,8 +117,8 @@ function VoicePracticeSession({
   const activeId = useRef<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const inspectionPause = useRef<ReturnType<typeof pauseVoiceForInspection> | null>(null);
-  const browserSupportsVoice =
-    typeof RTCPeerConnection !== 'undefined' && typeof AudioContext !== 'undefined';
+  const [browserSupport] = useState(() => checkVoiceBrowserSupport());
+  const browserSupportsVoice = browserSupport.supported;
 
   const conversation = useConversation({
     onMessage: (raw: unknown) => {
@@ -137,6 +138,7 @@ function VoicePracticeSession({
           event: 'voice_connection_failed',
           stage: 'sdk_connect',
           sessionId: activeId.current,
+          code: failure.code,
           signals: failure.signals,
         }),
       );
@@ -191,7 +193,7 @@ function VoicePracticeSession({
     if (starting.current || activeId.current) {
       return;
     }
-    if (!browserSupportsVoice) {
+    if (!checkVoiceBrowserSupport().supported) {
       onError(
         'This browser does not expose WebRTC audio. Open this page in Chrome to use voice practice.',
       );
@@ -223,6 +225,8 @@ function VoicePracticeSession({
       conversation.startSession({
         conversationToken: response.token,
         connectionType: 'webrtc',
+        // Use the SDK's documented compatibility path for embedded WebKit browsers.
+        webRtc: { singlePeerConnection: false },
         dynamicVariables: response.dynamicVariables,
       });
       await onRefresh();
@@ -393,6 +397,15 @@ function VoicePracticeSession({
                 ? 'Microphone audio goes to ElevenLabs after you start. Live guidance sends recent captions and saved evidence to OpenAI. Final transcripts are saved in this workspace.'
                 : 'Configure the ElevenLabs key, private agent and transcript webhook to enable voice.'}
             </small>
+            {conversation.status === 'error' && (
+              <details>
+                <summary>Connection details</summary>
+                <p>{describeVoiceFailure(conversation.message).message}</p>
+                <small>
+                  Diagnostic: {describeVoiceFailure(conversation.message).code} · compatibility mode
+                </small>
+              </details>
+            )}
             {!browserSupportsVoice && (
               <p role="status">
                 This browser does not expose WebRTC audio. Open http://127.0.0.1:4317/voice in
@@ -435,10 +448,16 @@ function VoicePracticeSession({
                 : 'Start a session to see the conversation here.'}
             </p>
           )}
-          {session && !verified && session.status !== 'active' && (
+          {session && !verified && session.status === 'awaiting_transcript' && (
             <p className="notice">
               Waiting for the provider transcript. If it does not arrive, check that the local
               webhook tunnel is running. Reopen this session below to check again.
+            </p>
+          )}
+          {session && !verified && session.status === 'partial' && (
+            <p className="notice">
+              This attempt ended without a saved transcript. You can retry practice; this attempt
+              does not complete the practice step.
             </p>
           )}
           {verified && turns.length === 0 && (
@@ -446,6 +465,11 @@ function VoicePracticeSession({
           )}
         </article>
       </div>
+      {session && !running && session.status !== 'active' && (
+        <a className="button secondary" href="/" style={{ marginTop: '20px' }}>
+          View preparation progress →
+        </a>
+      )}
       {session && (
         <EvaluationPanel
           key={session.id}

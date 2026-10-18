@@ -141,8 +141,12 @@ export function projectGoalTrack(
     'Review the exact company-story revision.',
     'Target selected; mandate uncertainties remain visible.',
     'Approve the current investor-specific brief.',
-    'Save an authoritative practice answer or final transcript.',
-    'Review the completed assessment.',
+    review?.public.status === 'awaiting_transcript'
+      ? 'Your call is saved. Waiting for the final transcript.'
+      : 'Practise your answer with this investor.',
+    review?.public.status === 'pending'
+      ? 'Assessing your answers. Feedback will appear here.'
+      : 'Review what went well and what to practise next.',
     'Record a revision or no-gap decision.',
   ];
   const steps = ids.map((id, index) => {
@@ -248,17 +252,27 @@ export function projectGoalPosition(
     day: '2-digit',
   }).format(now);
   const waitDate = schedule?.cashExpectedDate;
-  const days = remaining
-    .div(schedule?.dailyHours ?? 2)
-    .ceil()
-    .toNumber();
   const start = Date.parse(today + 'T00:00:00Z');
   const dependencyStart =
     waitDate && waitDate >= today ? Math.max(start, Date.parse(waitDate + 'T00:00:00Z')) : start;
+  const paceScenarios = ([0.75, 1, 1.25] as const).map((pace) => {
+    const capacity = new Decimal(schedule?.dailyHours ?? 2).mul(pace);
+    const workDays = remaining.div(capacity);
+    return {
+      pace,
+      dailyHours: capacity.toString(),
+      workDays: workDays.toDecimalPlaces(2).toString(),
+      estimatedReadyDate:
+        outdated || (remaining.isZero() && pending)
+          ? null
+          : new Date(dependencyStart + workDays.ceil().toNumber() * 86400000)
+              .toISOString()
+              .slice(0, 10),
+    };
+  });
+  const pace = journey.pace ?? 1;
   const estimate =
-    outdated || (remaining.isZero() && pending)
-      ? null
-      : new Date(dependencyStart + days * 86400000).toISOString().slice(0, 10);
+    paceScenarios.find((scenario) => scenario.pace === pace)?.estimatedReadyDate ?? null;
   const followups = projectFollowups(state, jobs, 0, state.rehearsals.length).sessions;
   const practices: GoalPosition['practices'] = state.rehearsals
     .flatMap((session) => {
@@ -314,14 +328,18 @@ export function projectGoalPosition(
           : 'preparation_reviewed'
         : pending
           ? 'assessment_pending'
-          : !state.preparation?.automatic
-            ? 'paused'
-            : 'in_progress',
+          : tracks.some((track) => track.steps.some((step) => step.status === 'needs_review'))
+            ? 'needs_review'
+            : !state.preparation?.automatic
+              ? 'paused'
+              : 'in_progress',
     nextAction,
     href,
     tracks,
     practices,
     remainingHours: remaining.toString(),
+    pace,
+    paceScenarios,
     estimatedReadyDate: estimate,
     estimateReason:
       (schedule
@@ -351,6 +369,11 @@ export function recordGoalProgress(
     href: undefined,
     nextAction: undefined,
     estimatedReadyDate: undefined,
+    paceScenarios: position.paceScenarios?.map(({ pace, dailyHours, workDays }) => ({
+      pace,
+      dailyHours,
+      workDays,
+    })),
     tracks: position.tracks.map((t) => ({ ...t, href: undefined })),
     assessments: journey.assessments.map((a) => a.id),
     targets: journey.targets.map((t) => ({
@@ -370,6 +393,8 @@ export function recordGoalProgress(
     reason = 'Goal revised; previous preparation history is preserved.';
   else if (previous.position.scopeVersionId !== position.scopeVersionId)
     reason = journey.scopes.at(-1)?.reason ?? 'Preparation scope changed.';
+  else if ((previous.position.pace ?? 1) !== (position.pace ?? 1))
+    reason = 'Preparation pace changed; completed work and earlier history are unchanged.';
   else if (position.completed < previous.position.completed)
     reason = 'Current preparation reopened for a new cycle or changed sources.';
   else if (position.completed > previous.position.completed)

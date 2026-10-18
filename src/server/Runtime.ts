@@ -7,6 +7,7 @@ import { LogEvent, LogReason } from '../features/WorkflowLog.js';
 import { WorkflowLogger } from '../infrastructure/WorkflowLogger.js';
 import { PrismaStore } from '../infrastructure/PrismaStore.js';
 import { LiveResearch } from '../infrastructure/Research.js';
+import { LiveInvestorProfileGeneration } from '../infrastructure/InvestorProfileGeneration.js';
 import { WorkspaceService } from '../features/WorkspaceService.js';
 import type { Environment } from './Env.js';
 import {
@@ -46,6 +47,9 @@ export function createRuntime(env: Environment) {
       generator,
     },
     env.OPENAI_API_KEY ? new LivePracticeTurn(env.OPENAI_API_KEY, env.SCENARIO_MODEL) : undefined,
+    env.OPENAI_API_KEY
+      ? new LiveInvestorProfileGeneration(env.OPENAI_API_KEY, env.RESEARCH_MODEL)
+      : undefined,
   );
   service.retrieveAvatarTranscript = async (id) => {
     if (

@@ -75,9 +75,15 @@ export async function createApi(
 ) {
   const app = Fastify({ logger: false, bodyLimit: 2200000 });
   await app.register(cookie);
-  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+  // The loopback-only workspace has no request throttling. Register the plugin only
+  // for hosted mode, so both its global and per-route limits are inactive locally.
+  if (env.HOSTING_MODE === 'hosted')
+    await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
   registerHostedAccess(app, env);
   const localSession = randomBytes(32).toString('hex');
+  // Cookies ignore ports. Independent local workspaces must not overwrite each other's session.
+  const sessionCookieName =
+    env.HOSTING_MODE === 'local' ? `june_session_${new URL(env.WEB_ORIGIN).port}` : 'june_session';
   const allowedOrigins = new Set([
     env.WEB_ORIGIN,
     `http://127.0.0.1:${env.API_PORT}`,
@@ -101,7 +107,7 @@ export async function createApi(
     if (request.url === '/api/session' || request.url === '/api/health') {
       return;
     }
-    const value = request.cookies.june_session ?? '';
+    const value = request.cookies[sessionCookieName] ?? '';
     if (
       value.length !== localSession.length ||
       !timingSafeEqual(Buffer.from(value), Buffer.from(localSession))
@@ -130,7 +136,7 @@ export async function createApi(
     }
     if (
       error instanceof Error &&
-      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Onboarding:|Radar:|Preparation:|Financial comparison:)/.test(
+      /^(Row |CSV format:|Duplicate month|Choose an existing|Upload financial|Brief unavailable|Session unavailable|Follow-up unavailable|End an active|Finish this|This practice|Snapshots use different|Financial evidence unavailable|Investor URL|Investor unavailable|Scenario unavailable|Scenario source unavailable|Investor discovery:|Investor profile:|Onboarding:|Radar:|Preparation:|Financial comparison:)/.test(
         error.message,
       )
     ) {
@@ -164,16 +170,20 @@ export async function createApi(
       .code(500)
       .send({ error: 'The operation failed. Check server configuration and try again.' });
   });
-  app.post('/api/session', async (_request, reply) => {
-    reply.setCookie('june_session', localSession, {
-      httpOnly: true,
-      secure: env.HOSTING_MODE === 'hosted',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 86400,
-    });
-    return { ok: true };
-  });
+  app.post(
+    '/api/session',
+    { config: { rateLimit: { groupId: 'session-recovery', max: 30 } } },
+    async (_request, reply) => {
+      reply.setCookie(sessionCookieName, localSession, {
+        httpOnly: true,
+        secure: env.HOSTING_MODE === 'hosted',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: 86400,
+      });
+      return { ok: true };
+    },
+  );
   app.get('/api/health', () => ({ status: 'ready', localOnly: env.HOSTING_MODE === 'local' }));
   app.get('/api/state', { config: { rateLimit: { groupId: 'state-polling' } } }, async () =>
     stateResponseSchema.parse({

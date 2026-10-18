@@ -1,10 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { FileSpreadsheet, Info, X } from 'lucide-react';
+import {
+  FileSpreadsheet,
+  Info,
+  X,
+  MessageCircle,
+  Lightbulb,
+  Target,
+  FileText,
+  ArrowRight,
+} from 'lucide-react';
 import type { QuestionWhy } from '../contracts/QuestionWhy.js';
 import type { EvaluationContext } from '../contracts/RehearsalEvaluation.js';
 import type { WhySource } from '../features/QuestionEvidence.js';
-import { QuestionEvidenceSheet } from './QuestionEvidenceSheet.js';
+import { QuestionEvidenceSheet, formatEvidenceAmount } from './QuestionEvidenceSheet.js';
+import { QuestionSourceCard } from './QuestionSourceCard.js';
 import './GuidedPractice.css';
+import './QuestionExplanation.css';
 
 export { scenarioWhySources, evaluationWhySources } from '../features/QuestionEvidence.js';
 
@@ -59,6 +70,12 @@ export function QuestionExplanation({
     (source) => source.kind !== 'financial' || !source.financialRows.length,
   );
   const financialSelected = activeSource?.kind === 'financial' && !!rows.length;
+  const includesFictional = sources.some(
+    (source) =>
+      source.label === 'Fictional demo' ||
+      source.preparation?.fictional ||
+      source.preparation?.sources.some((item) => item.fictional),
+  );
   return (
     <div
       className="question-why"
@@ -121,6 +138,9 @@ export function QuestionExplanation({
                 ? 'Conversation paused while you read · Close to resume'
                 : 'Explanation and saved evidence'}
             </small>
+            {includesFictional && (
+              <span className="why-fictional-notice">Includes fictional demo evidence</span>
+            )}
           </div>
           <button
             type="button"
@@ -149,19 +169,43 @@ export function QuestionExplanation({
         </nav>
         <div className="question-why-workspace" data-active-pane={pane}>
           <div className="question-why-body">
-            <blockquote>{question}</blockquote>
-            <section>
-              <h3>The connection</h3>
+            <div className="why-question-card">
+              <span className="why-kicker">
+                <MessageCircle size={15} aria-hidden="true" /> The question
+              </span>
+              <blockquote>{question}</blockquote>
+            </div>
+            <div className="why-connection-path" aria-hidden="true">
+              <span /> <ArrowRight size={15} /> <span>Connect it to your story</span>
+            </div>
+            <section className="why-explanation-card">
+              <h3>
+                <Lightbulb size={17} aria-hidden="true" /> Why June is asking
+              </h3>
+              <strong>{why.brief}</strong>
               <p>{why.explanation}</p>
-              <small>Preparation explanation · Not a prediction of the investor’s questions</small>
             </section>
-            <section>
-              <h3>A strong answer covers</h3>
-              <p>{why.answerObjective}</p>
+            <section className="why-answer-card">
+              <h3>
+                <Target size={17} aria-hidden="true" /> What to cover
+              </h3>
+              <ol>
+                {why.answerObjective
+                  .split(/\n+|(?<=[.!?])\s+(?=[A-Z])/)
+                  .filter(Boolean)
+                  .map((point, index) => (
+                    <li key={index}>
+                      <span aria-hidden="true">{index + 1}</span>
+                      <p>{point}</p>
+                    </li>
+                  ))}
+              </ol>
             </section>
-            <section>
-              <h3>Supporting sources</h3>
-              <p className="question-source-hint">Select a source to inspect its saved data.</p>
+            <section className="why-sources-section">
+              <h3>
+                <FileText size={16} aria-hidden="true" /> Supporting sources{' '}
+                <span className="why-source-count">{selected.length}</span>
+              </h3>
               <div className="question-source-list">
                 {rows.length > 0 && (
                   <button
@@ -200,6 +244,7 @@ export function QuestionExplanation({
                       setPane('evidence');
                     }}
                   >
+                    <FileText size={17} aria-hidden="true" />
                     <span>
                       {source.title}
                       <small>{source.label}</small>
@@ -225,38 +270,59 @@ export function QuestionExplanation({
                 </ul>
               </details>
             )}
+            <p className="why-preparation-note">
+              Preparation guidance · Investor questions may differ.
+            </p>
           </div>
           <section className="question-evidence-pane" aria-label="Source data">
             <div className="question-evidence-heading">
-              <h3>{financialSelected ? 'Financial evidence' : 'Source evidence'}</h3>
+              <h3>
+                <FileText size={16} aria-hidden="true" />{' '}
+                {financialSelected ? 'Financial evidence' : 'Behind your answer'}
+              </h3>
               <small>{activeSource?.label ?? 'No source selected'}</small>
             </div>
             {financialSelected && activeRow ? (
-              <QuestionEvidenceSheet
-                open={open}
-                rows={rows}
-                selectedKey={activeRow.key}
-                facts={facts}
-                onSelectPeriod={(key) => {
-                  setRowKey(key);
-                  const row = rows.find((item) => item.key === key);
-                  if (row) setSourceId(row.sourceId);
-                }}
-              />
+              <>
+                <div className="why-financial-overview">
+                  <p>
+                    {activeRow.values.month} ·{' '}
+                    {activeRow.currency === 'unspecified'
+                      ? 'Currency unconfirmed'
+                      : activeRow.currency}
+                  </p>
+                  <dl>
+                    {[
+                      { label: 'Operating income', value: activeRow.values.operatingIncome },
+                      { label: 'Other income / credit', value: activeRow.values.credit },
+                      { label: 'Net income', value: activeRow.values.netIncome },
+                    ].map((item) => (
+                      <div key={item.label}>
+                        <dt>{item.label}</dt>
+                        <dd className={item.value.startsWith('-') ? 'why-negative-value' : ''}>
+                          {formatEvidenceAmount(item.value)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+                <details className="why-statement-disclosure">
+                  <summary>Inspect statement & exact cells</summary>
+                  <QuestionEvidenceSheet
+                    open={open}
+                    rows={rows}
+                    selectedKey={activeRow.key}
+                    facts={facts}
+                    onSelectPeriod={(key) => {
+                      setRowKey(key);
+                      const row = rows.find((item) => item.key === key);
+                      if (row) setSourceId(row.sourceId);
+                    }}
+                  />
+                </details>
+              </>
             ) : (
-              <article className="question-readable-source">
-                <h3>{activeSource?.title ?? 'No supporting source'}</h3>
-                <p>
-                  {activeSource?.text ??
-                    'This is a general preparation question. No sourced investor priority is assumed.'}
-                </p>
-                {activeSource?.date && <small>{activeSource.date}</small>}
-                {activeSource?.url && (
-                  <a href={activeSource.url} target="_blank" rel="noreferrer">
-                    Read original source ↗
-                  </a>
-                )}
-              </article>
+              <QuestionSourceCard source={activeSource} />
             )}
           </section>
         </div>

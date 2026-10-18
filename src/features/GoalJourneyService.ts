@@ -10,7 +10,11 @@ import {
 import { trackedInvestorSchema, type TrackedInvestor } from '../contracts/InvestorTracking.js';
 import type { Workspace } from '../contracts/Workspace.js';
 import { assessInvestorMatch } from './InvestorMatch.js';
-import { buildInvestorMatchInput, savedMatchOutdated } from './InvestorMatchInputs.js';
+import {
+  buildInvestorMatchGoal,
+  buildInvestorMatchInput,
+  savedMatchOutdated,
+} from './InvestorMatchInputs.js';
 import { connectedHash } from './ConnectedPreparation.js';
 import { ensureTargetPreparation } from './ConnectedPreparationService.js';
 import {
@@ -22,6 +26,10 @@ import {
 } from './GoalProgress.js';
 import { ConflictError, UnavailableError } from './WorkspaceStore.js';
 import type { WorkspaceService } from './WorkspaceService.js';
+import {
+  projectGoalPracticeUpdates,
+  projectGoalRadarOpportunities,
+} from './GoalPracticeUpdates.js';
 
 function resolveInvestor(state: Workspace, investorId?: string, eventId?: string): TrackedInvestor {
   if (investorId) {
@@ -105,6 +113,7 @@ export class GoalJourneyService {
     if (journeyId && !journey) throw new UnavailableError('Goal unavailable.');
     const historical = journey?.status === 'archived';
     return goalJourneyViewSchema.parse({
+      matchGoal: historical ? null : buildInvestorMatchGoal(state),
       journey: journey
         ? { ...journey, commands: undefined, assessments: undefined, events: undefined }
         : null,
@@ -134,6 +143,8 @@ export class GoalJourneyService {
         }) ?? [],
       events: journey?.events.slice(-100) ?? [],
       historyAvailable: !!journey?.lastSequence,
+      practiceUpdates: historical ? [] : projectGoalPracticeUpdates(state, jobs),
+      radarOpportunities: historical ? [] : projectGoalRadarOpportunities(state),
     });
   }
 
@@ -163,6 +174,8 @@ export class GoalJourneyService {
         (preparation.journeyHistory ??= []).push(structuredClone(journey));
         preparation.journey = undefined;
         ensureGoalJourney(state);
+      } else if (command.action === 'set_pace') {
+        journey.pace = command.pace;
       } else if (command.action === 'assess') {
         const investor = resolveInvestor(state, command.investorId, command.eventId);
         resultId = saveAssessment(state, investor).id;

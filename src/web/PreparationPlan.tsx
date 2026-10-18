@@ -3,7 +3,7 @@ import { DeckClaims } from './DeckClaims.js';
 import { PreparationPosition } from './PreparationPosition.js';
 import { FinancialSourceEvidence, InvestorSourceEvidence } from './PreparationSourceEvidence.js';
 import { PreparationRecommendationBasis } from './PreparationRecommendationBasis.js';
-import { PreparationIntentForm } from './PreparationIntentForm.js';
+import { PreparationGoalEditor } from './PreparationGoalEditor.js';
 import { FinancialPerformanceStatement } from './FinancialPerformanceStatement.js';
 import { PreparationSchedule } from './PreparationSchedule.js';
 import { useEffect, useRef, useState } from 'react';
@@ -11,7 +11,6 @@ import { z } from 'zod';
 import { ArrowRight, RefreshCw } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import {
-  preparationGoalInputSchema,
   preparationViewSchema,
   type PreparationView,
   type PreparationArtifact,
@@ -19,7 +18,6 @@ import {
 import { request, command } from './ApiClient.js';
 import { EvaluationPanel } from './EvaluationPanel.js';
 import { preparationScenarioHref } from '../contracts/PreparationNavigation.js';
-import { investorCheckRangeSchema } from '../contracts/InvestorMatch.js';
 import './PreparationPlan.css';
 
 export function PreparationComparisonChart({ artifact }: { artifact: PreparationArtifact }) {
@@ -86,191 +84,21 @@ export function PreparationComparisonChart({ artifact }: { artifact: Preparation
   );
 }
 
-function GoalForm({
-  data,
-  state,
-  save,
-  busy,
-}: {
-  data: PreparationView;
-  state: StateResponse;
-  save: (body: unknown) => Promise<void>;
-  busy: boolean;
-}) {
-  const form = useRef<HTMLFormElement>(null);
-  const goal = data.goal;
-  const [error, setError] = useState('');
-  return (
-    <form
-      ref={form}
-      className="prep-goal-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const values = new FormData(event.currentTarget);
-        const previousValue = values.get('previousRounds');
-        const previous = typeof previousValue === 'string' ? previousValue : '';
-        const desiredMin = values.get('desiredCheckMin');
-        const desiredMax = values.get('desiredCheckMax');
-        const desiredCheck =
-          desiredMin || desiredMax
-            ? investorCheckRangeSchema.safeParse({
-                min: desiredMin,
-                max: desiredMax,
-                currency: values.get('desiredCheckCurrency'),
-              })
-            : null;
-        if (desiredCheck && !desiredCheck.success) {
-          setError(
-            'Enter a positive minimum and maximum individual check, with minimum no greater than maximum.',
-          );
-          return;
-        }
-        const parsed = preparationGoalInputSchema.safeParse({
-          desiredCheck: desiredCheck?.success ? desiredCheck.data : null,
-          round: values.get('round'),
-          previousRounds: previous === '' ? null : Number(previous),
-          amount: values.get('amount') || null,
-          currency: values.get('currency'),
-          targetDate: values.get('targetDate') || null,
-          timezone: values.get('timezone'),
-          investorId: values.get('investorId') || null,
-        });
-        if (!parsed.success) {
-          setError('Check the round, amount, prior rounds, date and timezone.');
-          return;
-        }
-        setError('');
-        void save({
-          goal: parsed.data,
-          version: data.version,
-          automatic: values.get('automatic') === 'on',
-        });
-      }}
-    >
-      <label>
-        Intended round
-        <input
-          name="round"
-          required
-          maxLength={100}
-          placeholder="For example, Series A; or round not yet decided"
-          defaultValue={goal?.round ?? state.workspace.profile.stage}
-        />
-      </label>
-      <label>
-        Prior financing rounds
-        <input
-          name="previousRounds"
-          type="number"
-          min="0"
-          max="30"
-          placeholder="Unknown"
-          defaultValue={goal?.previousRounds ?? ''}
-        />
-      </label>
-      <label>
-        Target raise amount
-        <input
-          name="amount"
-          inputMode="decimal"
-          placeholder="Unknown"
-          defaultValue={goal?.amount ?? state.workspace.profile.raiseTarget ?? ''}
-        />
-      </label>
-      <label>
-        Currency
-        <select name="currency" defaultValue={goal?.currency ?? state.workspace.profile.currency}>
-          {['unspecified', 'USD', 'CAD', 'EUR', 'GBP'].map((currency) => (
-            <option key={currency} value={currency}>
-              {currency === 'unspecified' ? 'Not confirmed' : currency}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Desired preparation date
-        <input type="date" name="targetDate" defaultValue={goal?.targetDate ?? ''} />
-      </label>
-      <label>
-        Desired individual check · minimum
-        <input
-          name="desiredCheckMin"
-          inputMode="decimal"
-          placeholder="Unknown"
-          defaultValue={goal?.desiredCheck?.min ?? ''}
-        />
-      </label>
-      <label>
-        Desired individual check · maximum
-        <input
-          name="desiredCheckMax"
-          inputMode="decimal"
-          placeholder="Unknown"
-          defaultValue={goal?.desiredCheck?.max ?? ''}
-        />
-      </label>
-      <label>
-        Individual check currency
-        <select name="desiredCheckCurrency" defaultValue={goal?.desiredCheck?.currency ?? 'CAD'}>
-          {['CAD', 'USD', 'EUR', 'GBP'].map((currency) => (
-            <option key={currency} value={currency}>
-              {currency}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="muted prep-full">
-        The desired investment from one investor is separate from your total raise. Leave both
-        amounts empty when unknown; currencies are never automatically converted for matching.
-      </p>
-      <label>
-        Timezone
-        <input
-          name="timezone"
-          required
-          defaultValue={goal?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone}
-        />
-      </label>
-      <label className="prep-full">
-        Investor
-        <select name="investorId" defaultValue={goal?.investorId ?? ''}>
-          <option value="">General preparation — select later</option>
-          {state.workspace.investors.map((investor) => (
-            <option key={investor.id} value={investor.id}>
-              {investor.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="prep-full prep-check">
-        <input
-          type="checkbox"
-          name="automatic"
-          defaultChecked={data.goal ? data.automatic : true}
-        />{' '}
-        Prepare internal drafts automatically when saved evidence changes.
-      </label>
-      <p className="muted prep-full">
-        Automatic drafting uses saved evidence and local rules. It starts no research, messages or
-        paid practice sessions. Written assessment uses the existing AI evaluator after you submit.
-      </p>
-      {error && (
-        <p role="alert" className="prep-full">
-          {error}
-        </p>
-      )}
-      <button className="button prep-full" disabled={busy}>
-        Confirm goal & prepare plan
-      </button>
-    </form>
-  );
-}
-
 export function PreparationPlan({
   state,
   onFinancials,
   onResearch,
+  editingGoal,
+  onEditGoal,
+  onCloseGoal,
+  onJourneyChange,
+  onEditContext,
 }: {
+  editingGoal: boolean;
+  onEditGoal: () => void;
+  onCloseGoal: () => void;
+  onJourneyChange: () => void;
+  onEditContext: () => void;
   state: StateResponse;
   onFinancials: () => void;
   onResearch: () => void;
@@ -282,7 +110,8 @@ export function PreparationPlan({
   const [updateNotice, setUpdateNotice] = useState('');
   const previousView = useRef<PreparationView | null>(null);
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const editing = editingGoal;
+  const goalDialog = useRef<HTMLDialogElement>(null);
   const [financialView, setFinancialView] = useState(false);
   const [artifactId, setArtifactId] = useState<string | null>(null);
   const [answer, setAnswer] = useState('');
@@ -342,15 +171,25 @@ export function PreparationPlan({
       clearInterval(timer);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [reload, state.workspace.revision]);
+  }, [reload]);
   useEffect(() => {
     if (artifactId && dialog.current && !dialog.current.open) dialog.current.showModal();
   }, [artifactId]);
+  useEffect(() => {
+    if (!editing || !data) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    goalDialog.current?.showModal();
+    return () => {
+      goalDialog.current?.close();
+      previous?.focus();
+    };
+  }, [editing, !!data]);
   async function run(operation: () => Promise<void>) {
     setBusy(true);
     setError('');
     try {
       await operation();
+      onJourneyChange();
       setReload((value) => value + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Preparation could not be saved.');
@@ -453,7 +292,7 @@ export function PreparationPlan({
             return;
           }
           if (action === 'goal' || action === 'investor') {
-            setEditing(true);
+            onEditGoal();
             return;
           }
           if (action === 'refresh') {
@@ -465,7 +304,7 @@ export function PreparationPlan({
           if (prepared) {
             setArtifactId(prepared.id);
             setSessionId(null);
-          } else if (action === 'brief') setEditing(true);
+          } else if (action === 'brief') onEditGoal();
           else onFinancials();
         }}
       />
@@ -473,270 +312,274 @@ export function PreparationPlan({
   );
   return (
     <section className="prep-plan" aria-label="Fundraising preparation">
-      <div className="prep-heading">
-        <div>
-          <span className="eyebrow">June · Your preparation plan</span>
-          <h2>Your position. Your path forward.</h2>
+      <details className="journey-details">
+        <summary>Preparation status</summary>
+        <div className="prep-heading">
+          <div>
+            <span className="eyebrow">June · Your preparation plan</span>
+            <h2>Your position. Your path forward.</h2>
+          </div>
+          <span className={`prep-agent ${data.automatic && workerOnline ? 'is-on' : ''}`}>
+            {data.automatic
+              ? workerOnline
+                ? 'Watching saved evidence'
+                : 'Worker offline · updates waiting'
+              : 'Automatic drafting paused'}
+          </span>
         </div>
-        <span className={`prep-agent ${data.automatic && workerOnline ? 'is-on' : ''}`}>
-          {data.automatic
-            ? workerOnline
-              ? 'Watching saved evidence'
-              : 'Worker offline · updates waiting'
-            : 'Automatic drafting paused'}
-        </span>
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {!data.goal && schedule}
-      {!data.goal || editing ? (
-        <div className="prep-goal-box">
-          <h3>{data.goal ? 'Update your goal' : 'What are you preparing for?'}</h3>
-          <PreparationIntentForm
-            intent={data.intent}
-            busy={busy}
-            onSave={async (intent) => {
-              await run(async () => {
-                await command('/preparation-plan/intent', {
-                  intent,
-                  version: data.version,
-                  profileVersion: data.profileVersion,
-                });
-                setEditing(false);
-              });
-            }}
-          />
-          <details>
-            <summary>Round, investor & automation settings · optional</summary>
-            <GoalForm
-              key={data.goal?.id ?? 'initial'}
-              data={data}
-              state={state}
-              busy={busy}
-              save={async (body) => {
-                await run(async () => {
-                  await command('/preparation-plan/goal', body);
-                  setEditing(false);
-                });
+        {error && <p role="alert">{error}</p>}
+      </details>
+      <details
+        className="journey-details preparation-tools"
+        open={new URLSearchParams(window.location.search).get('preparationTools') === 'claims'}
+      >
+        <summary>Company evidence & advanced preparation</summary>
+        <div className="prep-goal-summary">
+          <strong>{data.intent || 'Prepare for my next round'}</strong>
+          <button className="text-button" onClick={onEditGoal}>
+            Edit goal
+          </button>
+        </div>
+        <PreparationPosition
+          data={data}
+          receivedAt={receivedAt}
+          connectionError={connectionError}
+          notice={updateNotice}
+          busy={busy}
+          researchReady={state.capabilities.researchReady}
+          onRefresh={() => void run(() => command('/preparation-plan/refresh', {}))}
+          onCheck={() => {
+            const id = data.position?.investor?.id;
+            if (id)
+              void run(() =>
+                command(`/investors/${encodeURIComponent(id)}/check`, {
+                  key: crypto.randomUUID(),
+                }),
+              );
+          }}
+        />
+        {financialView && (
+          <div className="prep-financial-view">
+            <button className="text-button" onClick={() => setFinancialView(false)}>
+              Close financial review
+            </button>
+            <FinancialPerformanceStatement
+              revision={state.workspace.revision}
+              onEvidence={() => {
+                if (financial) {
+                  setArtifactId(financial.id);
+                  setSessionId(null);
+                } else onFinancials();
               }}
             />
-          </details>
-          {data.goal && (
-            <button className="text-button" onClick={() => setEditing(false)}>
-              Cancel changes
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="prep-goal-summary">
-            <div>
-              <span className="eyebrow">Your goal</span>
-              <strong>{data.intent || 'Prepare for my next round'}</strong>
-            </div>
-            <button className="button secondary" onClick={() => setEditing(true)}>
-              Update goal
-            </button>
           </div>
-          <PreparationPosition
-            data={data}
-            receivedAt={receivedAt}
-            connectionError={connectionError}
-            notice={updateNotice}
-            busy={busy}
-            researchReady={state.capabilities.researchReady}
-            onRefresh={() => void run(() => command('/preparation-plan/refresh', {}))}
-            onCheck={() => {
-              const id = data.position?.investor?.id;
-              if (id)
-                void run(() =>
-                  command(`/investors/${encodeURIComponent(id)}/check`, {
-                    key: crypto.randomUUID(),
-                  }),
-                );
-            }}
-          />
-          {financialView && (
-            <div className="prep-financial-view">
-              <button className="text-button" onClick={() => setFinancialView(false)}>
-                Close financial review
-              </button>
-              <FinancialPerformanceStatement
-                revision={state.workspace.revision}
-                onEvidence={() => {
-                  if (financial) {
-                    setArtifactId(financial.id);
-                    setSessionId(null);
-                  } else onFinancials();
-                }}
-              />
+        )}
+        {schedule}
+        <DeckClaims state={state} onChange={() => setReload((value) => value + 1)} />
+        {!data.connectedActive && (
+          <div className="prep-next">
+            <div>
+              <span className="eyebrow">Recommended next action</span>
+              <h3>{data.nextAction}</h3>
+              {data.outdated && (
+                <p>
+                  Saved inputs changed. Previous reviews remain in history; refresh before accepting
+                  or rehearsing.
+                </p>
+              )}
             </div>
-          )}
-          {schedule}
-          <DeckClaims state={state} onChange={() => setReload((value) => value + 1)} />
-          <ConnectedPreparation state={state} onChange={() => setReload((value) => value + 1)} />
-          {!data.connectedActive && (
-            <div className="prep-next">
-              <div>
-                <span className="eyebrow">Recommended next action</span>
-                <h3>{data.nextAction}</h3>
-                {data.outdated && (
-                  <p>
-                    Saved inputs changed. Previous reviews remain in history; refresh before
-                    accepting or rehearsing.
-                  </p>
-                )}
-              </div>
-              <div className="prep-buttons">
-                {data.outdated ? (
-                  <button
-                    className="button"
-                    disabled={busy}
-                    onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
-                  >
-                    Refresh plan
-                  </button>
-                ) : nextArtifact ? (
-                  <button
-                    ref={actionButton}
-                    className="button"
-                    onClick={() => {
-                      setArtifactId(nextArtifact.id);
-                      setSessionId(null);
-                    }}
-                  >
-                    Review prepared work <ArrowRight size={16} />
-                  </button>
-                ) : (
-                  <button className="button" onClick={onFinancials}>
-                    Open financial evidence
-                  </button>
-                )}
-                <button className="button secondary" onClick={onResearch}>
-                  Investor research
-                </button>
-              </div>
-            </div>
-          )}
-          <PreparationRecommendationBasis
-            data={data}
-            onEvidence={(id) => {
-              setArtifactId(id);
-              setSessionId(null);
-            }}
-          />
-          <details className="prep-supporting">
-            <summary>Prepared materials, feedback & history</summary>
-            <div className="prep-artifacts">
-              {data.plan?.artifacts.map((item) => (
+            <div className="prep-buttons">
+              {data.outdated ? (
                 <button
-                  className="prep-artifact"
-                  key={item.id}
-                  disabled={data.outdated}
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
+                >
+                  Refresh plan
+                </button>
+              ) : nextArtifact ? (
+                <button
+                  ref={actionButton}
+                  className="button"
                   onClick={() => {
-                    setArtifactId(item.id);
+                    setArtifactId(nextArtifact.id);
                     setSessionId(null);
                   }}
                 >
-                  <span className="eyebrow">
-                    {data.decisions.findLast((entry) => entry.artifactId === item.id)?.kind ===
-                    'accepted'
-                      ? 'Reviewed'
-                      : 'Prepared for review'}
-                  </span>
-                  <strong>{item.title}</strong>
-                  <span>{item.why}</span>
-                  {item.fictional && (
-                    <span className="progress-tag tone-demo">Fictional demo evidence</span>
-                  )}
+                  Review prepared work <ArrowRight size={16} />
                 </button>
-              ))}
+              ) : (
+                <button className="button" onClick={onFinancials}>
+                  Open financial evidence
+                </button>
+              )}
+              <button className="button secondary" onClick={onResearch}>
+                Investor research
+              </button>
             </div>
-            {data.feedback.length > 0 && (
-              <div className="prep-feedback">
-                <h3>What still needs attention</h3>
-                <ul>
-                  {data.feedback.map((item) => (
-                    <li key={`${item.sessionId}:${item.taskId}`}>
-                      <a
-                        href={`/?page=followups&session=${encodeURIComponent(item.sessionId)}&followupsOffset=${item.offset}&task=${encodeURIComponent(item.taskId)}#practice-${encodeURIComponent(item.sessionId)}`}
-                      >
-                        {item.title}
-                      </a>{' '}
-                      · {item.status.replaceAll('_', ' ')}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {data.reviews.length > 0 && (
-              <details>
-                <summary>Saved rehearsal results · {data.reviews.length} recent</summary>
-                {data.reviews.map((review) => (
-                  <div className="prep-review" key={review.sessionId}>
-                    <strong>
-                      {review.status.replaceAll('_', ' ')}
-                      {!review.current ? ' · earlier preparation' : ''}
-                    </strong>
-                    <p>
-                      {review.summary ??
-                        'The worker processes submitted assessments. A failed review can be retried below.'}
-                    </p>
-                    <details>
-                      <summary>Inspect assessment & retry</summary>
-                      <EvaluationPanel sessionId={review.sessionId} receipt="written" />
-                    </details>
-                  </div>
+          </div>
+        )}
+        <PreparationRecommendationBasis
+          data={data}
+          onEvidence={(id) => {
+            setArtifactId(id);
+            setSessionId(null);
+          }}
+        />
+        <details className="prep-supporting">
+          <summary>Prepared materials, feedback & history</summary>
+          <div className="prep-artifacts">
+            {data.plan?.artifacts.map((item) => (
+              <button
+                className="prep-artifact"
+                key={item.id}
+                disabled={data.outdated}
+                onClick={() => {
+                  setArtifactId(item.id);
+                  setSessionId(null);
+                }}
+              >
+                <span className="eyebrow">
+                  {data.decisions.findLast((entry) => entry.artifactId === item.id)?.kind ===
+                  'accepted'
+                    ? 'Reviewed'
+                    : 'Prepared for review'}
+                </span>
+                <strong>{item.title}</strong>
+                <span>{item.why}</span>
+                {item.fictional && (
+                  <span className="progress-tag tone-demo">Fictional demo evidence</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {data.feedback.length > 0 && (
+            <div className="prep-feedback">
+              <h3>What still needs attention</h3>
+              <ul>
+                {data.feedback.map((item) => (
+                  <li key={`${item.sessionId}:${item.taskId}`}>
+                    <a
+                      href={`/?page=followups&session=${encodeURIComponent(item.sessionId)}&followupsOffset=${item.offset}&task=${encodeURIComponent(item.taskId)}#practice-${encodeURIComponent(item.sessionId)}`}
+                    >
+                      {item.title}
+                    </a>{' '}
+                    · {item.status.replaceAll('_', ' ')}
+                  </li>
                 ))}
-              </details>
-            )}
-          </details>
-          <details className="prep-method">
-            <summary>How June keeps this plan current</summary>
-            <p>
-              Financial snapshots + confirmed company goal + selected investor research + completed
-              practice feedback → updated preparation drafts → your review → targeted rehearsal.
-            </p>
-            <ul>
-              {data.plan?.changes.map((change) => (
-                <li key={change}>{change}</li>
-              ))}
-            </ul>
-            <p>
-              Last plan update:{' '}
-              {data.plan ? new Date(data.plan.createdAt).toLocaleString() : 'not yet prepared'}.
-              Unchanged inputs create no new drafts. The worker must remain running.
-            </p>
-            <p>
-              These milestones track preparation. They do not predict funding, financial performance
-              or a closing date. Desired dates are founder targets; conditional completion estimates
-              use your saved effort and availability assumptions. Accepted reviews in the last seven
-              days describe activity, not productivity or future performance.
-            </p>
-            <div className="prep-buttons">
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() =>
-                  void run(() =>
-                    command('/preparation-plan/automatic', {
-                      automatic: !data.automatic,
-                      version: data.version,
-                    }),
-                  )
-                }
-              >
-                {data.automatic ? 'Pause automatic drafts' : 'Enable automatic drafts'}
-              </button>
-              <button
-                className="text-button"
-                disabled={busy}
-                onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
-              >
-                <RefreshCw size={14} /> Check saved inputs now
-              </button>
+              </ul>
             </div>
-          </details>
-        </>
+          )}
+          {data.reviews.length > 0 && (
+            <details>
+              <summary>Saved rehearsal results · {data.reviews.length} recent</summary>
+              {data.reviews.map((review) => (
+                <div className="prep-review" key={review.sessionId}>
+                  <strong>
+                    {review.status.replaceAll('_', ' ')}
+                    {!review.current ? ' · earlier preparation' : ''}
+                  </strong>
+                  <p>
+                    {review.summary ??
+                      'The worker processes submitted assessments. A failed review can be retried below.'}
+                  </p>
+                  <details>
+                    <summary>Inspect assessment & retry</summary>
+                    <EvaluationPanel sessionId={review.sessionId} receipt="written" />
+                  </details>
+                </div>
+              ))}
+            </details>
+          )}
+        </details>
+        <details className="prep-method">
+          <summary>How June keeps this plan current</summary>
+          <p>
+            Financial snapshots + confirmed company goal + selected investor research + completed
+            practice feedback → updated preparation drafts → your review → targeted rehearsal.
+          </p>
+          <ul>
+            {data.plan?.changes.map((change) => (
+              <li key={change}>{change}</li>
+            ))}
+          </ul>
+          <p>
+            Last plan update:{' '}
+            {data.plan ? new Date(data.plan.createdAt).toLocaleString() : 'not yet prepared'}.
+            Unchanged inputs create no new drafts. The worker must remain running.
+          </p>
+          <p>
+            These milestones track preparation. They do not predict funding, financial performance
+            or a closing date. Desired dates are founder targets; conditional completion estimates
+            use your saved effort and availability assumptions. Accepted reviews in the last seven
+            days describe activity, not productivity or future performance.
+          </p>
+          <div className="prep-buttons">
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(() =>
+                  command('/preparation-plan/automatic', {
+                    automatic: !data.automatic,
+                    version: data.version,
+                  }),
+                )
+              }
+            >
+              {data.automatic ? 'Pause automatic drafts' : 'Enable automatic drafts'}
+            </button>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void run(() => command('/preparation-plan/refresh', {}))}
+            >
+              <RefreshCw size={14} /> Check saved inputs now
+            </button>
+          </div>
+        </details>
+      </details>
+      <ConnectedPreparation
+        state={state}
+        onChange={() => {
+          setReload((value) => value + 1);
+          onJourneyChange();
+        }}
+        compact
+      />
+      {editing && (
+        <dialog
+          ref={goalDialog}
+          className="prep-dialog simple-goal-dialog"
+          aria-labelledby="simple-goal-title"
+          onCancel={(event) => {
+            event.preventDefault();
+            onCloseGoal();
+          }}
+        >
+          <div className="goal-heading">
+            <h2 id="simple-goal-title">Your goal</h2>
+            <button className="button secondary" disabled={busy} onClick={onCloseGoal}>
+              Close
+            </button>
+          </div>
+          {error && <p role="alert">{error}</p>}
+          <PreparationGoalEditor
+            data={data}
+            state={state}
+            busy={busy}
+            onEditContext={() => {
+              onCloseGoal();
+              onEditContext();
+            }}
+            save={async (body) => {
+              await run(async () => {
+                await command('/preparation-plan/intent', body);
+                onCloseGoal();
+              });
+            }}
+          />
+        </dialog>
       )}
       {artifactId && (
         <dialog

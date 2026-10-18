@@ -41,6 +41,8 @@ import { ScenarioService, type ScenarioGenerator } from './ScenarioService.js';
 import type { ScenarioStore } from './ScenarioStore.js';
 import { PracticeTurnService } from './PracticeTurnService.js';
 import type { PracticeTurnProvider } from './PracticeTurnProvider.js';
+import { InvestorProfileService } from './InvestorProfileService.js';
+import type { InvestorProfileProvider } from './InvestorProfileProvider.js';
 
 export class WorkspaceService {
   readonly journey: GoalJourneyService;
@@ -52,6 +54,7 @@ export class WorkspaceService {
   readonly guided: PracticeTurnService;
   readonly preparation: PreparationPlanService;
   readonly connected: ConnectedPreparationService;
+  readonly investorProfiles: InvestorProfileService;
 
   constructor(
     readonly store: WorkspaceStore,
@@ -61,6 +64,7 @@ export class WorkspaceService {
     readonly researchRuns?: ResearchRunStore,
     scenarioDependencies?: { store: ScenarioStore; generator: ScenarioGenerator },
     turnProvider?: PracticeTurnProvider,
+    investorProfileProvider?: InvestorProfileProvider,
   ) {
     this.journey = new GoalJourneyService(this);
     this.investors = new InvestorTrackingService(this, research);
@@ -76,6 +80,7 @@ export class WorkspaceService {
     this.guided = new PracticeTurnService(this, turnProvider);
     this.preparation = new PreparationPlanService(this);
     this.connected = new ConnectedPreparationService(this);
+    this.investorProfiles = new InvestorProfileService(this, investorProfileProvider);
   }
   async read(): Promise<Workspace> {
     const state = await this.store.load();

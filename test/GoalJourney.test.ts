@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { preparationFixture } from './PreparationProgressFixtures.js';
 import { fixtureEvaluationProvider } from './EvaluationFixtures.js';
 import { ResearchFixture } from './fixtures/ResearchFixture.js';
@@ -21,6 +22,10 @@ import { projectGoalPosition } from '../src/features/GoalProgress.js';
 import { assembleScenarioInput } from '../src/features/ScenarioSources.js';
 import { DemoScenarioGenerator } from '../src/infrastructure/ScenarioGeneration.js';
 import { practiceContextSchema } from '../src/contracts/PracticeContext.js';
+import { evidenceFixture } from './EvidenceReviewFixtures.js';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { GoalPracticeFeedback, GoalRadarOpportunities } from '../src/web/GoalPracticeFeedback.js';
 
 type JourneyAction<T> = T extends object ? Omit<T, 'key' | 'revision'> : never;
 type PreparationAction<T> = T extends object ? Omit<T, 'key' | 'version'> : never;
@@ -295,6 +300,299 @@ function fixture() {
 }
 
 describe('Goal-led investor journey and durable progress', () => {
+  it('saves goal pace, updates the goal forecast and preserves the historical graph and approvals', async () => {
+    const f = fixture();
+    await f.confirm();
+    const initial = await f.service.journey.view();
+    const history = structuredClone(f.journey().events);
+    const faster = await f.command({ action: 'set_pace', pace: 1.25 });
+    expect(faster.position?.completed).toBe(initial.position?.completed);
+    expect(faster.position?.remainingHours).toBe(initial.position?.remainingHours);
+    expect(faster.position?.pace).toBe(1.25);
+    expect(faster.position?.estimatedReadyDate).toBe(
+      faster.position?.paceScenarios?.find((scenario) => scenario.pace === 1.25)
+        ?.estimatedReadyDate,
+    );
+    expect(
+      faster.position?.paceScenarios?.find((scenario) => scenario.pace === 1.25)?.dailyHours,
+    ).toBe('2.5');
+    expect(f.journey().events.slice(0, history.length)).toEqual(history);
+    expect(f.journey().events.at(-1)?.reason).toContain('pace changed');
+    expect((await f.service.preparation.view()).journeyPace).toBe(1.25);
+    const count = f.journey().events.length;
+    const tomorrow = new Date(Date.now() + 86400000);
+    const { recordGoalProgress } = await import('../src/features/GoalProgress.js');
+    expect(recordGoalProgress(structuredClone(f.state()), [], tomorrow)).toBeNull();
+    expect(f.journey().events).toHaveLength(count);
+    const slower = await f.command({ action: 'set_pace', pace: 0.75 });
+    expect(slower.position?.estimatedReadyDate).toBe(
+      slower.position?.paceScenarios?.find((scenario) => scenario.pace === 0.75)
+        ?.estimatedReadyDate,
+    );
+    expect(slower.position?.completed).toBe(initial.position?.completed);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('shows saved strengths, proven retry improvement and the next gap only for the matching investor', async () => {
+    const f = fixture();
+    await f.confirm();
+    await f.prepare({ action: 'start' });
+    await f.prepare({ action: 'approve_pitch' });
+    const first = await f.shortlist();
+    await f.prepare({ action: 'approve_brief', targetId: first.id });
+    const { session, evaluation } = await f.addPractice(first.id);
+    expect((await f.service.journey.view()).practiceUpdates[0]).toMatchObject({
+      targetId: first.id,
+      status: 'queued',
+      strengths: [],
+      improvements: [],
+      nextPractice: null,
+    });
+    await f.service.change((current) => {
+      const stored = current.rehearsals.find((item) => item.id === session.id);
+      const report = evidenceFixture().evaluation.report;
+      if (!stored || !report) throw new Error('Missing fictional call');
+      report.coaching.strengths = [
+        {
+          statement: 'You cited the saved revenue correctly.',
+          claimIds: ['revenue'],
+          turnIds: ['answer'],
+        },
+      ];
+      const original = report.coaching.items[0];
+      if (!original) throw new Error('Missing fictional gap');
+      report.coaching.items.push({
+        ...original,
+        id: 'runway-gap',
+        gap: 'Cash evidence is missing.',
+        practiceQuestion: 'Which documents establish runway?',
+      });
+      stored.evaluations = [{ ...evaluation, report }];
+    });
+    const assessed = await f.service.journey.view();
+    const update = assessed.practiceUpdates[0];
+    expect(update).toMatchObject({
+      targetId: first.id,
+      status: 'ready',
+      fictional: true,
+      strengths: ['You cited the saved revenue correctly.'],
+      improvements: [],
+      nextPractice: { question: 'Explain the bridge from operating loss to net income.' },
+    });
+    expect(update?.nextPractice?.href).toContain('task=profit-coaching');
+    const point = structuredClone(f.journey().events.at(-1));
+    await f.service.change((current) => {
+      const stored = current.rehearsals.find((item) => item.id === session.id);
+      if (!stored) throw new Error('Missing fictional call');
+      const retryId = randomUUID();
+      const requestKey = randomUUID();
+      const retryEvaluation = structuredClone(evaluation);
+      const report = evidenceFixture().evaluation.report;
+      if (!report) throw new Error('Missing retry report');
+      report.coaching.comparison = {
+        outcome: 'improved',
+        explanation: 'You now distinguish the credit from operating income.',
+        turnIds: ['answer'],
+      };
+      retryEvaluation.report = report;
+      retryEvaluation.parentEvaluationId = evaluation.id;
+      retryEvaluation.parentItemId = 'profit-coaching';
+      retryEvaluation.id = randomUUID();
+      stored.evaluationResponses.push({
+        id: retryId,
+        evaluationId: evaluation.id,
+        itemId: 'profit-coaching',
+        kind: 'practice',
+        text: 'Fictional corrected answer',
+        createdAt: new Date().toISOString(),
+        requestKey,
+      });
+      current.rehearsals.push({
+        ...structuredClone(stored),
+        id: retryId,
+        evaluationResponses: [],
+        evaluations: [retryEvaluation],
+      });
+    });
+    const improved = await f.service.journey.view();
+    expect(improved.practiceUpdates[0]?.improvements).toEqual([
+      'You now distinguish the credit from operating income.',
+    ]);
+    expect(improved.practiceUpdates[0]?.nextPractice?.question).toBe(
+      'Which documents establish runway?',
+    );
+    const second = await f.shortlist(1);
+    const multi = await f.service.journey.view();
+    expect(multi.practiceUpdates).toHaveLength(1);
+    expect(multi.practiceUpdates[0]?.targetId).toBe(first.id);
+    expect(
+      multi.position?.tracks.find((track) => track.targetId === second.id)?.sessionId,
+    ).toBeNull();
+    expect(f.journey().events.find((event) => event.id === point?.id)).toEqual(point);
+    const html = renderToStaticMarkup(createElement(GoalPracticeFeedback, { data: multi }));
+    expect(html).toContain('What went well');
+    expect(html).toContain('What improved');
+    expect(html).toContain('Which documents establish runway?');
+    expect(html).toContain('Preparing for Fictional investor 1');
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('keeps radar leads outside goal scope and excludes dismissed or outdated opportunities', async () => {
+    const f = fixture();
+    await f.confirm();
+    const before = await f.service.journey.view();
+    await f.service.change((current) => {
+      const source = current.evidence[0];
+      if (!source) throw new Error('Missing source');
+      current.radar.events.push({
+        id: randomUUID(),
+        resultId: 'fictional-result',
+        dedupeKey: 'fictional-lead',
+        researchRunId: null,
+        jobId: null,
+        investorId: f.investorId(),
+        suggestionId: null,
+        investorName: 'Fictional YC',
+        profileVersion: current.profile.version,
+        evidenceId: source.id,
+        observedAt: new Date().toISOString(),
+        committedAt: new Date().toISOString(),
+        readAt: null,
+        dismissedAt: null,
+        supersedesEventId: null,
+        historical: false,
+        fictional: true,
+        occurredAt: null,
+        signal: {
+          category: 'new_candidate',
+          headline: 'Fictional YC opportunity',
+          summary: 'Fictional source',
+          whyItMatters: 'Review this lead',
+          supportingQuote: 'Fictional source',
+          notificationEligible: false,
+          needsReview: true,
+          canonicalEventKey: null,
+        },
+      });
+    });
+    const withLead = await f.service.journey.view();
+    expect(withLead.radarOpportunities).toHaveLength(1);
+    expect(withLead.position?.required).toBe(before.position?.required);
+    expect(withLead.position?.completed).toBe(before.position?.completed);
+    expect(withLead.targets).toHaveLength(0);
+    const html = renderToStaticMarkup(
+      createElement(GoalRadarOpportunities, { items: withLead.radarOpportunities }),
+    );
+    expect(html).toContain('Fictional YC');
+    expect(html).toContain('radarEvent=');
+    await f.service.change((current) => {
+      for (const event of current.radar.events) event.dismissedAt = new Date().toISOString();
+    });
+    expect((await f.service.journey.view()).radarOpportunities).toHaveLength(0);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('shows waiting and partial calls without inventing improvements or completing practice', async () => {
+    const f = fixture();
+    await f.confirm();
+    await f.prepare({ action: 'start' });
+    await f.prepare({ action: 'approve_pitch' });
+    const target = await f.shortlist();
+    await f.prepare({ action: 'approve_brief', targetId: target.id });
+    const { session, evaluation } = await f.addPractice(target.id);
+    await f.service.change((current) => {
+      const stored = current.rehearsals.find((item) => item.id === session.id);
+      if (!stored) throw new Error('Missing fictional call');
+      stored.status = 'awaiting_transcript';
+      stored.turns = [];
+      stored.evaluations = [];
+    });
+    const waiting = await f.service.journey.view();
+    expect(waiting.position?.completed).toBe(3);
+    expect(waiting.practiceUpdates[0]).toMatchObject({
+      status: 'awaiting_transcript',
+      assessedSessionId: null,
+      summary: null,
+      improvements: [],
+    });
+    expect(renderToStaticMarkup(createElement(GoalPracticeFeedback, { data: waiting }))).toContain(
+      'Waiting for final transcript',
+    );
+    await f.service.change((current) => {
+      const stored = current.rehearsals.find((item) => item.id === session.id);
+      if (!stored) throw new Error('Missing fictional call');
+      stored.status = 'partial';
+      stored.turns = [{ role: 'user', text: 'An interrupted fictional answer.' }];
+      stored.evaluations = [{ ...evaluation, scope: 'partial' }];
+    });
+    const partial = await f.service.journey.view();
+    expect(partial.practiceUpdates[0]).toMatchObject({
+      partial: true,
+      assessedSessionId: null,
+      summary: null,
+      strengths: [],
+      improvements: [],
+    });
+    expect(partial.position?.completed).toBe(3);
+  });
+  it('keeps worker preparation drafts JSON-safe when investor sources have no archive ID', async () => {
+    const f = fixture();
+    await f.confirm();
+    await f.shortlist();
+    await f.service.preparation.reconcile(true);
+    expect(z.json().safeParse(f.preparation().plans).success).toBe(true);
+  });
+
+  it('saves the simple goal and optional funding details in one versioned change', async () => {
+    const f = fixture();
+    await f.confirm();
+    const target = await f.shortlist();
+    const prior = structuredClone(f.journey().events);
+    const journeyId = f.journey().id;
+    const view = await f.service.preparation.view();
+    const profileVersion = f.state().profile.version;
+    const details = preparationGoalInputSchema.parse({
+      round: 'Seed',
+      previousRounds: 0,
+      amount: '1500000',
+      currency: 'CAD',
+      desiredCheck: { min: '150000', max: '300000', currency: 'CAD' },
+      targetDate: '2026-12-01',
+      timezone: 'America/Toronto',
+      investorId: null,
+    });
+    const saves = f.save.mock.calls.length;
+    await f.service.preparation.setIntent(
+      'Fictional updated fundraising goal',
+      view.version,
+      profileVersion,
+      details,
+    );
+    expect(f.save).toHaveBeenCalledTimes(saves + 1);
+    expect(f.state().profile.goal).toBe('Fictional updated fundraising goal');
+    expect(f.preparation().goals.at(-1)).toMatchObject({
+      ...details,
+      objective: 'Fictional updated fundraising goal',
+    });
+    expect(f.journey().id).toBe(journeyId);
+    expect(f.journey().targets[0]?.id).toBe(target.id);
+    expect(f.journey().events.slice(0, prior.length)).toEqual(prior);
+    const current = structuredClone(f.state());
+    await expect(
+      f.service.preparation.setIntent('Stale edit', view.version, profileVersion, details),
+    ).rejects.toThrow(ConflictError);
+    expect(f.state()).toEqual(current);
+    await expect(
+      f.service.preparation.setIntent(
+        'Invalid amount',
+        f.preparation().version,
+        f.state().profile.version,
+        { ...details, amount: '0' },
+      ),
+    ).rejects.toThrow('positive');
+    expect(f.state()).toEqual(current);
+  });
+
   it('keeps reads pure before activation and captures only one current baseline after goal confirmation', async () => {
     const f = fixture();
     const original = structuredClone(f.state());
