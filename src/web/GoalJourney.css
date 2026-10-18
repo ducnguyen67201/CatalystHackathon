@@ -280,13 +280,173 @@
   font-size: 12px;
   color: #62716a;
   margin: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.goal-chart-instruction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #6b766f;
+}
+.goal-chart-canvas {
+  position: relative;
+  min-width: 760px;
+}
+.goal-chart-hotspot {
+  position: absolute;
+  appearance: none;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: help;
+  color: inherit;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+.goal-chart-hotspot:focus-visible {
+  outline: 2px solid #456c59;
+  outline-offset: 3px;
+}
+.goal-chart-current-guide {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.goal-chart-current-guide:hover {
+  border-color: #9bb1a1;
+  box-shadow: 0 0 0 4px rgb(69 108 89 / 8%);
+}
+.goal-chart-forecast-guide {
+  left: 74%;
+  top: 12.96%;
+  width: 24.5%;
+  height: 67.78%;
+  border-radius: 8px;
+}
+.goal-chart-forecast-guide:hover {
+  border-color: #bcac88;
+}
+.goal-chart-hover-card {
+  position: absolute;
+  top: 12px;
+  z-index: 2;
+  width: 276px;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid #d1ddd3;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow:
+    0 4px 8px rgb(33 51 39 / 5%),
+    0 12px 24px rgb(33 51 39 / 12%);
+  color: #30384b;
+  pointer-events: none;
+}
+.goal-chart-guide-heading {
+  font-size: 12px;
+  font-weight: 700;
+}
+.goal-chart-hover-card small {
+  display: block;
+  margin: 3px 0 8px;
+  color: #62716a;
+  font-size: 10px;
+}
+.goal-chart-hover-card strong {
+  display: block;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.goal-chart-hover-card p {
+  margin: 6px 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.goal-chart-guide-next {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid #e5ebe2;
+  color: #456c59;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.goal-chart-guide-next svg {
+  flex: 0 0 14px;
+}
+.goal-chart-guide-next span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.goal-chart-next-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #dfe8d9;
+  background: #f3f7ef;
+}
+.goal-chart-next-action > svg {
+  flex: 0 0 18px;
+  color: #456c59;
+}
+.goal-chart-next-action > div {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 4px;
+}
+.goal-chart-next-action span {
+  font-size: 11px;
+  color: #62716a;
+}
+.goal-chart-next-action strong {
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.goal-chart-next-action a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  font-size: 12px;
+}
+.goal-chart-next-action a svg {
+  transition: transform 150ms ease;
+}
+.goal-chart-next-action a:hover svg {
+  transform: translateX(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-chart-hotspot,
+  .goal-chart-next-action a svg {
+    transition: none;
+  }
+  .goal-chart-next-action a:hover svg {
+    transform: none;
+  }
 }
 .goal-chart-scroll,
 .goal-table-scroll {
   overflow-x: auto;
   max-width: 100%;
 }
-.goal-chart-scroll svg {
+.goal-chart-canvas > svg {
   width: 100%;
   min-width: 760px;
   display: block;

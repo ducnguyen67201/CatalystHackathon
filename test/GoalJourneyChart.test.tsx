@@ -6,6 +6,13 @@ import { GoalJourney, GoalJourneyChart } from '../src/web/GoalJourney.js';
 
 const goalId = randomUUID();
 const scopeId = randomUUID();
+function plottedMarks(html: string) {
+  const marks = html.match(
+    /<svg[^>]*aria-label="Saved preparation history, current position, and separate remaining-work estimate"[^>]*>([\s\S]*?)<\/svg>/,
+  )?.[1];
+  if (!marks) throw new Error('Missing preparation plot');
+  return marks;
+}
 function position(overrides: Partial<GoalPosition> = {}): GoalPosition {
   return {
     projectionVersion: 'goal-progress-v1',
@@ -58,7 +65,7 @@ describe('goal journey history graph', () => {
     expect(html).toContain('Save goal to estimate');
     expect(html).toContain('No saved observations yet');
     expect(html).not.toContain('role="button"');
-    expect(html).not.toContain('<path');
+    expect(plottedMarks(html)).not.toContain('<path');
     expect(html).not.toContain('0/6');
     expect(html).not.toContain('2026-');
   });
@@ -85,7 +92,7 @@ describe('goal journey history graph', () => {
     expect(html).toContain('4 of 6 reviewed');
     expect(html).toContain('4 of 11 reviewed');
     expect(html).toContain('Goal or preparation scope changed');
-    expect(html).not.toContain('<path');
+    expect(plottedMarks(html)).not.toContain('<path');
     expect(html.match(/role="button"/g)).toHaveLength(2);
     expect(html).toContain('tabindex="0"');
     expect(html).toContain('Planned remaining work');
@@ -117,7 +124,9 @@ describe('goal journey history graph', () => {
     expect(html).toContain('No saved observations yet');
     expect(html).toContain('2/6 reviewed');
     expect(html).not.toContain('role="button"');
-    expect(html).not.toContain('<path');
+    expect(plottedMarks(html)).not.toContain('<path');
+    expect(html).toContain('Explain my current preparation and next step');
+    expect(html).toContain('Explain the preparation forecast and how to adjust pace');
   });
 
   it('filters to the selected target without presenting a goal estimate as target-specific', () => {

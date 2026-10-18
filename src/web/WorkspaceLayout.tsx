@@ -39,7 +39,7 @@ export function WorkspaceLayout({
     { id: Page.FOLLOWUPS, label: 'Follow-ups', icon: Target },
   ];
   return (
-    <div className="layout dashboard-layout">
+    <div className={`layout dashboard-layout${page === Page.OVERVIEW ? ' overview-layout' : ''}`}>
       <aside
         className="workspace-sidebar"
         aria-label="Workspace sidebar"

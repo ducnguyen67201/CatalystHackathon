@@ -200,6 +200,19 @@ Browser errors were absent. No remote deployment or paid-provider validation was
 
 # Post-call homepage loop
 
+Overview fills the available workspace width with compact goal and metric cards. At desktop
+widths, the history graph and pace scenarios sit beside a practice-feedback/Radar rail. Target
+investors remain independent cards below. Tablet and phone layouts stack sections without
+hiding data; the graph retains its own horizontal scroll. Reading widths on other pages are
+unchanged. This arrangement changes presentation only, preserving all sources and progress.
+
+The preparation graph has hover/focus guidance for saved points, the current marker and the
+shaded estimate. Saved points explain the next step recorded at that time; their click/Enter
+behavior still opens historical inspection. Current and forecast markers have touch and
+keyboard controls; Escape dismisses guidance. A persistent next-step strip links to current
+preparation, including the selected investor when the graph is filtered. Hover guidance is
+presentation only: no approvals, progress, estimates or saved history are changed.
+
 The homepage reads saved per-investor practice updates with the goal projection. After the
 final transcript arrives, assessment publication updates the current checklist and saved graph
 observations. The homepage polls every ten seconds while visible. It shows the latest call
