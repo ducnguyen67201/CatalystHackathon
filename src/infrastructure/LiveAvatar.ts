@@ -1,4 +1,5 @@
 import { interviewerContext } from '../contracts/PracticeContext.js';
+import { splitAvatarContext } from './LiveAvatarContext.js';
 import { z } from 'zod';
 import { AVATAR_SESSION_DURATION_SECONDS } from '../contracts/AvatarPractice.js';
 import type { TranscriptTurn } from '../contracts/Workspace.js';
@@ -21,13 +22,14 @@ const stoppedSessionSchema = z.object({
 /** Only this adapter sends LiveAvatar credentials; browsers receive a session token. */
 export class LiveAvatarProvider implements AvatarProvider {
   async createToken(settings: AvatarSettings, context: PracticeContext) {
+    const dynamicVariables = splitAvatarContext(JSON.stringify(interviewerContext(context)));
     const response = await fetch('https://api.liveavatar.com/v1/sessions/token', {
       method: 'POST',
       headers: { 'X-API-KEY': settings.apiKey, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
         mode: 'FULL',
-        dynamic_variables: { brief_context: JSON.stringify(interviewerContext(context)) },
+        dynamic_variables: dynamicVariables,
         avatar_id: settings.avatarId,
         max_session_duration: AVATAR_SESSION_DURATION_SECONDS,
         avatar_persona: {

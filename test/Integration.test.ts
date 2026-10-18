@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { Client } from 'pg';
 import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import {
   stateResponseSchema,
@@ -423,6 +424,18 @@ describe('PostgreSQL-backed application workflow', () => {
           })
         ).statusCode,
       ).toBe(500);
+      expect((await service.read()).rehearsals.at(-1)?.status).toBe('partial');
+      const capacityError =
+        'This practice context exceeds the live interviewer’s capacity. Choose a scenario with fewer source records; no context was truncated or sent to LiveAvatar.';
+      createToken.mockRejectedValueOnce(new Error(capacityError));
+      const oversized = await videoApi.inject({
+        method: 'POST',
+        url: '/api/avatar/sessions',
+        headers,
+        payload: {},
+      });
+      expect(oversized.statusCode).toBe(400);
+      expect(z.object({ error: z.string() }).parse(oversized.json()).error).toBe(capacityError);
       expect((await service.read()).rehearsals.at(-1)?.status).toBe('partial');
     } finally {
       await videoApi.close();

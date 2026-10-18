@@ -249,7 +249,9 @@ export function AvatarPractice({
       await finish(false);
       if (mounted.current) {
         onError(
-          'Could not start the live interviewer. Check microphone permission, LiveAvatar credits and voice settings. Try Chrome if this browser cannot connect.',
+          stage === 'create_session' && error instanceof Error && !(error instanceof z.ZodError)
+            ? error.message
+            : 'Could not start the live interviewer. Check microphone permission, LiveAvatar credits and voice settings. Try Chrome if this browser cannot connect.',
         );
       }
     } finally {

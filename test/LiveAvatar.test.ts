@@ -7,6 +7,7 @@ import {
 } from '../src/contracts/PracticeContext.js';
 import { readEnvironment } from '../src/server/Env.js';
 import { isAvatarConfigured } from '../src/server/AvatarRoutes.js';
+import { splitAvatarContext } from '../src/infrastructure/LiveAvatarContext.js';
 
 const avatarId = 'b672e83f-398a-4701-ac89-949fe3b680ea';
 const contextId = 'b822515d-d4a5-431c-bbc4-059bfca7b702';
@@ -73,7 +74,7 @@ describe('LiveAvatar adapter', () => {
     const body: unknown = JSON.parse(z.string().parse(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
       avatar_persona: { context_id: contextId },
-      dynamic_variables: { brief_context: JSON.stringify(context) },
+      dynamic_variables: splitAvatarContext(JSON.stringify(context)),
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
