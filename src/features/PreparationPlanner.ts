@@ -380,6 +380,7 @@ export function projectPreparationPlan(
     automatic: saved.automatic,
     goal,
     schedule: saved.schedules.at(-1) ?? null,
+    ...(saved.journey ? { journeyPace: saved.journey.pace ?? 1 } : {}),
     plan,
     outdated: cycle ? cycleOutdated(state, cycle) : outdated,
     heartbeatAt,

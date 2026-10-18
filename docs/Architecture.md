@@ -1,5 +1,24 @@
 # June implemented architecture
 
+### Homepage practice feedback and goal pace
+
+`GoalPracticeUpdates.ts` reads frozen preparation lineage and saved root-call evaluations.
+It projects latest call status separately from the last completed full assessment, and includes
+only explicitly observed follow-up improvement. Pending and partial calls receive no invented
+performance feedback. Follow-up URLs preserve session/task identity and pagination. New Radar
+leads remain outside selected target scope. `GoalPracticeFeedback.tsx` renders per-investor
+strengths, observed improvements and next practice cards, with new leads shown separately.
+
+The optional journey `pace` field is backward compatible with existing JSONB records. The
+`set_pace` command uses revision and idempotency guards and saves a history event without
+changing approvals or source identity. Goal projections calculate three Decimal capacity
+scenarios using the same effort and evidence-delivery dependency. The selected scenario drives
+the homepage date and graph forecast; the advanced schedule uses the same saved factor. Date
+rollover alone is excluded from the semantic observation fingerprint. Earlier history and
+financial evidence remain immutable. Pace is a founder-set planning assumption, never an
+assessment-derived performance percentage. Voice assessment still depends on delivery of the
+signed provider transcript callback; browser captions are not authoritative transcripts.
+
 The implemented [Goal investor journey](GoalInvestorJourneySpec.md) adds stable goal
 identity, evidence-backed investor match, independent target preparation, and a persistent
 history/current-position graph. Its [delivery record](GoalInvestorJourneyDelivery.md) and

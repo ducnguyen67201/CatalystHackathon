@@ -465,6 +465,11 @@ function VoicePracticeSession({
           )}
         </article>
       </div>
+      {session && !running && session.status !== 'active' && (
+        <a className="button secondary" href="/" style={{ marginTop: '20px' }}>
+          View preparation progress →
+        </a>
+      )}
       {session && (
         <EvaluationPanel
           key={session.id}

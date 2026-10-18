@@ -197,3 +197,29 @@ assessment and finished the no-gap cycle. Current progress reached 6/6 while the
 without changing the earlier point. **Refresh this step** retained the unfinished story
 draft. Voice/video mode exposed its separate start link without starting a paid session.
 Browser errors were absent. No remote deployment or paid-provider validation was performed.
+
+# Post-call homepage loop
+
+The homepage reads saved per-investor practice updates with the goal projection. After the
+final transcript arrives, assessment publication updates the current checklist and saved graph
+observations. The homepage polls every ten seconds while visible. It shows the latest call
+status separately from the most recent completed assessment: strengths, explicitly assessed
+retry improvements, and the next unresolved coaching question. No strength or percentage
+improvement is invented for pending, partial, skipped, or failed assessments. A targeted practice
+link opens the exact saved follow-up and question; full interview continuation still follows
+current story/brief review gates. Finishing voice practice exposes a return to homepage action.
+
+Each target keeps its own feedback and practice history. The feedback selector defaults to the
+latest practiced investor, even if the founder has just chosen a different target. New Radar
+leads appear separately under “Other investors to consider”; review opens the exact Radar event.
+They change neither scope nor progress until explicitly added. Adding a target expands the
+whole-goal denominator and estimated work, with a scope boundary in the history graph.
+
+The homepage pace control saves Planned pace, 25% faster, or 25% slower through the existing
+revision-checked journey command. The selected factor applies to daily work capacity, not
+estimated effort or assessment quality. Current date, shaded forecast, comparison dates, and
+the advanced selected-investor schedule all use that saved factor. Dates round up to calendar
+days and honor the existing evidence-delivery dependency. Earlier graph snapshots retain their
+original forecast; changing pace never awards completed steps. This is a planning assumption,
+not learned speed. Reads start no provider work and local voice assessment still requires
+delivery of the configured signed provider transcript callback.

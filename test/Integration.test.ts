@@ -3679,6 +3679,28 @@ describe('Goal investor journey API, history, and target isolation', () => {
         return goalJourneyViewSchema.parse(response.json<unknown>());
       };
       await act({ action: 'new_goal' });
+      const beforePace = await get();
+      const paced = await act({ action: 'set_pace', pace: 1.25 });
+      expect(paced.position?.pace).toBe(1.25);
+      expect(paced.position?.completed).toBe(beforePace.position?.completed);
+      expect(paced.position?.estimatedReadyDate).toBe(
+        paced.position?.paceScenarios?.find((scenario) => scenario.pace === 1.25)
+          ?.estimatedReadyDate,
+      );
+      expect((await get()).journey?.pace).toBe(1.25);
+      const invalidPace = await app.inject({
+        method: 'POST',
+        url: '/api/goal-journeys/commands',
+        headers,
+        payload: {
+          action: 'set_pace',
+          pace: 2,
+          key: randomUUID(),
+          revision: paced.revision,
+          journeyId: paced.journey?.id,
+        },
+      });
+      expect(invalidPace.statusCode).toBe(400);
       const firstInvestor = await service.investors.add({
         name: 'Fictional journey investor A',
         url: 'https://journey-a.example/team',

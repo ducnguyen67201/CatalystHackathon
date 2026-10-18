@@ -136,6 +136,7 @@ export const preparationStateSchema = z.strictObject({
     .default([]),
 });
 export const preparationViewSchema = z.strictObject({
+  journeyPace: z.union([z.literal(0.75), z.literal(1), z.literal(1.25)]).optional(),
   position: preparationPositionSchema.nullable().default(null),
   intent: z.string().max(1000).default(''),
   profileVersion: z.int().positive().default(1),

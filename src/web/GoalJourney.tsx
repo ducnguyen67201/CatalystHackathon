@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Decimal } from 'decimal.js';
 import {
   goalJourneyViewSchema,
+  goalPaceSchema,
   goalProgressPageSchema,
   journeyCommandSchema,
   type GoalJourneyView,
@@ -17,6 +18,7 @@ import { InvestorProfileEstimate } from './InvestorProfileEstimate.js';
 import type { InvestorProfileEstimateView } from '../contracts/InvestorProfileEstimate.js';
 import { InvestorCriteriaTable } from './InvestorCriteriaTable.js';
 import { targetPreparationHref } from '../contracts/PreparationNavigation.js';
+import { GoalPracticeFeedback, GoalRadarOpportunities } from './GoalPracticeFeedback.js';
 
 type WithoutReceipt<T> = T extends unknown ? Omit<T, 'key' | 'revision'> : never;
 type JourneyAction = WithoutReceipt<JourneyCommand>;
@@ -602,6 +604,14 @@ export function GoalJourney({
       : nextHref.includes('page=radar')
         ? 'Review investor match'
         : (nextLabels[nextStep ?? ''] ?? 'Continue preparation');
+  const nextTrackId = new URLSearchParams(nextHref.split('?')[1] ?? '').get('targetId');
+  const waitingForCall =
+    nextStep === 'practice' &&
+    data?.practiceUpdates.some(
+      (update) =>
+        update.targetId === nextTrackId &&
+        ['awaiting_transcript', 'queued'].includes(update.status),
+    );
   return (
     <section className="goal-journey" aria-labelledby="goal-journey-title">
       <div className="goal-heading">
@@ -668,6 +678,23 @@ export function GoalJourney({
                   : 'Review remaining work'}
               </strong>
               <small>{data.position.remainingHours} hours remaining · goal-wide plan</small>
+              {data.position.paceScenarios && (
+                <label className="goal-pace-control" id="goal-pace">
+                  Preparation pace
+                  <select
+                    value={data.position.pace ?? 1}
+                    disabled={controller.busy}
+                    onChange={(event) => {
+                      const pace = goalPaceSchema.parse(Number(event.target.value));
+                      void controller.act({ action: 'set_pace', pace }).catch(() => undefined);
+                    }}
+                  >
+                    <option value={0.75}>25% slower</option>
+                    <option value={1}>Planned pace</option>
+                    <option value={1.25}>25% faster</option>
+                  </select>
+                </label>
+              )}
             </div>
             <div className="journey-next">
               <span>
@@ -677,20 +704,65 @@ export function GoalJourney({
                   : 'Choose an investor for this goal.'}
               </span>
               <a className="button" href={nextHref}>
-                {nextLabel} →
+                {waitingForCall ? 'View call status' : nextLabel} →
               </a>
             </div>
           </div>
         </>
       )}
-      {historyError && <p role="alert">{historyError}</p>}
+      {historyError && (
+        <p role="alert">
+          History could not refresh. Previously loaded observations remain visible.{' '}
+          <button className="text-button" onClick={() => setHistoryReload((value) => value + 1)}>
+            Retry history
+          </button>
+        </p>
+      )}
       <GoalJourneyChart
-        events={data?.position ? history : []}
+        events={
+          data?.position
+            ? history.length || targetId || from || to
+              ? history
+              : data.events.slice(-30)
+            : []
+        }
         position={data?.position ?? null}
         targetId={targetId}
         selectedId={selected?.id}
         onSelect={select}
       />
+      {data?.position?.paceScenarios && (
+        <div className="goal-pace-scenarios" aria-label="Goal preparation date scenarios">
+          {data.position.paceScenarios.map((scenario) => (
+            <div
+              key={scenario.pace}
+              aria-current={scenario.pace === (data.position?.pace ?? 1) ? 'true' : undefined}
+            >
+              <span>
+                {scenario.pace === 1
+                  ? 'Planned pace'
+                  : scenario.pace > 1
+                    ? '25% faster'
+                    : '25% slower'}
+              </span>
+              <strong>
+                {scenario.estimatedReadyDate
+                  ? dateLabel(scenario.estimatedReadyDate)
+                  : 'Review remaining work'}
+              </strong>
+              <small>
+                {scenario.dailyHours} hours/day · {scenario.workDays} work days
+              </small>
+            </div>
+          ))}
+          <p>
+            Saved planning pace changes the forecast only. Completed work and call performance stay
+            separate.
+          </p>
+        </div>
+      )}
+      {data?.journey && <GoalPracticeFeedback data={data} />}
+      {data?.journey && <GoalRadarOpportunities items={data.radarOpportunities} />}
       {data?.position && (
         <>
           <details className="journey-details goal-progress-details">
@@ -1077,8 +1149,8 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
         <div>
           <h3>Target investors</h3>
           <p>
-            Independent preparation tracks under the same goal. Monitoring remains a separate
-            choice.
+            Each investor has its own brief, practice and feedback. Adding another expands your
+            plan; earlier progress stays saved.
           </p>
         </div>
         <a className="text-button" href="/?page=radar">
@@ -1132,6 +1204,17 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
                   {target.track.outdated && ' · Changed evidence needs review'}
                 </p>
                 <p>{target.track.nextAction}</p>
+                {data.practiceUpdates.find((update) => update.targetId === target.id)?.summary && (
+                  <details className="journey-details">
+                    <summary>Latest practice feedback</summary>
+                    <p>
+                      {
+                        data.practiceUpdates.find((update) => update.targetId === target.id)
+                          ?.summary
+                      }
+                    </p>
+                  </details>
+                )}
               </>
             )}
             <div className="goal-actions">
