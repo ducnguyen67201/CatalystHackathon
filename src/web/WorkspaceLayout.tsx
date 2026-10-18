@@ -11,6 +11,7 @@ import {
   Target,
 } from 'lucide-react';
 import { Page } from './WorkspaceNavigation.js';
+import juneWordmark from './assets/JuneWordmark.png';
 
 export function WorkspaceLayout({
   page,
@@ -56,8 +57,7 @@ export function WorkspaceLayout({
             onNavigate(Page.OVERVIEW);
           }}
         >
-          j<small className="brand-wordmark">une</small>
-          <span />
+          <img className="brand-wordmark" src={juneWordmark} alt="" width={459} height={150} />
         </button>
         <nav className="workspace-nav" aria-label="Workspace">
           {nav.map((item) => (
