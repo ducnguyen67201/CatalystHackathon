@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ArrowRight, FileText, MessageSquare, ExternalLink } from 'lucide-react';
 import type { StateResponse } from '../contracts/Workspace.js';
 import type { Meeting } from '../contracts/Onboarding.js';
+import './CompactDashboard.css';
 
 type Props = {
   state: StateResponse;

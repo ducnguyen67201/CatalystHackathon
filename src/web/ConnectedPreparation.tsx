@@ -19,6 +19,8 @@ import './ConnectedPreparation.css';
 import { StorySourceExcerpt } from './StorySourceExcerpt.js';
 import { TailoredBriefReview } from './TailoredBriefReview.js';
 import { PreparedPracticeCard } from './PreparedPracticeCard.js';
+import { InvestorPreparationRecommendations } from './InvestorRecommendationCards.js';
+export { InvestorPreparationRecommendations } from './InvestorRecommendationCards.js';
 
 type WithoutRequest<T> = T extends object ? Omit<T, 'version' | 'key'> : never;
 type Panel = 'story' | 'investor' | 'brief' | 'practice' | 'feedback' | 'revision' | 'history';
@@ -31,136 +33,6 @@ const labels = {
   failed: 'Needs retry',
   outdated: 'Sources changed',
 };
-export function InvestorPreparationRecommendations({
-  view,
-  onSelect,
-  disabled = false,
-}: {
-  view: ConnectedPreparationView;
-  onSelect?: (investorId: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <section className="loop-recommendations" aria-label="Recommended investors">
-      <div className="loop-section-heading">
-        <h3>Investors to review for your next conversation</h3>
-        <span className="muted">Saved research · no funding score</span>
-      </div>
-      {!view.recommendations.length ? (
-        <p>
-          No saved candidates yet. Add or discover investors in{' '}
-          <a href="/?page=investors">Investor research</a>.
-        </p>
-      ) : (
-        <div className="loop-comparison-scroll">
-          <table className="loop-comparison">
-            <thead>
-              <tr>
-                <th>Investor / recommendation</th>
-                <th>Why review this investor?</th>
-                <th>Tradeoffs & unknowns</th>
-                <th>Next action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.recommendations.map((candidate) => (
-                <tr key={candidate.investorId ?? candidate.suggestionId}>
-                  <td>
-                    <strong>{candidate.name}</strong>
-                    <span
-                      className={`loop-tag ${candidate.label === 'Recommended to review' ? 'is-recommended' : ''}`}
-                    >
-                      {candidate.label}
-                    </span>
-                    {candidate.match && (
-                      <small>
-                        {candidate.match.score
-                          ? candidate.match.score + '/10 match'
-                          : 'Insufficient evidence for a score'}
-                        {' · '}
-                        {candidate.match.supportedWeight}/{candidate.match.applicableWeight}{' '}
-                        weighted evidence
-                      </small>
-                    )}
-                    <small>
-                      {candidate.stage ?? 'Stage unknown'} · {candidate.sector ?? 'Sector unknown'}{' '}
-                      · {candidate.geography ?? 'Geography unknown'}
-                    </small>
-                  </td>
-                  <td>
-                    {candidate.reasons.length ? (
-                      <ul>
-                        {candidate.reasons.map((reason) => (
-                          <li key={reason}>{reason}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      'No supported alignment has been established.'
-                    )}
-                    <details>
-                      <summary>Sources ({candidate.sources.length})</summary>
-                      {candidate.sources.map((source) => (
-                        <blockquote key={source.id}>
-                          <strong>
-                            {source.fictional ? 'Fictional demo evidence · ' : ''}
-                            {source.title}
-                          </strong>
-                          <p>{source.excerpt}</p>
-                          <small>Recorded: {source.recordedAt ?? 'Unknown'}</small>
-                          {source.url && (
-                            <p>
-                              <a href={source.url} target="_blank" rel="noreferrer">
-                                Read original source
-                              </a>
-                            </p>
-                          )}
-                        </blockquote>
-                      ))}
-                    </details>
-                  </td>
-                  <td>
-                    <ul>
-                      {candidate.unknowns.map((reason) => (
-                        <li key={reason}>{reason}</li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td>
-                    {candidate.investorId && onSelect ? (
-                      <button
-                        className="button"
-                        disabled={disabled}
-                        onClick={() => {
-                          if (candidate.investorId) onSelect(candidate.investorId);
-                        }}
-                      >
-                        Prepare for this investor <ArrowRight size={14} />
-                      </button>
-                    ) : (
-                      <a
-                        href={`/?page=investors${candidate.investorId ? '&investor=' + encodeURIComponent(candidate.investorId) : ''}`}
-                      >
-                        {candidate.investorId
-                          ? 'Inspect investor'
-                          : 'Review suggestion & track explicitly'}{' '}
-                        ↗
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <p className="loop-method">
-        These compare saved observations, which may describe historical deals. Current mandate,
-        individual check size and application routes need confirmation. Round totals are not
-        investor checks.
-      </p>
-    </section>
-  );
-}
 export function ConnectedPreparation({
   state,
   onChange,

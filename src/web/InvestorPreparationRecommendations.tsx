@@ -4,7 +4,7 @@ import {
   type ConnectedPreparationView,
 } from '../contracts/ConnectedPreparation.js';
 import { request } from './ApiClient.js';
-import { InvestorPreparationRecommendations } from './ConnectedPreparation.js';
+import { InvestorPreparationRecommendations } from './InvestorRecommendationCards.js';
 
 /** Same saved-data recommendation projection as the Overview checklist; no generation on reads. */
 export function InvestorPreparationRecommendationPanel({ revision }: { revision: number }) {
@@ -37,9 +37,7 @@ export function InvestorPreparationRecommendationPanel({ revision }: { revision:
           <InvestorPreparationRecommendations view={view} />
           {view.cycle && (
             <p className="loop-method">
-              <a href="/?preparationStep=investor">
-                Return to Overview to select an investor for the six-step preparation checklist →
-              </a>
+              <a href="/?preparationStep=investor">Continue your preparation plan on Overview →</a>
             </p>
           )}
         </>

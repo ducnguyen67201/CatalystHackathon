@@ -1,5 +1,5 @@
 import { InvestorPreparationRecommendationPanel } from './InvestorPreparationRecommendations.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { InvestorSuggestions } from './InvestorSuggestions.js';
 import { InvestorModal } from './InvestorModal.js';
 import { Plus, Search, RefreshCw, ExternalLink, ArrowRight } from 'lucide-react';
@@ -31,17 +31,20 @@ function SourceCard({ evidence, state }: { evidence: Evidence; state: StateRespo
       </div>
       <h3>{evidence.title}</h3>
       <p className="muted">Source describes: {evidence.investor}</p>
-      <blockquote>{evidence.excerpt}</blockquote>
-      <p>{evidence.explanation}</p>
       <div className="investor-tags">
         <span>Stage: {fit.stage}</span>
         <span>Sector: {fit.sector}</span>
         <span>Location: {fit.geography}</span>
         <span>Check range: {fit.checkRange}</span>
       </div>
-      <p className="muted">
-        A sourced match is a lead to investigate, not a promise of investment.
-      </p>
+      <details className="investor-source-detail">
+        <summary>Source quote & explanation</summary>
+        <blockquote>{evidence.excerpt}</blockquote>
+        <p>{evidence.explanation}</p>
+        <p className="muted">
+          A sourced match is a lead to investigate, not a promise of investment.
+        </p>
+      </details>
       {evidence.url && (
         <a href={evidence.url} target="_blank" rel="noreferrer">
           Read original source <ExternalLink size={13} />
@@ -71,6 +74,12 @@ export function InvestorTrackingPage({
   const [addingInvestor, setAddingInvestor] = useState(false);
   const investors = state.workspace.investors;
   const selected = investors.find((item) => item.id === selectedId) ?? investors[0];
+  useEffect(() => {
+    if (selected?.id !== selectedId || window.location.hash !== '#investor-research-detail') return;
+    const detail = document.getElementById('investor-research-detail');
+    detail?.scrollIntoView({ block: 'start' });
+    detail?.focus({ preventScroll: true });
+  }, [selected?.id, selectedId]);
   const latestCheck = selected?.checks.at(-1);
   const selectedJob = state.jobs.find((job) => job.kind === `${checkPrefix}${selected?.id ?? ''}`);
   const selectedPending =
@@ -265,7 +274,7 @@ export function InvestorTrackingPage({
             );
           })}
         </aside>
-        <div className="investor-detail">
+        <div className="investor-detail" id="investor-research-detail" tabIndex={-1}>
           {!selected ? (
             <div className="investor-empty">
               <Search size={30} />

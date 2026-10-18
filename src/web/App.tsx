@@ -695,7 +695,7 @@ export function App() {
           )}
           {page === Page.FOLLOWUPS && (
             <>
-              <div className="page-heading">
+              <div className="page-heading followup-page-heading">
                 <div>
                   <div className="eyebrow">From conversation to progress</div>
                   <h1>Your next steps.</h1>

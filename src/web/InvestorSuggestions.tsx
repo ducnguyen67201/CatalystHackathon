@@ -48,21 +48,30 @@ export function InvestorSuggestions({
   }
 
   return (
-    <section className="investor-suggestions" aria-label="Suggested investors">
+    <section
+      className="investor-suggestions"
+      id="investor-discovery"
+      aria-label="Suggested investors"
+    >
       <div className="investor-discovery">
         <div>
           <div className="eyebrow">Discover your next investors</div>
           <h2>Find investors who fit your company.</h2>
-          <p className="muted">
-            Explore angels, accelerators and venture firms using your company context and saved
-            preferences. Previous conversations are background, not the person to keep searching
-            for.
-          </p>
+          <p className="muted">Explore angels, accelerators and venture firms.</p>
+          <details className="investor-search-explanation">
+            <summary>How discovery works</summary>
+            <p className="muted">
+              Explore angels, accelerators and venture firms using your company context and saved
+              preferences. Previous conversations are background, not the person to keep searching
+              for.
+            </p>
+          </details>
         </div>
         <InvestorDiscoveryAction
           state={state}
           onRefresh={onRefresh}
           onEditProfile={onEditProfile}
+          compact
         />
       </div>
       <div className="investor-search-summary">
@@ -165,32 +174,40 @@ export function InvestorSuggestions({
           const source = state.workspace.evidence.find((item) => item.id === suggestion.evidenceId);
           const deal = source?.comparableDeal;
           return (
-            <article className="investor-source" key={suggestion.id}>
+            <article className="investor-source investor-funding-card" key={suggestion.id}>
               <div className="eyebrow">
                 {source?.mode === 'demo'
                   ? 'Fictional example'
                   : 'Sourced lead · needs verification'}
               </div>
               <h3>{suggestion.name}</h3>
-              <p>
-                <strong>Why consider them?</strong> A documented investment in{' '}
-                {deal?.company ?? 'a comparable company'}, described as {deal?.sector} at{' '}
-                {deal?.stage} stage.
+              <p className="investor-comparable-company">
+                Comparable company <strong>{deal?.company ?? 'Not confirmed'}</strong>
               </p>
-              <p>
-                Company location: {deal?.geography ?? 'Unknown'}. Round announced:{' '}
-                {deal?.announcedAt ?? source?.publishedAt ?? 'Unknown'}.
-              </p>
-              <p>
-                Whole round: {deal?.roundTotal ?? 'Unknown'}. This is not this investor’s individual
-                check.
-              </p>
-              <p className="muted">
-                Investor check range:{' '}
-                {source?.checkMin && source.checkMax
-                  ? `${source.currency} ${source.checkMin}–${source.checkMax}`
-                  : 'Unknown'}
-                . Current mandate and possible competitor conflicts still need review.
+              <dl className="investor-funding-facts">
+                {[
+                  { label: 'Company stage', value: deal?.stage },
+                  { label: 'Company sector', value: deal?.sector },
+                  { label: 'Company location', value: deal?.geography },
+                  { label: 'Whole round · all investors', value: deal?.roundTotal },
+                  {
+                    label: 'Investor check range',
+                    value:
+                      source?.checkMin && source.checkMax
+                        ? `${source.currency} ${source.checkMin}–${source.checkMax}`
+                        : null,
+                  },
+                  { label: 'Round announced', value: deal?.announcedAt ?? source?.publishedAt },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value ?? 'Unknown'}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="muted investor-funding-note">
+                Whole-round totals are not individual checks. Current mandate and possible
+                competitor conflicts still need review.
               </p>
               <details>
                 <summary>Inspect funding evidence</summary>

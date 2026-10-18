@@ -309,3 +309,195 @@
     padding: 20px;
   }
 }
+
+/* Briefs use the same compact card rhythm as investor research. */
+.meeting-search .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.meeting-briefs .page-heading h1 {
+  font-size: clamp(28px, 2.5vw, 38px);
+}
+.meeting-cycle-grid,
+.meeting-record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.meeting-cycle-grid {
+  margin: 18px 0 28px;
+}
+.meeting-cycle-card,
+.meeting-record-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #dfe5dc;
+  border-radius: 16px;
+  background: white;
+  overflow-wrap: anywhere;
+}
+.meeting-cycle-card[data-current='true'] {
+  background: #f6f9f2;
+  border-color: #cbdcc0;
+}
+.meeting-cycle-card > header,
+.meeting-record-card > header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+.meeting-cycle-card header > div:nth-child(2) {
+  flex: 1 1 180px;
+}
+.meeting-record-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  border: 1px solid #dce5d5;
+  background: #edf3e7;
+  color: #456c59;
+}
+.meeting-record-card h3,
+.meeting-cycle-card h4 {
+  font-size: 17px;
+  line-height: 1.4;
+  margin: 0;
+  font-family: inherit;
+}
+.meeting-record-card h3 {
+  flex: 1 1 140px;
+}
+.meeting-cycle-card .eyebrow {
+  font-size: 9px;
+}
+.meeting-cycle-card .meeting-record-status {
+  margin-left: auto;
+}
+.meeting-cycle-meta,
+.meeting-record-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 14px 0;
+  color: #62716a;
+  font-size: 11px;
+}
+.meeting-record-meta {
+  justify-content: space-between;
+}
+.meeting-cycle-objective,
+.meeting-record-question {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #526359;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.meeting-record-card > .loop-tag {
+  margin-top: 12px;
+}
+.meeting-record-card > .button,
+.meeting-cycle-actions .button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 12px;
+  justify-content: center;
+}
+.meeting-record-card > .button {
+  width: 100%;
+}
+.meeting-record-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: #62716a;
+}
+.meeting-record-heading button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  font-size: 12px;
+}
+.meeting-record-card.selected {
+  border-color: #456c59;
+}
+.meeting-support-details {
+  border-top: 1px solid #e0e7da;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.meeting-support-details > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: #526359;
+  font-size: 12px;
+  font-weight: 600;
+}
+.meeting-support-details summary:focus-visible,
+.meeting-briefs summary:focus-visible {
+  outline: 2px solid #456c59;
+  outline-offset: 3px;
+}
+.meeting-brief-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.meeting-brief-values > div {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 15px;
+  border: 1px solid #dfe7d8;
+  border-radius: 12px;
+  background: #f1f5ec;
+  min-width: 0;
+}
+.meeting-brief-values > div:nth-child(2) {
+  background: #faf6ea;
+  border-color: #e8dfc8;
+}
+.meeting-brief-values > div:nth-child(3) {
+  background: #f1f3f8;
+  border-color: #dde2ec;
+}
+.meeting-brief-values dt {
+  color: #62716a;
+  font-size: 11px;
+}
+.meeting-brief-values dd {
+  text-align: left;
+  font-size: 19px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .meeting-brief-values {
+    grid-template-columns: 1fr;
+  }
+  .meeting-cycle-actions .button {
+    width: 100%;
+  }
+}

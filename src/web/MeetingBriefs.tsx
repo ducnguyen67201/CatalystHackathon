@@ -1,6 +1,14 @@
 import { ConnectedPreparationBriefs } from './ConnectedPreparationBriefs.js';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, RefreshCw, Search, X } from 'lucide-react';
+import {
+  ArrowRight,
+  ArrowDownUp,
+  FileText,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import type { Brief, Rehearsal, StateResponse } from '../contracts/Workspace.js';
 import { fictionalFinancialHashes } from '../contracts/FinancialProvenance.js';
 import { ResearchLinks } from './DashboardPage.js';
@@ -84,6 +92,9 @@ export function MeetingBriefs({
           investor: brief.investor,
           date: brief.createdAt,
           status: brief.review ? 'Practice incorporated' : 'Prepared',
+          fictional: fictionalFinancialHashes.has(
+            workspace.snapshots.find((snapshot) => snapshot.id === brief.snapshotId)?.hash ?? '',
+          ),
           detail: `${linkedBriefPractices(brief, workspace).length} linked practices`,
         }))
       : workspace.rehearsals.map((session) => ({
@@ -95,6 +106,7 @@ export function MeetingBriefs({
           investor: practiceInvestor(session, workspace),
           date: session.createdAt,
           status: session.status.replaceAll('_', ' '),
+          fictional: session.context?.version === 2 && session.context.generationMode === 'demo',
           detail: `${session.mode === 'liveavatar' ? 'Video' : session.mode === 'elevenlabs' ? 'Voice' : 'Written'} · ${session.turns.length} turns`,
         }));
   const matches = rows
@@ -148,57 +160,59 @@ export function MeetingBriefs({
           />
         </label>
       </div>
-      <div className="meeting-table-scroll">
-        <table className="meeting-table">
-          <caption className="sr-only">
-            {filter === 'brief' ? 'Saved meeting briefs' : 'Saved practice conversations'}. Select a
-            row to inspect it.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">{filter === 'brief' ? 'Question to prepare' : 'Conversation'}</th>
-              <th scope="col">Investor</th>
-              <th scope="col">Status</th>
-              <th scope="col">Context</th>
-              <th scope="col" aria-sort={newestFirst ? 'descending' : 'ascending'}>
-                <button onClick={() => setNewestFirst((value) => !value)}>
-                  Created {newestFirst ? '↓' : '↑'}
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {matches.map((row) => (
-              <tr
-                key={row.id}
-                className={selection?.id === row.id && selection.kind === filter ? 'selected' : ''}
-                onClick={(event) => {
-                  event.currentTarget.querySelector('button')?.focus();
-                  setSelection({ kind: filter, id: row.id });
-                }}
-              >
-                <td>
-                  <button
-                    className="meeting-row-title"
-                    aria-haspopup="dialog"
-                    onClick={() => setSelection({ kind: filter, id: row.id })}
-                  >
-                    {row.title}
-                    <ArrowRight size={15} aria-hidden="true" />
-                  </button>
-                </td>
-                <td>{row.investor}</td>
-                <td>
-                  <span className="meeting-record-status">{row.status}</span>
-                </td>
-                <td>{row.detail}</td>
-                <td>
-                  <time dateTime={row.date}>{dateLabel(row.date)}</time>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="meeting-record-heading">
+        <span>
+          {matches.length} {filter === 'brief' ? 'saved briefs' : 'saved practices'}
+        </span>
+        <button
+          className="text-button"
+          aria-label={`Sort records: ${newestFirst ? 'newest first' : 'oldest first'}`}
+          onClick={() => setNewestFirst((value) => !value)}
+        >
+          <ArrowDownUp size={14} aria-hidden="true" />
+          {newestFirst ? 'Newest first' : 'Oldest first'}
+        </button>
+      </div>
+      <div
+        className="meeting-record-grid"
+        aria-label={filter === 'brief' ? 'Saved meeting briefs' : 'Saved practice conversations'}
+      >
+        {matches.map((row) => (
+          <article
+            className={`meeting-record-card ${selection?.id === row.id && selection.kind === filter ? 'selected' : ''}`}
+            key={row.id}
+          >
+            <header>
+              <span className="meeting-record-icon">
+                {filter === 'brief' ? (
+                  <FileText size={19} aria-hidden="true" />
+                ) : (
+                  <MessageSquare size={19} aria-hidden="true" />
+                )}
+              </span>
+              <h3>{row.investor}</h3>
+              <span className="meeting-record-status">{row.status}</span>
+            </header>
+            {row.fictional && <span className="loop-tag">Fictional demo evidence</span>}
+            <p className="meeting-record-question" title={row.title}>
+              {row.title}
+            </p>
+            <div className="meeting-record-meta">
+              <span>{row.detail}</span>
+              <time dateTime={row.date} title={new Date(row.date).toLocaleString()}>
+                {dateLabel(row.date)}
+              </time>
+            </div>
+            <button
+              className="button secondary"
+              aria-haspopup="dialog"
+              onClick={() => setSelection({ kind: filter, id: row.id })}
+            >
+              {filter === 'brief' ? 'Open brief' : 'Open practice review'}
+              <ArrowRight size={14} aria-hidden="true" />
+            </button>
+          </article>
+        ))}
       </div>
       {!matches.length && (
         <div className="meeting-table-empty">
@@ -228,7 +242,7 @@ export function MeetingBriefs({
         </div>
       )}
       <p className="muted meeting-table-footer">
-        {matches.length} {filter === 'brief' ? 'briefs' : 'practices'} · Select a row to open its
+        {matches.length} {filter === 'brief' ? 'briefs' : 'practices'} · Open a card to inspect its
         details.
       </p>
       {selection && (
@@ -346,7 +360,7 @@ function MeetingReviewDrawer({
           <>
             {stale && (
               <p className="notice">
-                This brief retains earlier inputs. Refresh the brief from the table to prepare with
+                This brief retains earlier inputs. Refresh the brief from this page to prepare with
                 current data.
               </p>
             )}
@@ -381,27 +395,30 @@ function MeetingReviewDrawer({
                 {snapshot?.fileName ?? 'Statement unavailable'} · CSV row {brief.finding.sourceRow}{' '}
                 · Profile version {brief.profileVersion}
               </p>
-              <p className="grounded-answer">{brief.finding.answer}</p>
+              <details className="meeting-support-details">
+                <summary>Saved financial explanation</summary>
+                <p className="grounded-answer">{brief.finding.answer}</p>
+              </details>
             </section>
-            <section className="meeting-detail-section">
-              <h3>What still needs an answer</h3>
+            <details className="meeting-support-details">
+              <summary>Open questions · {brief.openQuestions.length}</summary>
               <ul>
                 {brief.openQuestions.map((question) => (
                   <li key={question}>{question}</li>
                 ))}
               </ul>
-            </section>
+            </details>
             <ResearchLinks meeting={brief.meeting} />
             {brief.meeting?.notes && (
-              <section className="meeting-detail-section">
-                <h3>Meeting notes</h3>
+              <details className="meeting-support-details">
+                <summary>Meeting notes</summary>
                 <p className="preserve-lines">{brief.meeting.notes}</p>
                 <small>Founder-provided · saved with this brief</small>
-              </section>
+              </details>
             )}
             {evidence && (
-              <section className="meeting-detail-section">
-                <h3>Research evidence</h3>
+              <details className="meeting-support-details">
+                <summary>Research evidence</summary>
                 <p>{evidence.explanation}</p>
                 <p className="muted">
                   {evidence.mode === 'demo'
@@ -416,11 +433,11 @@ function MeetingReviewDrawer({
                     Open original source
                   </a>
                 )}
-              </section>
+              </details>
             )}
             {brief.review && (
-              <section className="meeting-detail-section">
-                <h3>Earlier rehearsal notes</h3>
+              <details className="meeting-support-details">
+                <summary>Earlier rehearsal notes</summary>
                 <blockquote>{brief.review.answer}</blockquote>
                 <p>{brief.review.note}</p>
                 <p>
@@ -428,7 +445,7 @@ function MeetingReviewDrawer({
                     ? `Open themes: ${brief.review.missing.join(', ')}`
                     : 'Expected themes appeared; this does not certify the financial figures.'}
                 </p>
-              </section>
+              </details>
             )}
             <div className="actions">
               <button
@@ -470,7 +487,7 @@ function MeetingReviewDrawer({
             {!session && (
               <p className="notice">
                 No practice is linked to this brief yet. Other conversations are available in the
-                table’s Practice reviews view.
+                Practice reviews view.
               </p>
             )}
             {session && (

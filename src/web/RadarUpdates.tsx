@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { z } from 'zod';
-import { Bell, ExternalLink, RefreshCw, Radio, Mail, Check } from 'lucide-react';
+import { Bell, RefreshCw, Radio, Mail, Check } from 'lucide-react';
 import {
   radarCategories,
   radarCategorySchema,
@@ -20,14 +20,8 @@ import { request } from './ApiClient.js';
 import { InvestorMatchDialog, TargetInvestors, useGoalJourney } from './GoalJourney.js';
 import './RadarUpdates.css';
 import { InvestorDiscoveryAction } from './InvestorDiscoveryAction.js';
+import { RadarInvestorCard, radarCategoryLabels as labels } from './RadarInvestorCard.js';
 
-const labels = {
-  new_candidate: 'New candidate',
-  investment: 'Investment',
-  fund_announcement: 'Fund announcement',
-  thesis_change: 'Thesis change',
-  other_news: 'Related news',
-};
 const when = (value: string | null) => (value ? new Date(value).toLocaleString() : 'Not available');
 type Preferences = z.infer<typeof publicPreferencesSchema>;
 const ok = z.object({ ok: z.boolean() });
@@ -179,119 +173,43 @@ export function RadarUpdates({
         entry.goalVersionId === journey.data?.journey?.currentGoalId,
     );
     const target = journey.data?.targets.find((entry) => entry.investorId === item.investorId);
+    const matchKind = target?.matchOutdated
+      ? 'outdated'
+      : match?.assessment.status === 'scored'
+        ? 'scored'
+        : match?.assessment.status === 'outside_mandate'
+          ? 'outside_mandate'
+          : 'unverified';
+    const matchLabel =
+      matchKind === 'outdated'
+        ? 'Needs reassessment'
+        : matchKind === 'scored' && match
+          ? `${match.assessment.score}/10 match`
+          : matchKind === 'outside_mandate'
+            ? 'Outside stated mandate'
+            : 'Needs verification';
     return (
-      <article className="radar-update" key={item.id} id={`update-${item.id}`}>
-        <div className="radar-update-meta">
-          <span>{labels[item.signal.category]}</span>
-          <span>{item.readAt ? 'Read' : 'Unread'}</span>
-          {item.fictional && <strong>Fictional example</strong>}
-          {item.historical && <span>Historical · no email</span>}
-        </div>
-        <h3>{item.signal.headline}</h3>
-        <p className="muted">
-          {item.investorName} · Published: {item.occurredAt ?? 'Date unknown'}
-        </p>
-        <p>{item.signal.summary}</p>
-        <div className="radar-relevance">
-          <strong>Why it matters</strong>
-          <p>{item.signal.whyItMatters}</p>
-        </div>
-        <div className="radar-flags">
-          <span>
-            {item.signal.needsReview
-              ? 'Needs identity/relevance review'
-              : 'Unverified public-source claim'}
-          </span>
-          {item.stale && <span>Based on older company context</span>}
-          {item.dismissedAt && <span>Dismissed</span>}
-          {item.supersedesEventId && <span>Corrects a previous update</span>}
-        </div>
-        <div className="radar-actions">
-          <button
-            className="button"
-            disabled={journey.busy}
-            onClick={() => void reviewInvestor(item)}
-          >
-            {target ? 'Review target investor' : 'Review investor'} →
-          </button>
-        </div>
-        <p className="muted">
-          Match to your goal:{' '}
-          {target?.matchOutdated
-            ? 'Changed evidence needs reassessment'
-            : match?.assessment.status === 'scored'
-              ? `${match.assessment.score}/10 · ${(Number(match.assessment.coverage) * 100).toFixed(0)}% weighted evidence coverage`
-              : match?.assessment.status === 'outside_mandate'
-                ? 'Outside stated mandate'
-                : 'Needs verification'}
-        </p>
-        <details>
-          <summary>Supporting source and passage</summary>
-          <blockquote>{item.signal.supportingQuote}</blockquote>
-          <p>{item.source.title}</p>
-          {item.source.url && (
-            <a href={item.source.url} target="_blank" rel="noopener noreferrer">
-              Open source <ExternalLink size={12} />
-            </a>
-          )}
-          <p className="muted">
-            Observed {when(item.observedAt)} · Saved {when(item.committedAt)}
-          </p>
-        </details>
-        <details className="journey-details">
-          <summary>Update options & email status</summary>
-          <div className="radar-card-bottom">
-            <span>
-              <Mail size={13} />{' '}
-              {item.delivery
-                ? `Email: ${item.delivery.status === 'sent' ? 'sent (provider accepted)' : item.delivery.status.replaceAll('_', ' ')}`
-                : 'Email not queued'}
-            </span>
-            <div className="radar-actions">
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() =>
-                  void act(() =>
-                    request(`/radar/events/${item.id}/read`, ok, { read: !item.readAt }, 'PATCH'),
-                  )
-                }
-              >
-                {item.readAt ? 'Mark unread' : 'Mark read'}
-              </button>
-              {!item.dismissedAt && (
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void act(() => request(`/radar/events/${item.id}/dismiss`, ok, {}))
-                  }
-                >
-                  Dismiss update
-                </button>
-              )}
-              {item.delivery?.status === 'failed' && (
-                <button
-                  className="button secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void act(() =>
-                      request(`/notification-deliveries/${item.delivery?.id ?? ''}/retry`, ok, {}),
-                    )
-                  }
-                >
-                  Retry email
-                </button>
-              )}
-            </div>
-          </div>
-        </details>
-        {item.delivery?.error && (
-          <p className="muted" role="status">
-            {item.delivery.error}
-          </p>
-        )}
-      </article>
+      <RadarInvestorCard
+        key={item.id}
+        item={item}
+        matchLabel={matchLabel}
+        matchKind={matchKind}
+        savedTarget={!!target}
+        reviewing={journey.busy}
+        busy={busy}
+        onReview={() => void reviewInvestor(item)}
+        onToggleRead={() =>
+          void act(() =>
+            request(`/radar/events/${item.id}/read`, ok, { read: !item.readAt }, 'PATCH'),
+          )
+        }
+        onDismiss={() => void act(() => request(`/radar/events/${item.id}/dismiss`, ok, {}))}
+        onRetryEmail={() =>
+          void act(() =>
+            request(`/notification-deliveries/${item.delivery?.id ?? ''}/retry`, ok, {}),
+          )
+        }
+      />
     );
   }
   return (
@@ -315,15 +233,14 @@ export function RadarUpdates({
           Refresh feed
         </button>
       </div>
-      <InvestorDiscoveryAction state={state} onRefresh={onRefresh} onEditProfile={onEditProfile} />
-      {children && (
-        <details className="journey-details">
-          <summary>Investor conversation details · optional</summary>
-          {children}
-        </details>
-      )}
-      <details className="journey-details">
-        <summary>Research status</summary>
+      <InvestorDiscoveryAction
+        state={state}
+        onRefresh={onRefresh}
+        onEditProfile={onEditProfile}
+        compact
+      />
+      <details className="journey-details radar-context-settings">
+        <summary>Research status & company context</summary>
         <div className="radar-health" role="status">
           <Radio size={17} />
           <strong>{feed ? `Worker: ${feed.status.state}` : 'Loading worker status…'}</strong>
@@ -334,6 +251,12 @@ export function RadarUpdates({
         <p className="radar-health-note">
           Checks continue while the local worker runs. Reading this feed reuses saved research.
         </p>
+        {children && (
+          <details className="journey-details">
+            <summary>Investor conversation details · optional</summary>
+            {children}
+          </details>
+        )}
       </details>
       <div className="radar-tabs">
         <button
@@ -444,7 +367,9 @@ export function RadarUpdates({
                   </p>
                 </div>
               )}
-              {feed?.items.filter((i) => i.id !== linked?.id).map(eventCard)}
+              <div className="radar-feed-grid">
+                {feed?.items.filter((i) => i.id !== linked?.id).map(eventCard)}
+              </div>
               <div className="radar-actions">
                 {cursor && (
                   <button className="button secondary" onClick={() => setCursor('')}>

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { ArrowRight, CircleHelp, Flag } from 'lucide-react';
 import { Decimal } from 'decimal.js';
 import {
   goalJourneyViewSchema,
@@ -19,6 +20,8 @@ import type { InvestorProfileEstimateView } from '../contracts/InvestorProfileEs
 import { InvestorCriteriaTable } from './InvestorCriteriaTable.js';
 import { targetPreparationHref } from '../contracts/PreparationNavigation.js';
 import { GoalPracticeFeedback, GoalRadarOpportunities } from './GoalPracticeFeedback.js';
+import { chartInsights } from './GoalChartInsights.js';
+import { GoalChartMilestones, GoalChartSteps } from './GoalChartDetails.js';
 
 type WithoutReceipt<T> = T extends unknown ? Omit<T, 'key' | 'revision'> : never;
 type JourneyAction = WithoutReceipt<JourneyCommand>;
@@ -151,12 +154,15 @@ export function GoalJourneyChart({
   selectedId?: string | undefined;
   onSelect: (event: GoalProgressEvent) => void;
 }) {
-  const ordered = [...events]
-    .sort((left, right) => left.sequence - right.sequence)
-    .flatMap((event) => {
-      const value = displayPosition(event.position, targetId);
-      return value ? [{ event, value }] : [];
-    });
+  const [hint, setHint] = useState<string | null>(null);
+  const hintId = useId();
+  const insights = chartInsights(events, targetId, selectedId);
+  const ordered = insights.flatMap((point) => {
+    const { event } = point;
+    const value = displayPosition(event.position, targetId);
+    return value ? [{ ...point, value }] : [];
+  });
+  const grouped = ordered.filter((point) => !point.showMarker).length;
   const current = position ? displayPosition(position, targetId) : null;
   const earliest = ordered[0]?.event.recordedAt;
   const latest = ordered.at(-1)?.event.recordedAt;
@@ -166,150 +172,327 @@ export function GoalJourneyChart({
     end > start ? 65 + ((Date.parse(value) - start) / (end - start)) * 565 : 350;
   const y = (percentage: string) => 202 - Math.max(0, Math.min(100, Number(percentage))) * 1.5;
   const currentY = y(current?.percentage ?? '0');
+  const savedHint = ordered.find(({ event }) => event.id === hint);
+  const focusedTrack = position?.tracks.find((track) => track.targetId === targetId);
+  const nextAction = focusedTrack?.nextAction ?? position?.nextAction;
+  const nextHref = internalHref(focusedTrack?.href ?? position?.href ?? '/');
+  const forecast = position?.paceScenarios?.find(
+    (scenario) => scenario.pace === (position.pace ?? 1),
+  );
+  const guide = savedHint
+    ? {
+        heading: savedHint.label,
+        detail: timestamp(savedHint.event.recordedAt),
+        progress: `${savedHint.value.completed}/${savedHint.value.required} reviewed · ${savedHint.value.percentage}%`,
+        explanation: savedHint.detail,
+        next: `Next at that time: ${targetId ? (savedHint.event.position.tracks.find((track) => track.targetId === targetId)?.nextAction ?? savedHint.event.position.nextAction) : savedHint.event.position.nextAction}`,
+        anchor: x(savedHint.event.recordedAt),
+      }
+    : position && hint === 'current'
+      ? {
+          heading: 'You are here',
+          detail: targetId ? (focusedTrack?.name ?? 'Selected investor') : 'Whole goal',
+          progress: `${current?.completed ?? position.completed}/${current?.required ?? position.required} reviewed`,
+          explanation: 'Each reviewed step moves your preparation forward.',
+          next: `Next: ${nextAction}`,
+          anchor: 700,
+        }
+      : position && hint === 'forecast'
+        ? {
+            heading: 'Your preparation forecast',
+            detail: 'Whole-goal planning estimate',
+            progress: `${position.remainingHours} estimated hours remaining`,
+            explanation: position.estimatedReadyDate
+              ? `Estimated ready: ${dateLabel(position.estimatedReadyDate)}. This is planned work, not recorded progress.`
+              : 'Review changed sources and remaining work to refresh this estimate.',
+            next: 'Try a faster or slower pace below to compare dates.',
+            anchor: 845,
+          }
+        : null;
   return (
-    <figure className="goal-journey-chart">
+    <figure
+      className="goal-journey-chart"
+      onMouseLeave={(event) => {
+        if (
+          !event.currentTarget.contains(document.activeElement) ||
+          !document.activeElement?.hasAttribute('data-chart-guide')
+        )
+          setHint(null);
+      }}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setHint(null);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && hint) {
+          setHint(null);
+          event.stopPropagation();
+        }
+      }}
+    >
       <figcaption>
-        Preparation progress · {targetId ? 'selected investor track' : 'whole goal'}
+        <span>Preparation progress · {targetId ? 'selected investor track' : 'whole goal'}</span>
+        <span className="goal-chart-instruction">
+          <CircleHelp size={14} aria-hidden="true" /> Hover or focus for guidance · select a dot for
+          details
+        </span>
       </figcaption>
+      {position && current && (
+        <div className="goal-chart-summary">
+          <div>
+            <strong>{current.percentage}%</strong>
+            <span>
+              {current.completed} of {current.required} preparation steps reviewed
+            </span>
+          </div>
+          <span>
+            {current.required - current.completed} remaining ·{' '}
+            {focusedTrack ? focusedTrack.name : 'whole goal'}
+          </span>
+        </div>
+      )}
+      {position && <GoalChartSteps position={position} targetId={targetId} />}
       <div
         className="goal-chart-scroll"
         role="region"
         aria-label="Preparation graph. Scroll horizontally on small screens."
         tabIndex={0}
       >
-        <svg
-          viewBox="0 0 1000 270"
-          role="group"
-          aria-label="Saved preparation history, current position, and separate remaining-work estimate"
-        >
-          <rect x="740" y="35" width="245" height="183" fill="#f5f2e9" />
-          {[0, 50, 100].map((value) => (
-            <g key={value}>
-              <line x1="55" y1={y(String(value))} x2="985" y2={y(String(value))} stroke="#dce3de" />
-              <text x="47" y={y(String(value)) + 4} textAnchor="end" fontSize="11">
-                {value}%
-              </text>
-            </g>
-          ))}
-          <text x="65" y="22" fontSize="12">
-            Recorded history
-          </text>
-          <text x="700" y="22" fontSize="12" textAnchor="middle">
-            Current
-          </text>
-          <text x="760" y="22" fontSize="12">
-            Planned remaining work
-          </text>
-          {ordered.map(({ event, value }, index) => {
-            const previous = ordered[index - 1];
-            const changed =
-              previous &&
-              (previous.event.position.scopeVersionId !== event.position.scopeVersionId ||
-                previous.event.position.goalVersionId !== event.position.goalVersionId ||
-                previous.value.required !== value.required);
-            return (
-              <g key={event.id}>
-                {previous && !changed && (
-                  <path
-                    d={`M ${x(previous.event.recordedAt)} ${y(previous.value.percentage)} H ${x(event.recordedAt)} V ${y(value.percentage)}`}
-                    fill="none"
-                    stroke="#456c59"
-                    strokeWidth="2"
-                  />
-                )}
-                {changed && (
-                  <line
-                    x1={x(event.recordedAt)}
-                    y1="40"
-                    x2={x(event.recordedAt)}
-                    y2="218"
-                    stroke="#9b793a"
-                    strokeDasharray="4 4"
-                  >
-                    <title>
-                      Goal or preparation scope changed. Historical counts retain their original
-                      denominator.
-                    </title>
-                  </line>
-                )}
-                <circle
-                  cx={x(event.recordedAt)}
-                  cy={y(value.percentage)}
-                  r="12"
-                  fill="transparent"
-                  stroke={selectedId === event.id ? '#ab6b32' : 'transparent'}
-                  strokeWidth="2"
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Inspect saved point ${event.sequence}: ${timestamp(event.recordedAt)}, ${value.completed} of ${value.required} reviewed. ${event.reason}`}
-                  aria-pressed={selectedId === event.id}
-                  onClick={() => onSelect(event)}
-                  onKeyDown={(keyboard) => {
-                    if (keyboard.key === 'Enter' || keyboard.key === ' ') {
-                      keyboard.preventDefault();
-                      onSelect(event);
-                    }
-                  }}
-                >
-                  <title>{event.reason}</title>
-                </circle>
-                <circle
-                  cx={x(event.recordedAt)}
-                  cy={y(value.percentage)}
-                  r="5"
-                  fill={selectedId === event.id ? '#ab6b32' : '#456c59'}
-                  stroke="white"
-                  strokeWidth="2"
-                  pointerEvents="none"
-                  aria-hidden="true"
+        <div className="goal-chart-canvas">
+          <svg
+            viewBox="0 0 1000 270"
+            role="group"
+            aria-label="Saved preparation history, current position, and separate remaining-work estimate"
+          >
+            <rect x="740" y="35" width="245" height="183" fill="#f5f2e9" />
+            {[0, 50, 100].map((value) => (
+              <g key={value}>
+                <line
+                  x1="55"
+                  y1={y(String(value))}
+                  x2="985"
+                  y2={y(String(value))}
+                  stroke="#dce3de"
                 />
+                <text x="47" y={y(String(value)) + 4} textAnchor="end" fontSize="11">
+                  {value}%
+                </text>
               </g>
-            );
-          })}
-          <line x1="700" y1="35" x2="700" y2="218" stroke="#334a3f" strokeDasharray="3 3" />
-          {current && (
-            <>
-              <circle cx="700" cy={currentY} r="7" fill="#334a3f" />
-              <text x="687" y={Math.max(45, currentY - 13)} textAnchor="end" fontSize="12">
-                {current.completed}/{current.required} reviewed
+            ))}
+            <text x="65" y="22" fontSize="12">
+              Recorded history
+            </text>
+            <text x="700" y="22" fontSize="12" textAnchor="middle">
+              Current
+            </text>
+            <text x="760" y="22" fontSize="12">
+              Planned remaining work
+            </text>
+            {ordered.map(({ event, value, showMarker, label }, index) => {
+              const previous = ordered[index - 1];
+              const changed =
+                previous &&
+                (previous.event.position.scopeVersionId !== event.position.scopeVersionId ||
+                  previous.event.position.goalVersionId !== event.position.goalVersionId ||
+                  previous.value.required !== value.required);
+              return (
+                <g key={event.id}>
+                  {previous && !changed && (
+                    <path
+                      d={`M ${x(previous.event.recordedAt)} ${y(previous.value.percentage)} H ${x(event.recordedAt)} V ${y(value.percentage)}`}
+                      fill="none"
+                      stroke="#456c59"
+                      strokeWidth="2"
+                    />
+                  )}
+                  {changed && (
+                    <line
+                      x1={x(event.recordedAt)}
+                      y1="40"
+                      x2={x(event.recordedAt)}
+                      y2="218"
+                      stroke="#9b793a"
+                      strokeDasharray="4 4"
+                    >
+                      <title>
+                        Goal or preparation scope changed. Historical counts retain their original
+                        denominator.
+                      </title>
+                    </line>
+                  )}
+                  {showMarker && (
+                    <>
+                      <circle
+                        cx={x(event.recordedAt)}
+                        cy={y(value.percentage)}
+                        r="12"
+                        fill="transparent"
+                        stroke={selectedId === event.id ? '#ab6b32' : 'transparent'}
+                        strokeWidth="2"
+                        tabIndex={0}
+                        role="button"
+                        data-chart-guide="history"
+                        aria-describedby={hint === event.id ? hintId : undefined}
+                        aria-label={`Inspect saved point ${event.sequence}: ${timestamp(event.recordedAt)}, ${value.completed} of ${value.required} reviewed. ${label}. ${event.reason}`}
+                        aria-pressed={selectedId === event.id}
+                        onMouseEnter={() => setHint(event.id)}
+                        onFocus={() => setHint(event.id)}
+                        onClick={() => {
+                          setHint(null);
+                          onSelect(event);
+                        }}
+                        onKeyDown={(keyboard) => {
+                          if (keyboard.key === 'Enter' || keyboard.key === ' ') {
+                            keyboard.preventDefault();
+                            setHint(null);
+                            onSelect(event);
+                          }
+                        }}
+                      >
+                        <title>{event.reason}</title>
+                      </circle>
+                      <circle
+                        cx={x(event.recordedAt)}
+                        cy={y(value.percentage)}
+                        r="5"
+                        fill={
+                          selectedId === event.id
+                            ? '#ab6b32'
+                            : hint === event.id
+                              ? '#244b39'
+                              : '#456c59'
+                        }
+                        stroke="white"
+                        strokeWidth="2"
+                        pointerEvents="none"
+                        aria-hidden="true"
+                      />
+                    </>
+                  )}
+                </g>
+              );
+            })}
+            <line x1="700" y1="35" x2="700" y2="218" stroke="#334a3f" strokeDasharray="3 3" />
+            {current && (
+              <>
+                <circle cx="700" cy={currentY} r="7" fill="#334a3f" />
+                <text x="687" y={Math.max(45, currentY - 13)} textAnchor="end" fontSize="12">
+                  {current.completed}/{current.required} reviewed
+                </text>
+              </>
+            )}
+            {!position && (
+              <text x="685" y="110" textAnchor="end" fontSize="12">
+                Not tracked yet
               </text>
+            )}
+            <text x="760" y="85" fontSize="13">
+              {position ? <>{position.remainingHours} estimated hours</> : 'Estimate not set'}
+            </text>
+            <text x="760" y="110" fontSize="12">
+              Preparation ready:
+            </text>
+            <text x="760" y="132" fontSize="13">
+              {position?.estimatedReadyDate
+                ? dateLabel(position.estimatedReadyDate)
+                : position
+                  ? 'Review remaining work'
+                  : 'Save goal to estimate'}
+            </text>
+            {forecast && (
+              <text x="760" y="154" fontSize="11">
+                {forecast.dailyHours}h/day · {forecast.workDays} work days
+              </text>
+            )}
+            <text x="760" y="175" fontSize="11">
+              Estimate · not recorded progress
+            </text>
+            <text x="65" y="244" fontSize="11">
+              {earliest ? timestamp(earliest) : 'No saved observations yet'}
+            </text>
+            <text x="630" y="244" fontSize="11" textAnchor="end">
+              {latest && latest !== earliest ? timestamp(latest) : ''}
+            </text>
+            <text x="700" y="264" fontSize="11" textAnchor="middle">
+              Now
+            </text>
+          </svg>
+          {position && current && (
+            <>
+              <button
+                type="button"
+                className="goal-chart-hotspot goal-chart-current-guide"
+                style={{ left: '70%', top: `${(currentY / 270) * 100}%` }}
+                data-chart-guide="current"
+                aria-label="Explain my current preparation and next step"
+                aria-describedby={hint === 'current' ? hintId : undefined}
+                onMouseEnter={() => setHint('current')}
+                onFocus={() => setHint('current')}
+                onClick={() => setHint('current')}
+              />
+              <button
+                type="button"
+                className="goal-chart-hotspot goal-chart-forecast-guide"
+                data-chart-guide="forecast"
+                aria-label="Explain the preparation forecast and how to adjust pace"
+                aria-describedby={hint === 'forecast' ? hintId : undefined}
+                onMouseEnter={() => setHint('forecast')}
+                onFocus={() => setHint('forecast')}
+                onClick={() => setHint('forecast')}
+              />
             </>
           )}
-          {!position && (
-            <text x="685" y="110" textAnchor="end" fontSize="12">
-              Not tracked yet
-            </text>
+          {guide && (
+            <div
+              className="goal-chart-hover-card"
+              role="tooltip"
+              id={hintId}
+              style={{
+                left: `clamp(8px, calc(${guide.anchor / 10}% - 138px), calc(100% - 284px))`,
+              }}
+            >
+              <span className="goal-chart-guide-heading">{guide.heading}</span>
+              <small>{guide.detail}</small>
+              <strong>{guide.progress}</strong>
+              <p>{guide.explanation}</p>
+              <div className="goal-chart-guide-next">
+                <ArrowRight size={14} aria-hidden="true" />
+                <span>{guide.next}</span>
+              </div>
+            </div>
           )}
-          <text x="760" y="85" fontSize="13">
-            {position ? <>{position.remainingHours} estimated hours</> : 'Estimate not set'}
-          </text>
-          <text x="760" y="110" fontSize="12">
-            Preparation ready:
-          </text>
-          <text x="760" y="132" fontSize="13">
-            {position?.estimatedReadyDate
-              ? dateLabel(position.estimatedReadyDate)
-              : position
-                ? 'Review remaining work'
-                : 'Save goal to estimate'}
-          </text>
-          <text x="760" y="175" fontSize="11">
-            Estimate · not recorded progress
-          </text>
-          <text x="65" y="244" fontSize="11">
-            {earliest ? timestamp(earliest) : 'No saved observations yet'}
-          </text>
-          <text x="630" y="244" fontSize="11" textAnchor="end">
-            {latest && latest !== earliest ? timestamp(latest) : ''}
-          </text>
-          <text x="700" y="264" fontSize="11" textAnchor="middle">
-            Now
-          </text>
-        </svg>
+        </div>
       </div>
+      <div className="goal-chart-legend" aria-label="Graph legend">
+        <span>
+          <i className="goal-legend-history" />
+          Reviewed steps
+        </span>
+        <span>
+          <i className="goal-legend-boundary" />
+          Goal or plan changed
+        </span>
+        <span>
+          <i className="goal-legend-forecast" />
+          Work estimate
+        </span>
+        {grouped > 0 && <span>{grouped} unchanged snapshots grouped · full history below</span>}
+      </div>
+      <GoalChartMilestones insights={insights} onSelect={onSelect} />
+      {position && (
+        <div className="goal-chart-next-action">
+          <Flag size={18} aria-hidden="true" />
+          <div>
+            <span>Your next step{focusedTrack ? ` · ${focusedTrack.name}` : ''}</span>
+            <strong>{nextAction}</strong>
+          </div>
+          <a className="text-button" href={nextHref}>
+            Continue preparation <ArrowRight size={16} aria-hidden="true" />
+          </a>
+        </div>
+      )}
       <p className="muted">
         {position
-          ? 'History tracks reviewed preparation. Future work is estimated.'
+          ? 'History tracks reviewed preparation, not speaking performance. Future work is estimated.'
           : 'No progress is recorded in this workspace yet. Save your goal to start the graph.'}
       </p>
       {targetId && (
@@ -614,30 +797,32 @@ export function GoalJourney({
     );
   return (
     <section className="goal-journey" aria-labelledby="goal-journey-title">
-      <div className="goal-heading">
-        <div>
-          <div className="eyebrow">Your goal</div>
-          <h2 id="goal-journey-title">Your preparation journey</h2>
-          <p>{data?.intent || 'What do you want to achieve?'}</p>
+      <div className="goal-overview-header">
+        <div className="goal-heading">
+          <div>
+            <div className="eyebrow">Your goal</div>
+            <h2 id="goal-journey-title">Your preparation journey</h2>
+            <p>{data?.intent || 'What do you want to achieve?'}</p>
+          </div>
+          {onEditGoal && (
+            <button className="button secondary" onClick={onEditGoal}>
+              {data?.intent.trim() ? 'Edit goal' : 'Set goal'}
+            </button>
+          )}
         </div>
-        {onEditGoal && (
-          <button className="button secondary" onClick={onEditGoal}>
-            {data?.intent.trim() ? 'Edit goal' : 'Set goal'}
-          </button>
-        )}
+        <ol className="goal-flow" aria-label="Goal to progress flow">
+          {[
+            'Goal',
+            'Investor match',
+            'Target investor',
+            'Tailored brief',
+            'Practice',
+            'Review progress',
+          ].map((label) => (
+            <li key={label}>{label}</li>
+          ))}
+        </ol>
       </div>
-      <ol className="goal-flow" aria-label="Goal to progress flow">
-        {[
-          'Goal',
-          'Investor match',
-          'Target investor',
-          'Tailored brief',
-          'Practice',
-          'Review progress',
-        ].map((label) => (
-          <li key={label}>{label}</li>
-        ))}
-      </ol>
       {error && (
         <p role="alert">
           {error} {data && 'The last saved view remains visible.'}{' '}
@@ -669,6 +854,13 @@ export function GoalJourney({
                 {data.position.percentage}%
               </strong>
               <small>{readinessLabels[data.position.readiness]}</small>
+              <div className="goal-summary-meter" aria-hidden="true">
+                <i
+                  style={{
+                    width: `${Math.max(0, Math.min(100, Number(data.position.percentage)))}%`,
+                  }}
+                />
+              </div>
             </div>
             <div>
               <span>Estimated preparation ready</span>
@@ -696,6 +888,16 @@ export function GoalJourney({
                 </label>
               )}
             </div>
+            <div className="goal-summary-targets">
+              <span>Target investors</span>
+              <strong>
+                {activeTargets.filter((target) => target.included).length} in your plan
+              </strong>
+              <small>{activeTargets.length} saved · independent practice tracks</small>
+              <a className="text-button" href="#goal-targets">
+                View investors →
+              </a>
+            </div>
             <div className="journey-next">
               <span>
                 Next:{' '}
@@ -710,59 +912,70 @@ export function GoalJourney({
           </div>
         </>
       )}
-      {historyError && (
-        <p role="alert">
-          History could not refresh. Previously loaded observations remain visible.{' '}
-          <button className="text-button" onClick={() => setHistoryReload((value) => value + 1)}>
-            Retry history
-          </button>
-        </p>
-      )}
-      <GoalJourneyChart
-        events={
-          data?.position
-            ? history.length || targetId || from || to
-              ? history
-              : data.events.slice(-30)
-            : []
-        }
-        position={data?.position ?? null}
-        targetId={targetId}
-        selectedId={selected?.id}
-        onSelect={select}
-      />
-      {data?.position?.paceScenarios && (
-        <div className="goal-pace-scenarios" aria-label="Goal preparation date scenarios">
-          {data.position.paceScenarios.map((scenario) => (
-            <div
-              key={scenario.pace}
-              aria-current={scenario.pace === (data.position?.pace ?? 1) ? 'true' : undefined}
-            >
-              <span>
-                {scenario.pace === 1
-                  ? 'Planned pace'
-                  : scenario.pace > 1
-                    ? '25% faster'
-                    : '25% slower'}
-              </span>
-              <strong>
-                {scenario.estimatedReadyDate
-                  ? dateLabel(scenario.estimatedReadyDate)
-                  : 'Review remaining work'}
-              </strong>
-              <small>
-                {scenario.dailyHours} hours/day · {scenario.workDays} work days
-              </small>
+      <div className={`goal-workspace-grid${data?.journey ? ' has-sidebar' : ''}`}>
+        <div className="goal-workspace-primary">
+          {historyError && (
+            <p role="alert">
+              History could not refresh. Previously loaded observations remain visible.{' '}
+              <button
+                className="text-button"
+                onClick={() => setHistoryReload((value) => value + 1)}
+              >
+                Retry history
+              </button>
+            </p>
+          )}
+          <GoalJourneyChart
+            events={
+              data?.position
+                ? history.length || targetId || from || to
+                  ? history
+                  : data.events.slice(-30)
+                : []
+            }
+            position={data?.position ?? null}
+            targetId={targetId}
+            selectedId={selected?.id}
+            onSelect={select}
+          />
+          {data?.position?.paceScenarios && (
+            <div className="goal-pace-scenarios" aria-label="Goal preparation date scenarios">
+              {data.position.paceScenarios.map((scenario) => (
+                <div
+                  key={scenario.pace}
+                  aria-current={scenario.pace === (data.position?.pace ?? 1) ? 'true' : undefined}
+                >
+                  <span>
+                    {scenario.pace === 1
+                      ? 'Planned pace'
+                      : scenario.pace > 1
+                        ? '25% faster'
+                        : '25% slower'}
+                  </span>
+                  <strong>
+                    {scenario.estimatedReadyDate
+                      ? dateLabel(scenario.estimatedReadyDate)
+                      : 'Review remaining work'}
+                  </strong>
+                  <small>
+                    {scenario.dailyHours} hours/day · {scenario.workDays} work days
+                  </small>
+                </div>
+              ))}
+              <p>
+                Saved planning pace changes the forecast only. Completed work and call performance
+                stay separate.
+              </p>
             </div>
-          ))}
-          <p>
-            Saved planning pace changes the forecast only. Completed work and call performance stay
-            separate.
-          </p>
+          )}
         </div>
-      )}
-      {data?.journey && <GoalPracticeFeedback data={data} />}
-      {data?.journey && <GoalRadarOpportunities items={data.radarOpportunities} />}
+        {data?.journey && (
+          <aside className="goal-workspace-sidebar" aria-label="Practice and investor radar">
+            <GoalPracticeFeedback data={data} />
+            <GoalRadarOpportunities items={data.radarOpportunities} />
+          </aside>
+        )}
+      </div>
       {data?.position && (
         <>
           <details className="journey-details goal-progress-details">
@@ -1144,7 +1357,7 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
     }
   };
   return (
-    <section className="goal-targets" aria-label="Target investors for this goal">
+    <section className="goal-targets" id="goal-targets" aria-label="Target investors for this goal">
       <div className="goal-heading">
         <div>
           <h3>Target investors</h3>

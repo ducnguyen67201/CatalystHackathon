@@ -13,10 +13,12 @@ export function InvestorDiscoveryAction({
   state,
   onRefresh,
   onEditProfile,
+  compact = false,
 }: {
   state: StateResponse;
   onRefresh: () => Promise<void>;
   onEditProfile: () => void;
+  compact?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [queued, setQueued] = useState(false);
@@ -49,8 +51,14 @@ export function InvestorDiscoveryAction({
               : job?.status === JobStatus.SUCCEEDED
                 ? `Search complete · ${job.result ?? state.workspace.discovery.note}`
                 : 'Find new investors using your saved company details and preferences.';
+  const completed =
+    compact &&
+    ready &&
+    state.capabilities.researchReady &&
+    !loading &&
+    job?.status === JobStatus.SUCCEEDED;
   return (
-    <div className="investor-search-action">
+    <div className="investor-search-action" data-compact={compact ? 'true' : undefined}>
       <button
         className="button"
         aria-busy={loading}
@@ -93,9 +101,17 @@ export function InvestorDiscoveryAction({
               ? 'Search queued…'
               : 'Find investors'}
       </button>
-      <p id={statusId} role="status">
-        {status}
-      </p>
+      <div className="investor-search-feedback">
+        <p id={statusId} role="status">
+          {completed ? 'Search complete · review the saved leads below' : status}
+        </p>
+        {completed && (
+          <details>
+            <summary>Search details</summary>
+            <p>{status}</p>
+          </details>
+        )}
+      </div>
       {full && <p>Track or dismiss a suggestion before finding more investors.</p>}
       {error && (
         <p className="error" role="alert">
