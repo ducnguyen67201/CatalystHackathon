@@ -1332,8 +1332,17 @@ function TargetMatchReview({
   );
 }
 
-export function TargetInvestors({ controller }: { controller: JourneyController }) {
+export function TargetInvestors({
+  controller,
+  investorId,
+}: {
+  controller: JourneyController;
+  investorId?: string;
+}) {
   const { data, busy, act } = controller;
+  const targets =
+    data?.targets.filter((target) => !investorId || target.investorId === investorId) ?? [];
+  const practiceUpdates = data?.practiceUpdates ?? [];
   const [message, setMessage] = useState('');
   const requestedTargetId =
     typeof window === 'undefined'
@@ -1371,14 +1380,14 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
         </a>
       </div>
       {message && <p role="status">{message}</p>}
-      {!data?.targets.length && (
+      {!targets.length && (
         <p>
           No target investors yet. Review a Radar match, then save why you want to prepare for that
           investor.
         </p>
       )}
       <div className="goal-target-grid">
-        {data?.targets.map((target) => (
+        {targets.map((target) => (
           <article
             key={target.id}
             className="goal-target-card"
@@ -1417,14 +1426,11 @@ export function TargetInvestors({ controller }: { controller: JourneyController 
                   {target.track.outdated && ' · Changed evidence needs review'}
                 </p>
                 <p>{target.track.nextAction}</p>
-                {data.practiceUpdates.find((update) => update.targetId === target.id)?.summary && (
+                {practiceUpdates.find((update) => update.targetId === target.id)?.summary && (
                   <details className="journey-details">
                     <summary>Latest practice feedback</summary>
                     <p>
-                      {
-                        data.practiceUpdates.find((update) => update.targetId === target.id)
-                          ?.summary
-                      }
+                      {practiceUpdates.find((update) => update.targetId === target.id)?.summary}
                     </p>
                   </details>
                 )}

@@ -281,3 +281,20 @@ days and honor the existing evidence-delivery dependency. Earlier graph snapshot
 original forecast; changing pace never awards completed steps. This is a planning assumption,
 not learned speed. Reads start no provider work and local voice assessment still requires
 delivery of the configured signed provider transcript callback.
+
+### Grouped investor Radar
+
+Radar shows one entry per saved investor identity, with complete update/unread counts
+computed from saved history rather than the current event page. Select an investor for
+Overview, Updates, Sources & checks and their Preparation track. News headlines expand to
+retain exact passages and all per-update read, dismiss and email controls. Opening an
+investor never starts research or profile generation. Existing explicit actions remain.
+
+Groups use investor IDs, or suggestion IDs for untracked leads; names alone do not merge
+people and firms. Tracking a candidate keeps its original updates under the tracked identity.
+The `radarInvestor` query parameter preserves the selected group, while emailed `radarEvent`
+links select the owning investor and expand that exact update. Event pagination and filters
+are applied inside the selected group. Candidate source passages remain on their updates;
+tracked-investor research-run history is filtered by investor ID. Company-wide discovery
+controls, the expandable complete research archive and email settings stay shared. This adds a read-only group projection, no storage
+migration, inference or changes to preparation/evaluation behavior.

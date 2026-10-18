@@ -348,6 +348,106 @@ describe('radar publication and founder delivery', () => {
     expect(research.discover).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
+  it('groups the complete history by identity, keeps same-named investors separate and counts unread per update', async () => {
+    const { service, investor, research, send } = await fixture();
+    await service.investors.check(investor.id, 'grouped');
+    const other = await service.investors.add({
+      name: investor.name,
+      url: 'https://example.com/different-person',
+      frequency: 'paused',
+    });
+    await service.change((state) => {
+      const event = state.radar.events[0];
+      if (!event) throw new Error('Expected event');
+      for (let index = 1; index < 25; index++)
+        state.radar.events.push({
+          ...event,
+          id: `group-event-${index}`,
+          dedupeKey: `group-key-${index}`,
+          readAt: index === 1 ? now() : null,
+          dismissedAt: index === 2 ? now() : null,
+        });
+      state.radar.events.push({
+        ...event,
+        id: 'different-person-event',
+        dedupeKey: 'other-key',
+        investorId: other.id,
+      });
+    });
+    research.discover.mockClear();
+    const before = await service.read();
+    const groups = await service.radar.investors();
+    expect(groups.items).toHaveLength(2);
+    expect(groups.items.find((group) => group.investorId === investor.id)).toMatchObject({
+      updateCount: 25,
+      unreadCount: 23,
+      sourceCount: 1,
+    });
+    expect(groups.items.find((group) => group.investorId === other.id)).toMatchObject({
+      updateCount: 1,
+      unreadCount: 1,
+    });
+    const first = await service.radar.feed({ limit: 20, investorId: investor.id });
+    const second = await service.radar.feed({
+      limit: 20,
+      investorId: investor.id,
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(first.items).toHaveLength(20);
+    expect(second.items).toHaveLength(5);
+    expect([...first.items, ...second.items].every((item) => item.investorId === investor.id)).toBe(
+      true,
+    );
+    expect(await service.read()).toEqual(before);
+    expect(research.discover).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+  it('scopes candidate updates and preserves their identity when promoted to a tracked investor', async () => {
+    const { service, investor } = await fixture();
+    await service.investors.check(investor.id, 'tracked-event');
+    const suggestionId = randomUUID();
+    await service.change((state) => {
+      const event = state.radar.events[0];
+      if (!event) throw new Error('Expected event');
+      state.radar.events.push({
+        ...event,
+        id: 'candidate-event',
+        dedupeKey: 'candidate-key',
+        investorId: null,
+        suggestionId,
+        investorName: 'Fictional candidate',
+      });
+    });
+    const candidates = await service.radar.feed({ limit: 20, suggestionId });
+    expect(candidates.items.map((item) => item.id)).toEqual(['candidate-event']);
+    expect(
+      (await service.radar.investors()).items.find(
+        (group) => group.key === `candidate:${suggestionId}`,
+      )?.updateCount,
+    ).toBe(1);
+    await service.change((state) => {
+      const event = state.radar.events.find((item) => item.id === 'candidate-event');
+      if (event) event.investorId = investor.id;
+    });
+    const groups = await service.radar.investors();
+    expect(groups.items).toHaveLength(1);
+    expect(groups.items[0]).toMatchObject({
+      key: `investor:${investor.id}`,
+      suggestionIds: [suggestionId],
+      updateCount: 2,
+    });
+  });
+  it('keeps tracked investors visible before any classified updates exist', async () => {
+    const { service, investor } = await fixture();
+    expect((await service.radar.investors()).items).toEqual([
+      expect.objectContaining({
+        investorId: investor.id,
+        updateCount: 0,
+        unreadCount: 0,
+        latestEventId: null,
+      }),
+    ]);
+  });
   it('shows offline for stale heartbeats, checking for active work', async () => {
     const { service, store } = await fixture();
     expect((await service.radar.status()).state).toBe('offline');

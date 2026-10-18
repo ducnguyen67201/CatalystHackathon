@@ -1,3 +1,4 @@
+import { radarInvestorGroups } from './RadarInvestorGroups.js';
 import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -414,6 +415,9 @@ export class RadarDeliveryService {
     const event = state.radar.events.find((e) => e.id === id);
     return event ? this.item(state, event) : null;
   }
+  async investors() {
+    return radarInvestorGroups(await this.service.read());
+  }
   async feed(input: z.infer<typeof radarQuerySchema>) {
     const query = radarQuerySchema.parse(input);
     const state = await this.service.read();
@@ -422,6 +426,7 @@ export class RadarDeliveryService {
       .filter(
         (e) =>
           (!query.investorId || e.investorId === query.investorId) &&
+          (!query.suggestionId || e.suggestionId === query.suggestionId) &&
           (!query.category || e.signal.category === query.category) &&
           (query.unread !== 'true' || !e.readAt),
       );

@@ -5,6 +5,7 @@ import type { WorkspaceService } from '../features/WorkspaceService.js';
 export function registerRadarRoutes(app: FastifyInstance, service: WorkspaceService): void {
   const id = (params: unknown) => z.strictObject({ id: z.uuid() }).parse(params).id;
   const readOptions = { config: { rateLimit: { groupId: 'state-polling' } } };
+  app.get('/api/radar/investors', readOptions, async () => service.radar.investors());
   app.get('/api/radar/events', readOptions, async (request) =>
     service.radar.feed(radarQuerySchema.parse(request.query)),
   );
