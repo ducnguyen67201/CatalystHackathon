@@ -1,4 +1,5 @@
 import { InvestorMeetingContext } from './InvestorMeetingContext.js';
+import juneWordmark from './assets/JuneWordmark.png';
 import { FinancialSheet } from './FinancialSheet.js';
 import { RadarUpdates } from './RadarUpdates.js';
 import { PracticeFollowups } from './Followups.js';
@@ -207,8 +208,7 @@ export function App() {
     return (
       <main className="loading">
         <div className="brand">
-          june
-          <span />
+          <img className="brand-wordmark" src={juneWordmark} alt="June" width={459} height={150} />
         </div>
         <LoaderCircle className="spin" />
         <p>{error || 'Opening your workspace…'}</p>

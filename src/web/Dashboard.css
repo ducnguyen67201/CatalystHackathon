@@ -36,21 +36,20 @@
   align-self: center;
   margin: 0;
   min-height: 44px;
-  width: 44px;
+  width: 48px;
 }
 .brand-wordmark {
-  font: inherit;
+  display: block;
+  width: 120px;
+  height: auto;
 }
 .workspace-sidebar .brand-wordmark {
-  display: none;
+  width: 48px;
 }
 .brand-home {
   background: transparent;
   color: var(--ink);
   padding: 0;
-}
-.brand span {
-  background: #b57e65;
 }
 .workspace-nav {
   display: flex;
@@ -626,7 +625,7 @@
     width: auto;
   }
   .workspace-sidebar .brand-wordmark {
-    display: inline;
+    width: 86px;
   }
   .workspace-status {
     flex-direction: row;
