@@ -200,6 +200,41 @@ Browser errors were absent. No remote deployment or paid-provider validation was
 
 # Post-call homepage loop
 
+Radar uses compact investor-first cards: name, saved-target status, news headline, and goal-fit
+status lead each card. Public-source/identity warnings, fictional examples, historical items,
+stale context and corrections remain visible. **News & sources** expands the full summary,
+relevance explanation and exact quote; **Update options** retains read/dismiss/email actions.
+The existing **Review investor** action opens the same match/target decision flow. Desktop
+uses a two-column feed, while narrower screens stack cards. Search results retain full partial
+research details under **Search details**, with queue/running/error states still visible.
+Research status and optional company context share one secondary disclosure.
+
+Investor research replaces the wide recommendation table with responsive cards. Each card
+shows the saved recommendation label, evidence-coverage meter, observed stage/sector/geography,
+source count and recorded gap count. Unknown values stay **Not confirmed**; the coverage meter
+is separate from any available match score. **Why this investor & gaps** and **Sources** retain
+all original reasoning, unknowns and exact excerpts. Inspect links open the matching tracked
+investor’s research; preparation selection keeps its existing command and disabled states.
+Funding suggestions use labeled company/deal facts, with whole-round amounts explicitly separate
+from individual checks. Original funding quotes, search assumptions, schedules and check history
+remain available on expand; fictional evidence stays labeled.
+
+Meeting briefs use cards for both preparation cycles and the searchable brief/practice archive.
+Story revisions, original review states, timestamps, linked-practice counts and historical cycle
+links remain intact. Full cycle text stays under **Saved content**; archive cards open the same
+review drawer. The drawer keeps financial figures visible as tiles, with saved explanations,
+open questions, notes and supporting research behind labeled disclosures. Search, newest/oldest
+sorting, refresh, practice and follow-up commands retain their existing behavior.
+
+Follow-ups show page-scoped call, attention, pending-review and observed-improvement counts.
+Each call has a collapsible header with its original date, review state and fictional/partial
+labels. The latest call, calls with tasks and directly linked calls start expanded; other calls
+remain inspectable in chronological order. Task cards retain the original status and written-retry
+indicator, opening their full gap, preparation steps, evidence, response comparison and answer form.
+Secondary financial/scenario/dismiss actions sit under **More actions**. Saved evaluations and
+new research remain separate expandable sections; pagination and session/task deep links remain
+available. These changes do not write progress, start reviews or modify evidence.
+
 Overview fills the available workspace width with compact goal and metric cards. At desktop
 widths, the history graph and pace scenarios sit beside a practice-feedback/Radar rail. Target
 investors remain independent cards below. Tablet and phone layouts stack sections without
@@ -212,6 +247,16 @@ behavior still opens historical inspection. Current and forecast markers have to
 keyboard controls; Escape dismisses guidance. A persistent next-step strip links to current
 preparation, including the selected investor when the graph is filtered. Hover guidance is
 presentation only: no approvals, progress, estimates or saved history are changed.
+
+The graph also shows a current step breakdown and three recent saved milestones, with
+investor attribution and direct historical inspection. Company story is counted once in
+the goal view; investor filters show only that investor’s five steps. Transcript and assessment
+processing remain visible even when the reviewed percentage is unchanged. A small legend
+explains scope boundaries and the separate forecast, which includes the saved pace capacity.
+Consecutive snapshots with unchanged displayed work share endpoint markers; their original
+timestamps, line geometry and all history rows are retained. Goal, scope, work status, practice,
+evidence lineage and pace changes remain distinct. Selecting a grouped snapshot in history
+restores its marker. Checklist completion remains separate from speaking performance.
 
 The homepage reads saved per-investor practice updates with the goal projection. After the
 final transcript arrives, assessment publication updates the current checklist and saved graph

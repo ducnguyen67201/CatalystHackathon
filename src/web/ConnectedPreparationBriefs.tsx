@@ -6,6 +6,8 @@ import {
 } from '../contracts/ConnectedPreparation.js';
 import { request } from './ApiClient.js';
 import './ConnectedPreparation.css';
+import { ArrowRight, FileText } from 'lucide-react';
+import { summarizeTailoredBrief } from './TailoredBriefReview.js';
 
 /** The same saved cycle briefs surfaced in the existing Meeting brief destination. */
 export function ConnectedPreparationBriefs({
@@ -35,63 +37,63 @@ export function ConnectedPreparationBriefs({
     <section className="loop-recommendations" aria-label="Connected preparation briefs">
       <h3>Briefs from your preparation checklist</h3>
       <p className="loop-method">
-        These use the exact reviewed pitch. Other saved meeting briefs appear in the table below.
+        These use the exact reviewed pitch. Other saved meeting briefs appear in the cards below.
       </p>
-      <div className="loop-comparison-scroll">
-        <table className="loop-comparison">
-          <thead>
-            <tr>
-              <th>Investor</th>
-              <th>Story</th>
-              <th>Review state</th>
-              <th>Next action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.history
-              .filter((cycle) => cycle.brief)
-              .map((cycle) => {
-                const current = cycle.id === view.cycle?.id;
-                const pitch = view.historyPitches.find((item) => item.id === cycle.pitchId);
-                return (
-                  <tr key={cycle.id}>
-                    <td>
+      <div className="meeting-cycle-grid">
+        {view.history
+          .filter((cycle) => cycle.brief)
+          .map((cycle) => {
+            const current = cycle.id === view.cycle?.id;
+            const pitch = view.historyPitches.find((item) => item.id === cycle.pitchId);
+            const summary = summarizeTailoredBrief(cycle.brief ?? '');
+            const status = current
+              ? view.outdated
+                ? 'Sources changed'
+                : cycle.briefApprovedAt
+                  ? 'Approved'
+                  : 'Needs review'
+              : 'Historical brief';
+            return (
+              <article className="meeting-cycle-card" data-current={current} key={cycle.id}>
+                <header>
+                  <div className="meeting-record-icon">
+                    <FileText size={21} aria-hidden="true" />
+                  </div>
+                  <div>
+                    <span className="eyebrow">
+                      {current ? 'Current preparation' : 'Saved cycle'}
+                    </span>
+                    <h4>
                       {state.workspace.investors.find(
                         (investor) => investor.id === cycle.investorId,
                       )?.name ?? 'Earlier selected investor'}
-                    </td>
-                    <td>
-                      Pitch v{pitch?.revision ?? 'unknown'}
-                      {pitch?.fictional && (
-                        <span className="loop-tag">Fictional demo evidence</span>
-                      )}
-                    </td>
-                    <td>
-                      {current
-                        ? view.outdated
-                          ? 'Sources changed'
-                          : cycle.briefApprovedAt
-                            ? 'Approved'
-                            : 'Needs review'
-                        : 'Historical brief'}
-                      <details>
-                        <summary>Saved content</summary>
-                        <p className="loop-prose">{cycle.brief}</p>
-                      </details>
-                    </td>
-                    <td>
-                      <a
-                        className="button secondary"
-                        href={`/?preparationStep=brief&preparationCycleId=${encodeURIComponent(cycle.id)}`}
-                      >
-                        {current ? 'Continue preparation' : 'Inspect cycle history'} →
-                      </a>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                    </h4>
+                  </div>
+                  <span className="meeting-record-status">{status}</span>
+                </header>
+                <div className="meeting-cycle-meta">
+                  <span>Pitch v{pitch?.revision ?? 'unknown'}</span>
+                  {pitch?.fictional && <span className="loop-tag">Fictional demo evidence</span>}
+                </div>
+                {summary.objective && (
+                  <p className="meeting-cycle-objective">{summary.objective}</p>
+                )}
+                <div className="meeting-cycle-actions">
+                  <a
+                    className="button"
+                    href={`/?preparationStep=brief&preparationCycleId=${encodeURIComponent(cycle.id)}`}
+                  >
+                    {current ? 'Continue preparation' : 'Inspect cycle history'}
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </a>
+                </div>
+                <details className="meeting-support-details">
+                  <summary>Saved content</summary>
+                  <p className="loop-prose">{cycle.brief}</p>
+                </details>
+              </article>
+            );
+          })}
       </div>
     </section>
   );

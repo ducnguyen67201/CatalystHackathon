@@ -253,3 +253,220 @@
   cursor: pointer;
   color: var(--muted);
 }
+
+/* Compact, investor-first feed cards. */
+.radar-updates > .investor-search-action[data-compact='true'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding: 16px 18px;
+  margin: 22px 0 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.radar-updates .investor-search-feedback {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.radar-updates .investor-search-feedback p {
+  margin: 0;
+  max-width: 85ch;
+}
+.radar-updates .investor-search-feedback details {
+  margin-top: 4px;
+  color: var(--muted);
+}
+.radar-updates .investor-search-feedback summary {
+  cursor: pointer;
+  padding: 5px 0;
+}
+.radar-updates .investor-search-feedback details p {
+  margin-top: 8px;
+}
+.radar-updates > .radar-context-settings {
+  margin: 0 0 12px;
+  padding: 0;
+  border-top: 0;
+}
+.radar-updates .radar-tabs {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.radar-feed-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+  margin-block: 6px 18px;
+}
+.radar-update.radar-investor-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.radar-investor-card .radar-update-meta {
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+.radar-investor-card .radar-update-meta span:first-child {
+  font-size: 9px;
+  letter-spacing: 0.8px;
+}
+.radar-investor-card .radar-unread {
+  color: #456c59;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.radar-unread::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.radar-investor-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 12px;
+}
+.radar-investor-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  color: #456c59;
+  background: #eff4eb;
+  border: 1px solid #e0e8d9;
+  border-radius: 12px;
+}
+.radar-investor-card h3 {
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 0 0 4px;
+  letter-spacing: -0.5px;
+}
+.radar-plan-state {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.radar-news-preview {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #526359;
+  margin: 0 0 16px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.radar-fit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 11px 12px;
+  background: #faf6eb;
+  border: 1px solid #e8dfc9;
+  border-radius: 9px;
+  color: #80652f;
+  font-size: 11px;
+}
+.radar-fit-row strong {
+  margin-left: auto;
+  font-size: 12px;
+}
+.radar-fit-row[data-fit='scored'] {
+  background: #edf3e7;
+  border-color: #d5e2ce;
+  color: #355b46;
+}
+.radar-fit-row[data-fit='outside_mandate'] {
+  background: #fcf0ea;
+  border-color: #ecd5c8;
+  color: #8b5539;
+}
+.radar-card-context {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin: 12px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+.radar-investor-card .radar-flags:not(:empty) {
+  margin-top: 10px;
+}
+.radar-investor-card .radar-flags span {
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #faf0de;
+  color: #80652f;
+  font-size: 10px;
+}
+.radar-card-primary {
+  margin-top: 18px;
+}
+.radar-card-primary .button {
+  font-size: 12px;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+.radar-investor-card > details {
+  margin: 8px 0 0;
+  padding: 0;
+  border-top: 0;
+}
+.radar-investor-card > details:not([open]) {
+  display: inline-block;
+  margin-right: 18px;
+}
+.radar-investor-card > details > summary {
+  min-height: 44px;
+  align-content: center;
+  font-size: 11px;
+}
+.radar-card-options > summary {
+  color: var(--muted);
+}
+.radar-card-expanded {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.radar-card-expanded h4 {
+  font-size: 13px;
+  margin: 12px 0;
+}
+.radar-card-expanded .radar-relevance {
+  margin-block: 12px;
+  font-size: 12px;
+}
+.radar-card-expanded .radar-source-title {
+  color: var(--muted);
+  font-size: 11px;
+}
+.radar-investor-card summary:focus-visible,
+.radar-updates .investor-search-feedback summary:focus-visible {
+  outline: 2px solid #456c59;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+@media (max-width: 1000px) {
+  .radar-feed-grid {
+    grid-template-columns: 1fr;
+  }
+}

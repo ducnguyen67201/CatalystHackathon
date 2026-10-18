@@ -1,5 +1,13 @@
-import { Fragment, useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronDown, Circle } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronDown,
+  Circle,
+  Clock3,
+  ListChecks,
+  MessageSquare,
+  TrendingUp,
+} from 'lucide-react';
 import { z } from 'zod';
 import {
   followupQuerySchema,
@@ -81,15 +89,10 @@ function PracticeTask({
     }
   }
   return (
-    <article className="followup-task">
+    <article className="followup-task" data-status={task.status}>
       <span className="section-label">{statuses[task.status]}</span>
       <h3>{task.title}</h3>
       <p>{task.gap}</p>
-      {task.quote && (
-        <blockquote>
-          <strong>From your answer:</strong> “{task.quote}”
-        </blockquote>
-      )}
       <h4>Before your next attempt</h4>
       <ol>
         {task.steps.map((step, index) => (
@@ -103,6 +106,12 @@ function PracticeTask({
       )}
       <details>
         <summary>Evidence used in this review</summary>
+        {task.quote && (
+          <blockquote>
+            <strong>From your answer:</strong> “{task.quote}”
+          </blockquote>
+        )}
+
         {task.facts.map((fact) => (
           <p key={fact.id}>
             {fact.metric.replaceAll('_', ' ')}: {fact.value} {fact.unit} · {fact.period}
@@ -138,24 +147,29 @@ function PracticeTask({
           <button className="button" disabled={busy} onClick={() => setEditing(!editing)}>
             {editing ? 'Close answer' : 'Practise this answer'}
           </button>
-          {(task.facts.length > 0 || task.sources.some((s) => s.kind === 'financial')) && (
-            <button className="button secondary" onClick={onFinancials}>
-              Open financials
-            </button>
-          )}
-          <a
-            className="button secondary"
-            href={preparationScenarioHref(followupObjective(task), session.investorId)}
-          >
-            Review next scenario
-          </a>
-          <button
-            className="button secondary"
-            disabled={busy}
-            onClick={() => void respond('dismissed')}
-          >
-            Dismiss suggestion
-          </button>
+          <details className="followup-more-actions">
+            <summary>More actions</summary>
+            <div className="actions">
+              {(task.facts.length > 0 || task.sources.some((s) => s.kind === 'financial')) && (
+                <button className="button secondary" onClick={onFinancials}>
+                  Open financials
+                </button>
+              )}
+              <a
+                className="button secondary"
+                href={preparationScenarioHref(followupObjective(task), session.investorId)}
+              >
+                Review next scenario
+              </a>
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() => void respond('dismissed')}
+              >
+                Dismiss suggestion
+              </button>
+            </div>
+          </details>
         </div>
       )}
       {error && <p role="alert">{error}</p>}
@@ -211,51 +225,51 @@ function PracticeTaskRow(props: Parameters<typeof PracticeTask>[0]) {
   });
   const detailId = useId();
   return (
-    <Fragment>
-      <tr className={open ? 'followup-row is-open' : 'followup-row'}>
-        <th scope="row" className="followup-title-cell">
-          <button
-            className="followup-row-toggle"
-            aria-expanded={open}
-            aria-controls={detailId}
-            onClick={() => setOpen(!open)}
-          >
-            <ChevronDown size={16} aria-hidden="true" />
-            <span>{task.title}</span>
-          </button>
-        </th>
-        <td>
-          <span className={`followup-practised ${task.retrySessionId ? 'is-practised' : ''}`}>
-            {task.retrySessionId ? (
-              <Check size={16} aria-hidden="true" />
-            ) : (
-              <Circle size={14} aria-hidden="true" />
-            )}
-            {task.retrySessionId ? 'Practised' : 'Not yet'}
-          </span>
-        </td>
-        <td>
-          <span className={`followup-status status-${task.status}`}>{statuses[task.status]}</span>
-        </td>
-        <td className="followup-action-cell">
-          <button
-            className="button secondary"
-            aria-expanded={open}
-            aria-controls={detailId}
-            onClick={() => setOpen(!open)}
-          >
-            {open ? 'Close details' : task.status === 'open' ? 'View & practise' : 'View details'}
-          </button>
-        </td>
-      </tr>
-      <tr hidden={!open} id={detailId} className="followup-detail-row">
-        <td colSpan={4}>
-          <PracticeTask {...props} />
-        </td>
-      </tr>
-    </Fragment>
+    <article className={`followup-task-card ${open ? 'is-open' : ''}`}>
+      <div className="followup-task-card-status">
+        <span className={`followup-status status-${task.status}`}>{statuses[task.status]}</span>
+        <span className={`followup-practised ${task.retrySessionId ? 'is-practised' : ''}`}>
+          {task.retrySessionId ? (
+            <Check size={14} aria-hidden="true" />
+          ) : (
+            <Circle size={14} aria-hidden="true" />
+          )}
+          {task.retrySessionId ? 'Practised' : 'Not yet'}
+        </span>
+      </div>
+      <button
+        className="followup-row-toggle"
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={() => setOpen(!open)}
+        title={task.title}
+      >
+        <ChevronDown size={16} aria-hidden="true" />
+        <span>{task.title}</span>
+      </button>
+      <button
+        className="button secondary followup-card-open"
+        aria-expanded={open}
+        aria-controls={detailId}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? 'Close details' : task.status === 'open' ? 'View & practise' : 'View details'}
+      </button>
+      <div hidden={!open} id={detailId}>
+        <PracticeTask {...props} />
+      </div>
+    </article>
   );
 }
+
+const reviewLabels: Record<FollowupSession['reviewStatus'], string> = {
+  awaiting_transcript: 'Waiting for transcript',
+  queued: 'Reviewing',
+  failed: 'Review needs retry',
+  skipped: 'Not assessed',
+  unavailable: 'No saved assessment',
+  ready: 'Review ready',
+};
 
 export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }) {
   const [data, setData] = useState<FollowupsResponse | null>(null);
@@ -353,7 +367,7 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
           </a>
         </div>
       )}
-      {data && tasks.length > 0 && (
+      {data && data.sessions.length > 0 && (
         <div className="followup-overview">
           <div className="followup-overview-heading">
             <div>
@@ -365,6 +379,30 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
             <span className="followup-page-count">
               {counts.practised} of {counts.all} practised · this page
             </span>
+          </div>
+          <div className="followup-summary-grid" aria-label="Follow-up summary for this page">
+            {[
+              { label: 'Saved calls', value: data.sessions.length, icon: MessageSquare },
+              { label: 'Needs attention', value: counts.attention, icon: ListChecks },
+              {
+                label: 'Waiting for review',
+                value: data.sessions.filter((session) =>
+                  ['awaiting_transcript', 'queued'].includes(session.reviewStatus),
+                ).length,
+                icon: Clock3,
+              },
+              {
+                label: 'Improvements observed',
+                value: tasks.filter((task) => task.status === 'improved').length,
+                icon: TrendingUp,
+              },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label}>
+                <Icon size={18} aria-hidden="true" />
+                <strong>{value}</strong>
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
           <div
             className="followup-filters"
@@ -394,136 +432,165 @@ export function PracticeFollowups({ onFinancials }: { onFinancials: () => void }
           </button>
         </div>
       )}
-      {visibleSessions?.map((session) => (
+      {visibleSessions?.map((session, index) => (
         <section className="panel followup-session" key={session.id} id={`practice-${session.id}`}>
-          <div className="eyebrow">
-            {session.investorName ?? 'Open practice'} · {when(session.createdAt)}
-          </div>
-          <h2>{session.scenario}</h2>
-          {session.fictional && (
-            <p className="followup-label">Includes fictional demo evidence or a demo scenario</p>
-          )}
-          {session.partial && (
-            <p className="muted">Partial session — follow-ups cover only the saved transcript.</p>
-          )}
-          {session.contextAt && (
-            <p className="muted">
-              Scenario evidence saved {when(session.contextAt)}. AI coaching — check the cited
-              evidence.
-            </p>
-          )}
-          {!session.tasks.length && <p role="status">{reviewMessages[session.reviewStatus]}</p>}
-          {session.tasks.length > 0 && (
-            <div
-              className="followup-table-scroll"
-              role="region"
-              aria-label={`Follow-ups for ${session.scenario}`}
-              tabIndex={0}
-            >
-              <table className="followup-table">
-                <caption className="followup-table-caption">
-                  Next steps · {session.tasks.filter(matchesFilter).length} shown
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Follow-up</th>
-                    <th scope="col">Practice</th>
-                    <th scope="col">Review outcome</th>
-                    <th scope="col">
-                      <span className="followup-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {session.tasks.filter(matchesFilter).map((task) => (
-                    <PracticeTaskRow
-                      key={`${session.evaluationId}:${task.id}`}
-                      session={session}
-                      task={task}
-                      refresh={refresh}
-                      onFinancials={onFinancials}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {session.evaluationId && (
-            <details
-              className="followup-review"
-              onToggle={(event) => {
-                const open = event.currentTarget.open;
-                setOpenReviews((values) => ({ ...values, [session.id]: open }));
-              }}
-            >
-              <summary>Open the saved call review</summary>
-              {openReviews[session.id] && (
-                <EvaluationPanel sessionId={session.id} receipt="saved" />
-              )}
-            </details>
-          )}
-          {session.investorUpdates.length > 0 && (
-            <section className="followup-updates" aria-label="Investor updates since this scenario">
-              <h3>New research since this scenario</h3>
-              <p>
-                These updates were found after the scenario evidence was saved. They were not used
-                to assess your call. Publication dates may be earlier.
-              </p>
-              {session.investorUpdates.map((update) => (
-                <article className="followup-task" key={update.id}>
-                  <span className="section-label">
-                    {update.fictional
-                      ? 'Fictional demo update'
-                      : update.needsReview
-                        ? 'Identity or source needs review'
-                        : 'Public research — unverified'}
-                  </span>
-                  <h4>{update.title}</h4>
-                  <p>
-                    <strong>{update.headline}</strong>
+          <details
+            className="followup-session-disclosure"
+            open={
+              index === 0 ||
+              session.tasks.length > 0 ||
+              new URLSearchParams(window.location.search).get('session') === session.id
+            }
+          >
+            <summary>
+              <div className="followup-session-heading">
+                <span className="followup-session-icon">
+                  <MessageSquare size={20} aria-hidden="true" />
+                </span>
+                <div>
+                  <span className="eyebrow">{session.investorName ?? 'Open practice'}</span>
+                  <h2>{session.scenario}</h2>
+                </div>
+                <ChevronDown size={18} className="followup-session-chevron" aria-hidden="true" />
+              </div>
+              <div className="followup-session-meta">
+                <time dateTime={session.createdAt}>{when(session.createdAt)}</time>
+                <span className={`followup-review-state review-${session.reviewStatus}`}>
+                  {reviewLabels[session.reviewStatus]}
+                </span>
+                {session.fictional && <span className="followup-demo-badge">Fictional demo</span>}
+                {session.partial && <span>Partial session</span>}
+                <span>{session.tasks.length} follow-ups</span>
+              </div>
+            </summary>
+            <div className="followup-session-content">
+              <details className="followup-context">
+                <summary>Scenario context</summary>
+                {session.fictional && (
+                  <p className="followup-label">
+                    Includes fictional demo evidence or a demo scenario
                   </p>
-                  <p>{update.summary}</p>
+                )}
+                {session.partial && (
                   <p className="muted">
-                    Found {when(update.observedAt)} · Published / occurred:{' '}
-                    {update.occurredAt ?? 'Unknown'}
+                    Partial session — follow-ups cover only the saved transcript.
                   </p>
-                  <blockquote>{update.quote}</blockquote>
-                  <ol>
-                    {update.steps.map((step, index) => (
-                      <li key={index}>{step}</li>
-                    ))}
-                  </ol>
-                  <div className="actions">
-                    {update.url && /^https?:/.test(update.url) && (
-                      <a
-                        className="button secondary"
-                        href={update.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Read source
-                      </a>
-                    )}
-                    <a
-                      className="button secondary"
-                      href={`/?radarEvent=${encodeURIComponent(update.id)}`}
-                    >
-                      View radar update
-                    </a>
-                  </div>
-                </article>
-              ))}
-              {session.additionalUpdates > 0 && (
-                <p>{session.additionalUpdates} more updates available in Investor radar.</p>
+                )}
+                {session.contextAt && (
+                  <p className="muted">
+                    Scenario evidence saved {when(session.contextAt)}. AI coaching — check the cited
+                    evidence.
+                  </p>
+                )}
+              </details>
+              {!session.tasks.length && (
+                <p role="status" className="followup-session-notice">
+                  <Clock3 size={17} aria-hidden="true" />
+                  <span>{reviewMessages[session.reviewStatus]}</span>
+                </p>
               )}
-              <a
-                className="button"
-                href={`/scenarios?investor=${encodeURIComponent(session.investorId ?? '')}`}
-              >
-                Prepare an updated scenario
-              </a>
-            </section>
-          )}
+              {session.tasks.length > 0 && (
+                <div>
+                  <div className="followup-task-list-heading">
+                    Next steps · {session.tasks.filter(matchesFilter).length} shown
+                  </div>
+                  <div
+                    className="followup-task-grid"
+                    role="group"
+                    aria-label={`Follow-ups for ${session.scenario}`}
+                  >
+                    {session.tasks.filter(matchesFilter).map((task) => (
+                      <PracticeTaskRow
+                        key={`${session.evaluationId}:${task.id}`}
+                        session={session}
+                        task={task}
+                        refresh={refresh}
+                        onFinancials={onFinancials}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {session.evaluationId && (
+                <details
+                  className="followup-review"
+                  onToggle={(event) => {
+                    const open = event.currentTarget.open;
+                    setOpenReviews((values) => ({ ...values, [session.id]: open }));
+                  }}
+                >
+                  <summary>Open the saved call review</summary>
+                  {openReviews[session.id] && (
+                    <EvaluationPanel sessionId={session.id} receipt="saved" />
+                  )}
+                </details>
+              )}
+              {session.investorUpdates.length > 0 && (
+                <details className="followup-updates">
+                  <summary>
+                    New research since this scenario · {session.investorUpdates.length}
+                  </summary>
+                  <p>
+                    These updates were found after the scenario evidence was saved. They were not
+                    used to assess your call. Publication dates may be earlier.
+                  </p>
+                  {session.investorUpdates.map((update) => (
+                    <article className="followup-task" key={update.id}>
+                      <span className="section-label">
+                        {update.fictional
+                          ? 'Fictional demo update'
+                          : update.needsReview
+                            ? 'Identity or source needs review'
+                            : 'Public research — unverified'}
+                      </span>
+                      <h4>{update.title}</h4>
+                      <p>
+                        <strong>{update.headline}</strong>
+                      </p>
+                      <p>{update.summary}</p>
+                      <p className="muted">
+                        Found {when(update.observedAt)} · Published / occurred:{' '}
+                        {update.occurredAt ?? 'Unknown'}
+                      </p>
+                      <blockquote>{update.quote}</blockquote>
+                      <ol>
+                        {update.steps.map((step, index) => (
+                          <li key={index}>{step}</li>
+                        ))}
+                      </ol>
+                      <div className="actions">
+                        {update.url && /^https?:/.test(update.url) && (
+                          <a
+                            className="button secondary"
+                            href={update.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Read source
+                          </a>
+                        )}
+                        <a
+                          className="button secondary"
+                          href={`/?radarEvent=${encodeURIComponent(update.id)}`}
+                        >
+                          View radar update
+                        </a>
+                      </div>
+                    </article>
+                  ))}
+                  {session.additionalUpdates > 0 && (
+                    <p>{session.additionalUpdates} more updates available in Investor radar.</p>
+                  )}
+                  <a
+                    className="button"
+                    href={`/scenarios?investor=${encodeURIComponent(session.investorId ?? '')}`}
+                  >
+                    Prepare an updated scenario
+                  </a>
+                </details>
+              )}
+            </div>
+          </details>
         </section>
       ))}
       {data && (offset > 0 || data.nextOffset !== null) && (

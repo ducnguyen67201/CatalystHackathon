@@ -9,8 +9,8 @@ import {
 } from '../src/web/PracticeReviewTranscript.js';
 import { meetingReviewFixture } from './MeetingReviewFixtures.js';
 
-describe('meeting brief table and transcript review', () => {
-  it('renders a table with record views, source question and keyboard-accessible drawer trigger', () => {
+describe('meeting brief archive and transcript review', () => {
+  it('retains record views, source question, sorting and keyboard-accessible drawer triggers in cards', () => {
     const state = meetingReviewFixture();
     const html = renderToStaticMarkup(
       <MeetingBriefs
@@ -23,11 +23,12 @@ describe('meeting brief table and transcript review', () => {
         onFollowup={() => {}}
       />,
     );
-    expect(html).toContain('<table');
+    expect(html).toContain('meeting-record-card');
+    expect(html).toContain(state.workspace.briefs[0]?.finding.question);
     expect(html).toContain('Practice reviews');
     expect(html).toContain('Fictional Seed Fund');
     expect(html).toContain('aria-haspopup="dialog"');
-    expect(html).toContain('aria-sort="descending"');
+    expect(html).toContain('Sort records: newest first');
     expect(html).toContain('Search meeting records');
     expect(html).not.toContain('<dialog');
   });

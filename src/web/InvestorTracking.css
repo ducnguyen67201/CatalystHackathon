@@ -2,6 +2,125 @@
   max-width: 1420px;
   margin: 0 auto;
 }
+.investor-tracking .page-heading h1 {
+  font-size: clamp(28px, 2.5vw, 38px);
+  line-height: 1.2;
+}
+.investor-tracking .page-heading p {
+  font-size: 13px;
+}
+.investor-tracking .investor-loop {
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  margin-bottom: 22px;
+}
+.investor-tracking .investor-loop > span {
+  padding: 8px 11px;
+  border: 1px solid #e0e7db;
+  background: #fff;
+  border-radius: 8px;
+}
+.investor-tracking .investor-discovery {
+  padding: 20px;
+  border: 1px solid #dfe5dc;
+  border-radius: 14px;
+  background: white;
+}
+.investor-tracking .investor-discovery h2 {
+  font-size: 24px;
+  margin: 6px 0;
+}
+.investor-tracking .investor-search-action[data-compact='true'] {
+  flex: 0 1 360px;
+  min-width: 0;
+  margin: 0;
+}
+.investor-tracking .investor-search-feedback {
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+.investor-tracking .investor-search-feedback p {
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 4px 0;
+}
+.investor-search-explanation,
+.investor-tracking .investor-search-feedback details {
+  font-size: 11px;
+  color: #62716a;
+}
+.investor-search-explanation summary,
+.investor-tracking .investor-search-feedback summary,
+.investor-source-detail summary,
+.investor-funding-card > details > summary {
+  cursor: pointer;
+  min-height: 40px;
+  align-content: center;
+  color: #526359;
+}
+.investor-source-detail,
+.investor-funding-card > details {
+  font-size: 12px;
+  margin-top: 12px;
+}
+.investor-source.investor-funding-card {
+  border: 1px solid #dfe5dc;
+  border-radius: 14px;
+  background: white;
+  padding: 20px;
+}
+.investor-funding-card h3 {
+  margin-block: 12px 6px;
+  font-size: 20px;
+}
+.investor-funding-card .investor-comparable-company {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  color: #62716a;
+  font-size: 11px;
+}
+.investor-comparable-company strong {
+  font-size: 16px;
+  color: #30384b;
+}
+.investor-funding-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.investor-funding-facts > div {
+  padding: 10px;
+  border: 1px solid #e5eadd;
+  border-radius: 8px;
+  background: #f7f9f4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.investor-funding-facts dt {
+  font-size: 10px;
+  color: #62716a;
+  margin-bottom: 6px;
+}
+.investor-funding-facts dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.investor-funding-card .investor-funding-note {
+  font-size: 11px;
+  line-height: 1.6;
+}
+@media (max-width: 760px) {
+  .investor-tracking .investor-search-action[data-compact='true'] {
+    flex: none;
+    width: 100%;
+  }
+}
 .investor-loop {
   display: flex;
   align-items: center;

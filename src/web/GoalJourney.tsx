@@ -20,6 +20,8 @@ import type { InvestorProfileEstimateView } from '../contracts/InvestorProfileEs
 import { InvestorCriteriaTable } from './InvestorCriteriaTable.js';
 import { targetPreparationHref } from '../contracts/PreparationNavigation.js';
 import { GoalPracticeFeedback, GoalRadarOpportunities } from './GoalPracticeFeedback.js';
+import { chartInsights } from './GoalChartInsights.js';
+import { GoalChartMilestones, GoalChartSteps } from './GoalChartDetails.js';
 
 type WithoutReceipt<T> = T extends unknown ? Omit<T, 'key' | 'revision'> : never;
 type JourneyAction = WithoutReceipt<JourneyCommand>;
@@ -154,12 +156,13 @@ export function GoalJourneyChart({
 }) {
   const [hint, setHint] = useState<string | null>(null);
   const hintId = useId();
-  const ordered = [...events]
-    .sort((left, right) => left.sequence - right.sequence)
-    .flatMap((event) => {
-      const value = displayPosition(event.position, targetId);
-      return value ? [{ event, value }] : [];
-    });
+  const insights = chartInsights(events, targetId, selectedId);
+  const ordered = insights.flatMap((point) => {
+    const { event } = point;
+    const value = displayPosition(event.position, targetId);
+    return value ? [{ ...point, value }] : [];
+  });
+  const grouped = ordered.filter((point) => !point.showMarker).length;
   const current = position ? displayPosition(position, targetId) : null;
   const earliest = ordered[0]?.event.recordedAt;
   const latest = ordered.at(-1)?.event.recordedAt;
@@ -173,12 +176,15 @@ export function GoalJourneyChart({
   const focusedTrack = position?.tracks.find((track) => track.targetId === targetId);
   const nextAction = focusedTrack?.nextAction ?? position?.nextAction;
   const nextHref = internalHref(focusedTrack?.href ?? position?.href ?? '/');
+  const forecast = position?.paceScenarios?.find(
+    (scenario) => scenario.pace === (position.pace ?? 1),
+  );
   const guide = savedHint
     ? {
-        heading: 'Saved progress',
+        heading: savedHint.label,
         detail: timestamp(savedHint.event.recordedAt),
         progress: `${savedHint.value.completed}/${savedHint.value.required} reviewed · ${savedHint.value.percentage}%`,
-        explanation: savedHint.event.reason,
+        explanation: savedHint.detail,
         next: `Next at that time: ${targetId ? (savedHint.event.position.tracks.find((track) => track.targetId === targetId)?.nextAction ?? savedHint.event.position.nextAction) : savedHint.event.position.nextAction}`,
         anchor: x(savedHint.event.recordedAt),
       }
@@ -230,6 +236,21 @@ export function GoalJourneyChart({
           details
         </span>
       </figcaption>
+      {position && current && (
+        <div className="goal-chart-summary">
+          <div>
+            <strong>{current.percentage}%</strong>
+            <span>
+              {current.completed} of {current.required} preparation steps reviewed
+            </span>
+          </div>
+          <span>
+            {current.required - current.completed} remaining ·{' '}
+            {focusedTrack ? focusedTrack.name : 'whole goal'}
+          </span>
+        </div>
+      )}
+      {position && <GoalChartSteps position={position} targetId={targetId} />}
       <div
         className="goal-chart-scroll"
         role="region"
@@ -266,7 +287,7 @@ export function GoalJourneyChart({
             <text x="760" y="22" fontSize="12">
               Planned remaining work
             </text>
-            {ordered.map(({ event, value }, index) => {
+            {ordered.map(({ event, value, showMarker, label }, index) => {
               const previous = ordered[index - 1];
               const changed =
                 previous &&
@@ -298,51 +319,55 @@ export function GoalJourneyChart({
                       </title>
                     </line>
                   )}
-                  <circle
-                    cx={x(event.recordedAt)}
-                    cy={y(value.percentage)}
-                    r="12"
-                    fill="transparent"
-                    stroke={selectedId === event.id ? '#ab6b32' : 'transparent'}
-                    strokeWidth="2"
-                    tabIndex={0}
-                    role="button"
-                    data-chart-guide="history"
-                    aria-describedby={hint === event.id ? hintId : undefined}
-                    aria-label={`Inspect saved point ${event.sequence}: ${timestamp(event.recordedAt)}, ${value.completed} of ${value.required} reviewed. ${event.reason}`}
-                    aria-pressed={selectedId === event.id}
-                    onMouseEnter={() => setHint(event.id)}
-                    onFocus={() => setHint(event.id)}
-                    onClick={() => {
-                      setHint(null);
-                      onSelect(event);
-                    }}
-                    onKeyDown={(keyboard) => {
-                      if (keyboard.key === 'Enter' || keyboard.key === ' ') {
-                        keyboard.preventDefault();
-                        setHint(null);
-                        onSelect(event);
-                      }
-                    }}
-                  >
-                    <title>{event.reason}</title>
-                  </circle>
-                  <circle
-                    cx={x(event.recordedAt)}
-                    cy={y(value.percentage)}
-                    r="5"
-                    fill={
-                      selectedId === event.id
-                        ? '#ab6b32'
-                        : hint === event.id
-                          ? '#244b39'
-                          : '#456c59'
-                    }
-                    stroke="white"
-                    strokeWidth="2"
-                    pointerEvents="none"
-                    aria-hidden="true"
-                  />
+                  {showMarker && (
+                    <>
+                      <circle
+                        cx={x(event.recordedAt)}
+                        cy={y(value.percentage)}
+                        r="12"
+                        fill="transparent"
+                        stroke={selectedId === event.id ? '#ab6b32' : 'transparent'}
+                        strokeWidth="2"
+                        tabIndex={0}
+                        role="button"
+                        data-chart-guide="history"
+                        aria-describedby={hint === event.id ? hintId : undefined}
+                        aria-label={`Inspect saved point ${event.sequence}: ${timestamp(event.recordedAt)}, ${value.completed} of ${value.required} reviewed. ${label}. ${event.reason}`}
+                        aria-pressed={selectedId === event.id}
+                        onMouseEnter={() => setHint(event.id)}
+                        onFocus={() => setHint(event.id)}
+                        onClick={() => {
+                          setHint(null);
+                          onSelect(event);
+                        }}
+                        onKeyDown={(keyboard) => {
+                          if (keyboard.key === 'Enter' || keyboard.key === ' ') {
+                            keyboard.preventDefault();
+                            setHint(null);
+                            onSelect(event);
+                          }
+                        }}
+                      >
+                        <title>{event.reason}</title>
+                      </circle>
+                      <circle
+                        cx={x(event.recordedAt)}
+                        cy={y(value.percentage)}
+                        r="5"
+                        fill={
+                          selectedId === event.id
+                            ? '#ab6b32'
+                            : hint === event.id
+                              ? '#244b39'
+                              : '#456c59'
+                        }
+                        stroke="white"
+                        strokeWidth="2"
+                        pointerEvents="none"
+                        aria-hidden="true"
+                      />
+                    </>
+                  )}
                 </g>
               );
             })}
@@ -373,6 +398,11 @@ export function GoalJourneyChart({
                   ? 'Review remaining work'
                   : 'Save goal to estimate'}
             </text>
+            {forecast && (
+              <text x="760" y="154" fontSize="11">
+                {forecast.dailyHours}h/day · {forecast.workDays} work days
+              </text>
+            )}
             <text x="760" y="175" fontSize="11">
               Estimate · not recorded progress
             </text>
@@ -432,6 +462,22 @@ export function GoalJourneyChart({
           )}
         </div>
       </div>
+      <div className="goal-chart-legend" aria-label="Graph legend">
+        <span>
+          <i className="goal-legend-history" />
+          Reviewed steps
+        </span>
+        <span>
+          <i className="goal-legend-boundary" />
+          Goal or plan changed
+        </span>
+        <span>
+          <i className="goal-legend-forecast" />
+          Work estimate
+        </span>
+        {grouped > 0 && <span>{grouped} unchanged snapshots grouped · full history below</span>}
+      </div>
+      <GoalChartMilestones insights={insights} onSelect={onSelect} />
       {position && (
         <div className="goal-chart-next-action">
           <Flag size={18} aria-hidden="true" />
@@ -446,7 +492,7 @@ export function GoalJourneyChart({
       )}
       <p className="muted">
         {position
-          ? 'History tracks reviewed preparation. Future work is estimated.'
+          ? 'History tracks reviewed preparation, not speaking performance. Future work is estimated.'
           : 'No progress is recorded in this workspace yet. Save your goal to start the graph.'}
       </p>
       {targetId && (
