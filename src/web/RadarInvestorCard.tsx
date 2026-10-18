@@ -22,6 +22,8 @@ function publishedDate(value: string | null) {
 /** A saved lead stays distinct from verified eligibility and an approved preparation target. */
 export function RadarInvestorCard({
   item,
+  compact = false,
+  expanded = false,
   matchLabel,
   matchKind,
   savedTarget,
@@ -33,6 +35,8 @@ export function RadarInvestorCard({
   onRetryEmail,
 }: {
   item: RadarItem;
+  compact?: boolean;
+  expanded?: boolean;
   matchLabel: string;
   matchKind: 'scored' | 'outside_mandate' | 'outdated' | 'unverified';
   savedTarget: boolean;
@@ -44,30 +48,41 @@ export function RadarInvestorCard({
   onRetryEmail: () => void;
 }) {
   return (
-    <article className="radar-update radar-investor-card" id={`update-${item.id}`}>
+    <article
+      className={`radar-update radar-investor-card${compact ? ' radar-event-compact' : ''}`}
+      id={`update-${item.id}`}
+    >
       <div className="radar-update-meta">
         <span>{radarCategoryLabels[item.signal.category]}</span>
         <span className={item.readAt ? '' : 'radar-unread'}>{item.readAt ? 'Read' : 'Unread'}</span>
         {item.fictional && <strong>Fictional example</strong>}
         {item.historical && <span>Historical · no email</span>}
       </div>
-      <header className="radar-investor-heading">
-        <div className="radar-investor-icon">
-          <Building2 size={21} aria-hidden="true" />
+      {!compact && (
+        <header className="radar-investor-heading">
+          <div className="radar-investor-icon">
+            <Building2 size={21} aria-hidden="true" />
+          </div>
+          <div>
+            <h3>{item.investorName}</h3>
+            <span className="radar-plan-state">
+              {savedTarget ? 'Saved target investor' : 'Lead to review'}
+            </span>
+          </div>
+        </header>
+      )}
+      {compact ? (
+        <h3>{item.signal.headline}</h3>
+      ) : (
+        <p className="radar-news-preview">{item.signal.headline}</p>
+      )}
+      {!compact && (
+        <div className="radar-fit-row" data-fit={matchKind}>
+          <ShieldQuestion size={16} aria-hidden="true" />
+          <span>Goal fit</span>
+          <strong>{matchLabel}</strong>
         </div>
-        <div>
-          <h3>{item.investorName}</h3>
-          <span className="radar-plan-state">
-            {savedTarget ? 'Saved target investor' : 'Lead to review'}
-          </span>
-        </div>
-      </header>
-      <p className="radar-news-preview">{item.signal.headline}</p>
-      <div className="radar-fit-row" data-fit={matchKind}>
-        <ShieldQuestion size={16} aria-hidden="true" />
-        <span>Goal fit</span>
-        <strong>{matchLabel}</strong>
-      </div>
+      )}
       <div className="radar-card-context">
         <span>
           {item.signal.needsReview
@@ -83,13 +98,15 @@ export function RadarInvestorCard({
         {item.dismissedAt && <span>Dismissed</span>}
         {item.supersedesEventId && <span>Corrects a previous update</span>}
       </div>
-      <div className="radar-card-primary">
-        <button className="button" disabled={reviewing} onClick={onReview}>
-          {savedTarget ? 'Review target investor' : 'Review investor'}{' '}
-          <ArrowRight size={15} aria-hidden="true" />
-        </button>
-      </div>
-      <details className="radar-card-details">
+      {!compact && (
+        <div className="radar-card-primary">
+          <button className="button" disabled={reviewing} onClick={onReview}>
+            {savedTarget ? 'Review target investor' : 'Review investor'}{' '}
+            <ArrowRight size={15} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      <details className="radar-card-details" open={expanded || undefined}>
         <summary>News & sources</summary>
         <div className="radar-card-expanded">
           <h4>{item.signal.headline}</h4>

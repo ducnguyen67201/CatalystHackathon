@@ -114,6 +114,7 @@ export const radarStatusSchema = z.strictObject({
 });
 export const radarQuerySchema = z.strictObject({
   investorId: z.uuid().optional(),
+  suggestionId: z.uuid().optional(),
   category: radarCategorySchema.optional(),
   unread: z.enum(['true', 'false']).optional(),
   cursor: id.optional(),
@@ -158,3 +159,19 @@ export type EmailMessage = z.infer<typeof emailMessageSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type RadarFeed = z.infer<typeof radarFeedSchema>;
 export type RadarItem = z.infer<typeof radarItemSchema>;
+
+/** Complete per-identity counts, independent of the paginated event view. */
+export const radarInvestorGroupSchema = z.strictObject({
+  key: z.string().min(1),
+  investorId: z.uuid().nullable(),
+  suggestionIds: z.array(z.uuid()),
+  name: z.string().min(1),
+  updateCount: z.int().nonnegative(),
+  unreadCount: z.int().nonnegative(),
+  sourceCount: z.int().nonnegative(),
+  latestEventId: z.string().nullable(),
+  latestHeadline: z.string().nullable(),
+  latestAt: z.iso.datetime().nullable(),
+});
+export const radarInvestorGroupsSchema = z.object({ items: z.array(radarInvestorGroupSchema) });
+export type RadarInvestorGroup = z.infer<typeof radarInvestorGroupSchema>;

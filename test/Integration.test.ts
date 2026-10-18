@@ -2187,6 +2187,7 @@ describe('radar and email persistence', () => {
         cookie: login.cookies.map((item) => `${item.name}=${item.value}`).join('; '),
       };
       expect((await radarApi.inject({ url: '/api/radar/events' })).statusCode).toBe(401);
+      expect((await radarApi.inject({ url: '/api/radar/investors' })).statusCode).toBe(401);
       expect(
         (
           await radarApi.inject({
@@ -2267,6 +2268,10 @@ describe('radar and email persistence', () => {
           headers,
         });
         expect(feed.statusCode).toBe(200);
+        const groups = await radarApi.inject({ url: '/api/radar/investors', headers });
+        expect(groups.statusCode).toBe(200);
+        expect(groups.body).toContain(investor.id);
+        expect(groups.body).not.toContain('founder@example.com');
         expect(feed.body).toContain('Fictional Northline');
         expect(feed.body).not.toContain('founder@example.com');
         expect(

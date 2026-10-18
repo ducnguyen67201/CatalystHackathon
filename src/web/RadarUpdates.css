@@ -470,3 +470,181 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* One identity, one workspace: updates retain their own source and delivery history. */
+.radar-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  margin-top: 20px;
+}
+.radar-investor-list {
+  position: sticky;
+  top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  padding: 10px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+.radar-list-title {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.radar-person {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  padding: 12px 10px;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+.radar-person:hover {
+  background: #f4f6f0;
+}
+.radar-person[aria-current='true'] {
+  background: #edf3e7;
+  border-color: #bacdb0;
+}
+.radar-person > span:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+.radar-person strong,
+.radar-person small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.radar-person strong {
+  font-size: 13px;
+}
+.radar-person small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.radar-person-count {
+  padding: 4px 7px;
+  border-radius: 20px;
+  background: #365c49;
+  color: white;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.radar-investor-detail {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 16px;
+}
+.radar-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.radar-detail-heading h2 {
+  font: 32px/1.2 var(--serif);
+  margin: 8px 0;
+  text-wrap: balance;
+}
+.radar-detail-fit {
+  font-size: 12px;
+  padding: 8px 12px;
+  background: #faf6eb;
+  color: #80652f;
+  border-radius: 8px;
+}
+.radar-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+.radar-detail-stats strong {
+  color: var(--ink);
+}
+.radar-investor-detail .radar-tabs {
+  padding-block: 12px;
+  border-block: 1px solid var(--line);
+  margin-bottom: 18px;
+}
+.radar-scoped-layout,
+.radar-scoped-layout .radar-feed-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.radar-scoped-layout .radar-event-compact {
+  padding: 16px 18px;
+}
+.radar-event-compact h3 {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 12px;
+  letter-spacing: 0;
+}
+.radar-person-overview .investor-profile-estimate {
+  margin-top: 22px;
+}
+.radar-person-overview > .muted {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.radar-latest-news {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f5f7f2;
+}
+.radar-latest-news p {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.radar-person:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.radar-investor-detail .goal-target-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 760px) {
+  .radar-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .radar-investor-list {
+    position: static;
+    max-height: 240px;
+  }
+  .radar-investor-detail {
+    padding: 16px;
+  }
+  .radar-detail-heading h2 {
+    font-size: 27px;
+  }
+}
+.radar-investor-detail .radar-tabs button[aria-pressed='true'] {
+  background: #254e3c;
+  border-color: #254e3c;
+  color: #fff;
+}
