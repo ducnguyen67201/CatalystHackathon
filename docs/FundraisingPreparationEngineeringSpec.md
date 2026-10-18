@@ -1,5 +1,11 @@
 # Fundraising preparation dashboard engineering spec
 
+Implemented extension: [Goal investor journey](GoalInvestorJourneySpec.md) specifies the agreed
+Goal → Investor match → Add target investor → Tailored brief → Practice → Review progress
+flow and persistent history/current graph. Its
+[delivery record](GoalInvestorJourneyDelivery.md) and
+[checklist](GoalInvestorJourneyImplementationChecklist.md) describe current behavior and limits.
+
 Status: first implementation delivered; the full design below includes later increments.
 
 Implemented: goal confirmation, five-milestone dashboard, deterministic sourced financial

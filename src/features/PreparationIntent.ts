@@ -5,6 +5,7 @@ import {
   preparationGoalSchema,
 } from '../contracts/FundraisingPreparation.js';
 import { buildPreparationPlan } from './PreparationPlanner.js';
+import { ensureGoalJourney } from './GoalProgress.js';
 
 /** Explicit goal edits prepare local work in the same transaction as company context. */
 export function synchronizePreparationIntent(
@@ -18,6 +19,7 @@ export function synchronizePreparationIntent(
   const goal = preparationGoalSchema.parse({
     id: randomUUID(),
     confirmedAt: now,
+    objective: state.profile.goal,
     round: previous?.round ?? 'Next round',
     previousRounds: previous?.previousRounds ?? null,
     amount: previous?.amount ?? state.profile.raiseTarget,
@@ -28,8 +30,10 @@ export function synchronizePreparationIntent(
       investorId !== undefined
         ? investorId
         : (previous?.investorId ?? state.onboarding.meeting?.investorId ?? null),
+    ...(previous?.desiredCheck !== undefined ? { desiredCheck: previous.desiredCheck } : {}),
   });
   saved.goals.push(goal);
+  ensureGoalJourney(state, now);
   if (!previous) saved.automatic = true;
   saved.plans.push(buildPreparationPlan(state, goal, now));
   saved.version++;

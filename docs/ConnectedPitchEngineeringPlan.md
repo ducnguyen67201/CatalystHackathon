@@ -1,5 +1,10 @@
 # Connected pitch preparation
 
+Implemented extension: [Goal investor journey](GoalInvestorJourneySpec.md) extends this
+loop with goal-scoped match scoring, independent investor tracks, and a persistent
+history/current-position graph. See its [delivery record](GoalInvestorJourneyDelivery.md)
+for current ownership, validation and limits.
+
 Status: real-app six-step implementation added; validation is recorded in ConnectedPitchImplementationChecklist.md. The HTML remains a fictional prototype.
 
 Open [the connected mockup](previews/ConnectedPitchPreview.html). All company data, investors, research and practice results in it are fictional. It uses no providers or backend. The mock saves its own state in this browser; Reset clears only that state.

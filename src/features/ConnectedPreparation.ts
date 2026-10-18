@@ -8,12 +8,63 @@ import type {
   ConnectedPreparationView,
 } from '../contracts/ConnectedPreparation.js';
 import { ConflictError } from './WorkspaceStore.js';
+import { savedMatchOutdated } from './InvestorMatchInputs.js';
+import { buildInvestorMatchInput } from './InvestorMatchInputs.js';
+import { assessInvestorMatch } from './InvestorMatch.js';
 
 export const connectedHash = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export function activePreparationCycle(state: Workspace, targetId?: string) {
+  const journey = state.preparation?.journey;
+  const focused = targetId ?? journey?.focusedTargetId;
+  const cycles = state.preparation?.connected?.cycles ?? [];
+  if (focused) return cycles.filter((cycle) => cycle.targetId === focused).at(-1);
+  if (journey) return cycles.filter((cycle) => !cycle.targetId).at(-1);
+  return cycles.at(-1);
+}
+
+/** Exact cycle resolution keeps media and scenario writes independent of UI focus. */
+export function currentPreparationCycleById(state: Workspace, cycleId: string) {
+  const cycle = state.preparation?.connected?.cycles.find((item) => item.id === cycleId);
+  if (!cycle || cycle.closedAt || cycleOutdated(state, cycle))
+    throw new ConflictError('Preparation changed or cycle ended. Refresh before continuing.');
+  const active = cycle.targetId
+    ? activePreparationCycle(state, cycle.targetId)
+    : state.preparation?.connected?.cycles.filter((item) => !item.targetId).at(-1);
+  if (active?.id !== cycle.id) throw new ConflictError('Preparation cycle changed.');
+  return cycle;
+}
+
 export function connectedSourceHash(state: Workspace) {
   const snapshot = state.snapshots.find((s) => s.id === state.onboarding.snapshotId);
   const goal = state.preparation?.goals.at(-1);
+  if (state.preparation?.journey) {
+    const profile = state.profile;
+    return connectedHash({
+      journeyId: state.preparation.journey.id,
+      goal: goal
+        ? {
+            round: goal.round,
+            previousRounds: goal.previousRounds,
+            amount: goal.amount,
+            currency: goal.currency,
+            desiredCheck: goal.desiredCheck ?? null,
+          }
+        : null,
+      company: {
+        name: profile.name,
+        stage: profile.stage,
+        sector: profile.sector,
+        geography: profile.geography,
+        raiseTarget: profile.raiseTarget,
+        currency: profile.currency,
+        goal: profile.goal,
+        investorPreferences: profile.investorPreferences ?? null,
+      },
+      snapshot: snapshot ? { id: snapshot.id, hash: snapshot.hash } : null,
+      peers: state.peers?.filter((peer) => !peer.archived) ?? [],
+    });
+  }
   return connectedHash({
     goal,
     profile: state.profile,
@@ -25,7 +76,7 @@ export function investorSources(state: Workspace, investorId: string) {
   if (!investor) return [];
   const ids = new Set([
     ...investor.checks
-      .filter((c) => c.profileVersion === state.profile.version)
+      .filter((c) => !!state.preparation?.journey || c.profileVersion === state.profile.version)
       .flatMap((c) => c.evidenceIds),
     ...(investor.discoveryEvidenceId ? [investor.discoveryEvidenceId] : []),
   ]);
@@ -34,12 +85,40 @@ export function investorSources(state: Workspace, investorId: string) {
 export function connectedInvestorHash(state: Workspace, investorId: string) {
   const investor = state.investors.find((i) => i.id === investorId);
   return connectedHash({
-    investor: investor ? { id: investor.id, name: investor.name, url: investor.url } : null,
+    investor: investor
+      ? {
+          id: investor.id,
+          name: investor.name,
+          url: investor.url,
+          ...(state.preparation?.journey ? { profileLinks: investor.profileLinks } : {}),
+        }
+      : null,
     sources: investorSources(state, investorId),
   });
 }
+export function preparationMatchOutdated(
+  state: Workspace,
+  assessmentId: string | undefined,
+  now = new Date().toISOString(),
+) {
+  if (!assessmentId) return false;
+  const saved = state.preparation?.journey?.assessments.find((item) => item.id === assessmentId);
+  return !saved || savedMatchOutdated(state, saved, now);
+}
+
 export function cycleOutdated(state: Workspace, cycle: PreparationCycle) {
+  const journey = state.preparation?.journey;
+  const target = cycle.targetId
+    ? journey?.targets.find((item) => item.id === cycle.targetId)
+    : null;
   return (
+    cycle.outcome === 'superseded' ||
+    preparationMatchOutdated(state, cycle.assessmentId) ||
+    (!!cycle.targetId &&
+      (!target ||
+        target.status !== 'active' ||
+        target.assessmentId !== (cycle.assessmentId ?? null))) ||
+    (!!cycle.journeyId && cycle.journeyId !== journey?.id) ||
     cycle.sourceHash !== connectedSourceHash(state) ||
     (!!cycle.investorId &&
       (!state.investors.some((i) => i.id === cycle.investorId) ||
@@ -116,13 +195,39 @@ export function preparationRecommendations(state: Workspace): PreparationRecomme
         );
       if (!c.records.length)
         unknowns.push('No saved research for this candidate. Run an explicit investor check.');
+      const investor = state.investors.find((item) => item.id === c.investorId);
+      const match =
+        state.preparation?.journey && investor
+          ? assessInvestorMatch(buildInvestorMatchInput(state, investor))
+          : undefined;
+      if (match) {
+        reasons.splice(
+          0,
+          reasons.length,
+          ...match.criteria
+            .filter((item) => item.state === 'match')
+            .map((item) => item.reason)
+            .slice(0, 5),
+        );
+        unknowns.splice(0, unknowns.length, ...match.unknowns.slice(0, 6));
+        aligned = match.criteria.filter((item) => item.state === 'match').length;
+        mismatches = match.criteria.filter(
+          (item) => item.state === 'mismatch' || item.state === 'conflict',
+        ).length;
+      }
       return {
         value: {
+          ...(match ? { match } : {}),
           investorId: c.investorId,
           suggestionId: c.suggestionId,
           name: c.name,
-          label:
-            aligned && !mismatches
+          label: match
+            ? match.status === 'scored'
+              ? 'Recommended to review'
+              : match.status === 'outside_mandate'
+                ? 'Review tradeoffs'
+                : 'Needs verification'
+            : aligned && !mismatches
               ? 'Recommended to review'
               : mismatches
                 ? 'Review tradeoffs'
@@ -157,11 +262,12 @@ export function preparationRecommendations(state: Workspace): PreparationRecomme
 }
 export function preparedPitchContext(state: Workspace, cycleId: string): PreparedPitchContext {
   const saved = state.preparation?.connected;
-  const cycle = saved?.cycles.at(-1);
-  const pitch = saved?.pitches.find((p) => p.id === cycle?.pitchId);
+  const cycle = currentPreparationCycleById(state, cycleId);
+  const pitch = saved?.pitches.find((p) => p.id === cycle.pitchId);
+  const briefVersion = cycle.briefVersionId
+    ? saved?.briefVersions.find((brief) => brief.id === cycle.briefVersionId)
+    : null;
   if (
-    !cycle ||
-    cycle.id !== cycleId ||
     cycle.closedAt ||
     cycleOutdated(state, cycle) ||
     !pitch ||
@@ -169,12 +275,19 @@ export function preparedPitchContext(state: Workspace, cycleId: string): Prepare
     !cycle.briefApprovedAt ||
     !cycle.brief ||
     !cycle.investorId ||
-    !cycle.investorSourceHash
+    !cycle.investorSourceHash ||
+    (!!cycle.briefVersionId && (!briefVersion || briefVersion.text !== cycle.brief))
   )
     throw new ConflictError(
       'Preparation changed. Review the current pitch and brief before generating or practising.',
     );
   return {
+    ...(cycle.journeyId ? { journeyId: cycle.journeyId } : {}),
+    ...(cycle.targetId ? { targetId: cycle.targetId } : {}),
+    ...(cycle.assessmentId ? { assessmentId: cycle.assessmentId } : {}),
+    ...(cycle.briefVersionId ? { briefVersionId: cycle.briefVersionId } : {}),
+    ...(cycle.journeyId ? { goalVersionId: cycle.goalId } : {}),
+    ...(cycle.scopeVersionId ? { scopeVersionId: cycle.scopeVersionId } : {}),
     cycleId,
     pitchId: pitch.id,
     goalId: cycle.goalId,
@@ -192,8 +305,16 @@ export function linkedPractices(state: Workspace, cycleId: string): Rehearsal[] 
     .filter((r) => r.context?.version === 2 && r.context.input.preparation?.cycleId === cycleId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
+export function rootPreparationPractices(state: Workspace, cycleId: string): Rehearsal[] {
+  return linkedPractices(state, cycleId).filter(
+    (session) =>
+      !session.evaluations.length ||
+      session.evaluations.some((evaluation) => evaluation.parentEvaluationId === null),
+  );
+}
+
 export function latestLoopReview(state: Workspace, cycle: PreparationCycle, jobs: Job[]) {
-  const session = linkedPractices(state, cycle.id).at(-1);
+  const session = rootPreparationPractices(state, cycle.id).at(-1);
   if (!session) return null;
   const evaluation = session.evaluations.at(-1);
   const report =
@@ -238,8 +359,9 @@ export function connectedSteps(
   state: Workspace,
   jobs: Job[],
   generation: ConnectedPreparationView['generation'],
+  targetId?: string,
 ): ConnectedPreparationView['steps'] {
-  const cycle = state.preparation?.connected?.cycles.at(-1);
+  const cycle = activePreparationCycle(state, targetId);
   const outdated = !!cycle && cycleOutdated(state, cycle);
   const review = cycle ? latestLoopReview(state, cycle, jobs) : null;
   const feedback = cycle?.feedback;

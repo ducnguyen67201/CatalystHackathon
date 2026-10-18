@@ -10,9 +10,12 @@ export function registerConnectedPreparationRoutes(
   app: FastifyInstance,
   service: WorkspaceService,
 ) {
-  app.get('/api/preparation-loop', async (_request, reply) => {
+  app.get('/api/preparation-loop', async (request, reply) => {
     reply.header('Cache-Control', 'private, no-store');
-    return connectedPreparationViewSchema.parse(await service.connected.view());
+    const { targetId, cycleId } = z
+      .strictObject({ targetId: z.uuid().optional(), cycleId: z.uuid().optional() })
+      .parse(request.query);
+    return connectedPreparationViewSchema.parse(await service.connected.view(targetId, cycleId));
   });
   app.post('/api/preparation-loop/commands', async (request) => {
     await service.connected.command(connectedPreparationCommandSchema.parse(request.body));

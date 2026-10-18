@@ -2,6 +2,26 @@
 
 A local TypeScript application for connecting financial evidence, investor research, meeting preparation, browser voice practice and tracked follow-ups. Built for the Catalyst 2026 June challenge.
 
+## Goal-to-investor journey
+
+The connected flow is implemented locally and specified in [Goal investor journey](docs/GoalInvestorJourneySpec.md):
+**Goal → Investor match → Add target investor → Tailored brief → Practice → Review progress**.
+One goal owns independent investor tracks. The homepage graph connects saved preparation
+history, current position, and separately labeled remaining-work estimates, with inspection
+of the exact brief, practice, assessment, and evidence. Radar's **Review investor fit** uses
+saved, attributed mandate evidence; insufficient coverage shows **Needs verification**
+instead of an invented score. Add an investor to **Target investors**, approve the company
+story and tailored brief, then practise and review the saved result. Selection keeps new
+monitoring paused. Match alignment, practice observations and checklist progress remain
+separate measures.
+
+Restart local development to apply the additive journey migration, or run `pnpm db:deploy`
+against your configured local database. Existing history is preserved; the new graph starts
+with a current baseline and does not reconstruct earlier progress. See the
+[delivery record](docs/GoalInvestorJourneyDelivery.md) and
+[implementation checklist](docs/GoalInvestorJourneyImplementationChecklist.md) for verification
+and limits. This change has not been deployed to the shared Railway demo.
+
 ## Shared Railway demo
 
 The hosted demo uses one shared workspace. Its explicitly configured `public-demo` access
@@ -556,7 +576,9 @@ workflow graph; it does not create an unsupported financial forecast.
 
 ### Dashboard preparation timeline and pace
 
-The main dashboard opens with a compact preparation schedule: current operating result,
+The main dashboard opens with the goal-wide recorded-progress graph and one next action.
+The compact selected-investor schedule is available under **Planning assumptions and
+selected-investor schedule**: current operating result,
 preparation target, conditional completion, active work and the next review. Completed steps,
 financial review, supporting materials and the rest of the workspace open on demand.
 **Assumptions & expected outcome** saves founder-estimated hours per remaining milestone,

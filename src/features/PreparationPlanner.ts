@@ -10,12 +10,23 @@ import {
   type PreparationView,
 } from '../contracts/FundraisingPreparation.js';
 import { projectFollowups } from './Followups.js';
-import { connectedSteps, cycleOutdated } from './ConnectedPreparation.js';
+import { connectedSteps, cycleOutdated, activePreparationCycle } from './ConnectedPreparation.js';
 
 export const preparationHash = (input: unknown): string =>
   createHash('sha256').update(JSON.stringify(input)).digest('hex');
 export function preparationState(state: Workspace) {
   return state.preparation ?? preparationStateSchema.parse({});
+}
+function contextualGoal(state: Workspace, goal: PreparationGoal): PreparationGoal {
+  const journey = state.preparation?.journey;
+  if (!journey) return goal;
+  const focused = journey.targets.find(
+    (target) => target.id === journey.focusedTargetId && target.status === 'active',
+  );
+  return {
+    ...goal,
+    investorId: focused?.investorId ?? state.onboarding.meeting?.investorId ?? goal.investorId,
+  };
 }
 function selectedEvidence(state: Workspace, goal: PreparationGoal) {
   const investor = state.investors.find((item) => item.id === goal.investorId);
@@ -28,6 +39,7 @@ function selectedEvidence(state: Workspace, goal: PreparationGoal) {
   return state.evidence.filter((item) => ids.has(item.id)).slice(-10);
 }
 export function preparationInputs(state: Workspace, goal: PreparationGoal) {
+  goal = contextualGoal(state, goal);
   const snapshot = state.snapshots.find((item) => item.id === state.onboarding.snapshotId);
   return {
     plannerVersion: 3,
@@ -66,6 +78,7 @@ export function buildPreparationPlan(
   goal: PreparationGoal,
   now: string,
 ): PreparationPlan {
+  goal = contextualGoal(state, goal);
   const inputs = preparationInputs(state, goal);
   const snapshot = state.snapshots.find((item) => item.id === state.onboarding.snapshotId);
   const row =
@@ -193,7 +206,8 @@ export function projectPreparationPlan(
   heartbeatAt: string | null,
 ): PreparationView {
   const saved = preparationState(state);
-  const goal = saved.goals.at(-1) ?? null;
+  const savedGoal = saved.goals.at(-1);
+  const goal = savedGoal ? contextualGoal(state, savedGoal) : null;
   const plan = saved.plans.at(-1) ?? null;
   const outdated =
     !!goal && (!plan || plan.inputHash !== preparationHash(preparationInputs(state, goal)));
@@ -299,7 +313,7 @@ export function projectPreparationPlan(
         : 'Review the explanation, then submit a written rehearsal for assessment.',
     },
   ];
-  const cycle = saved.connected?.cycles.at(-1);
+  const cycle = activePreparationCycle(state);
   if (cycle) {
     const steps = connectedSteps(state, jobs, null);
     const status = (items: typeof steps): PreparationView['milestones'][number]['status'] =>

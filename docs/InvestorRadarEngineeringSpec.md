@@ -1,5 +1,10 @@
 # Investor radar result delivery
 
+Implemented extension: [Goal investor journey](GoalInvestorJourneySpec.md) connects Radar to
+goal-specific match scoring, explicit target selection, tailored briefs, practice, and a
+persistent progress graph. See its [delivery record](GoalInvestorJourneyDelivery.md) for
+match provenance, source limits and validation.
+
 Status: implemented with the transaction and provider refinements recorded in [Architecture](Architecture.md#radar-delivery-implementation). The sections below retain the design contract; actual persistence uses one atomic check/event/outbox transaction rather than a separate publication-consumer queue.
 
 Baseline: remote `main` at `45374a0`, including the merged investor-research work. This spec supersedes any broader implementation scope implied by the [interactive preview](previews/InvestorRadarPreview.html) or its [exploration notes](InvestorRadarPreview.md).

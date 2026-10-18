@@ -1,5 +1,10 @@
 # Connected preparation delivery checklist
 
+The implemented goal-led, multi-target extension has a separate
+[implementation checklist](GoalInvestorJourneyImplementationChecklist.md) and
+[delivery record](GoalInvestorJourneyDelivery.md).
+Checked items below describe the earlier connected loop.
+
 Status: implemented in the real application. Checked items describe shipped code and local verification, not a funding or mastery outcome. Live paid-provider checks remain separate.
 Scope: [ConnectedPitchEngineeringPlan.md](ConnectedPitchEngineeringPlan.md).
 

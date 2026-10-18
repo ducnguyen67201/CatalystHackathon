@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { preparationFixture } from './PreparationProgressFixtures.js';
@@ -10,6 +11,8 @@ import { ConflictError, type WorkspaceStore } from '../src/features/WorkspaceSto
 import { workspaceSchema, rehearsalSchema, type Job } from '../src/contracts/Workspace.js';
 import { preparationGoalInputSchema } from '../src/contracts/FundraisingPreparation.js';
 import { trackedInvestorSchema } from '../src/contracts/InvestorTracking.js';
+import { goalJourneySchema, goalInvestorTargetSchema } from '../src/contracts/GoalJourney.js';
+import { ensureTargetPreparation } from '../src/features/ConnectedPreparationService.js';
 import {
   connectedPreparationViewSchema,
   type ConnectedPreparationCommand,
@@ -18,6 +21,8 @@ import {
   preparationRecommendations,
   preparedPitchContext,
   connectedHash,
+  activePreparationCycle,
+  connectedSourceHash,
 } from '../src/features/ConnectedPreparation.js';
 import { assembleScenarioInput, scenarioInputHash } from '../src/features/ScenarioSources.js';
 import { DemoScenarioGenerator } from '../src/infrastructure/ScenarioGeneration.js';
@@ -27,7 +32,7 @@ import { projectPreparationPlan } from '../src/features/PreparationPlanner.js';
 import { projectSchedule } from '../src/web/PreparationScheduleModel.js';
 
 type Action<T> = T extends object ? Omit<T, 'version' | 'key'> : never;
-function fixture() {
+function fixture(journey = false) {
   let state = preparationFixture().state;
   state.rehearsals = [];
   state.profile.stage = 'Seed';
@@ -105,6 +110,41 @@ function fixture() {
       0,
       true,
     );
+    if (!journey) {
+      await service.change((current) => {
+        if (current.preparation) delete current.preparation.journey;
+      });
+    }
+    if (journey) {
+      await service.change((current) => {
+        const goal = current.preparation?.goals.at(-1);
+        if (!goal || !current.preparation) throw new Error('Missing goal');
+        const now = new Date().toISOString();
+        current.preparation.journey = goalJourneySchema.parse({
+          id: randomUUID(),
+          currentGoalId: goal.id,
+          status: 'active',
+          createdAt: now,
+          revision: 0,
+          focusedTargetId: null,
+          targets: [],
+          assessments: [],
+          scopes: [
+            {
+              id: randomUUID(),
+              version: 1,
+              targetIds: [],
+              createdAt: now,
+              reason: 'Fictional test scope',
+            },
+          ],
+          events: [],
+          lastSequence: 0,
+          lastFingerprint: null,
+          commands: [],
+        });
+      });
+    }
     await act({ action: 'start' });
   };
   const throughBrief = async () => {
@@ -113,10 +153,17 @@ function fixture() {
     await act({ action: 'select_investor', investorId });
     await act({ action: 'approve_brief' });
   };
-  const addReview = async (hasGaps = true, partial = false) => {
-    const cycle = state.preparation?.connected?.cycles.at(-1);
+  const addReview = async (hasGaps = true, partial = false, targetId?: string) => {
+    const cycle = targetId
+      ? activePreparationCycle(state, targetId)
+      : state.preparation?.connected?.cycles.at(-1);
     if (!cycle) throw new Error('Missing cycle');
-    const input = assembleScenarioInput(state, investorId, 'Explain the approved story', cycle.id);
+    const input = assembleScenarioInput(
+      state,
+      cycle.investorId ?? investorId,
+      'Explain the approved story',
+      cycle.id,
+    );
     const output = await new DemoScenarioGenerator().generate(input);
     const scenario = output.scenarios[0];
     if (!scenario) throw new Error('Missing scenario');
@@ -177,6 +224,302 @@ function fixture() {
   };
 }
 describe('Connected six-step preparation', () => {
+  it('opens archived goal artifacts read-only and rejects stale-goal preparation commands', async () => {
+    const f = fixture(true);
+    await f.throughBrief();
+    const prior = await f.service.connected.view();
+    const priorJourney = f.state().preparation?.journey;
+    const targetId = prior.cycle?.targetId;
+    if (!prior.cycle || !priorJourney || !targetId) throw new Error('Missing historical fixture');
+    await f.service.change((state) => {
+      const saved = state.preparation;
+      if (!saved) throw new Error('Missing preparation');
+      (saved.journeyHistory ??= []).push({ ...structuredClone(priorJourney), status: 'archived' });
+      const now = new Date().toISOString();
+      saved.journey = goalJourneySchema.parse({
+        id: randomUUID(),
+        currentGoalId: priorJourney.currentGoalId,
+        status: 'active',
+        createdAt: now,
+        revision: 0,
+        focusedTargetId: null,
+        targets: [],
+        assessments: [],
+        scopes: [
+          {
+            id: randomUUID(),
+            version: 1,
+            targetIds: [],
+            createdAt: now,
+            reason: 'A new fictional objective',
+          },
+        ],
+        events: [],
+        lastSequence: 0,
+        lastFingerprint: null,
+        commands: [],
+      });
+    });
+    const inspected = await f.service.connected.view(targetId, prior.cycle.id);
+    expect(inspected).toMatchObject({
+      historical: true,
+      journeyId: priorJourney.id,
+      cycle: null,
+      goalId: null,
+    });
+    expect(inspected.history.some((cycle) => cycle.id === prior.cycle?.id)).toBe(true);
+    expect(inspected.briefVersions.some((brief) => brief.id === prior.cycle?.briefVersionId)).toBe(
+      true,
+    );
+    await expect(f.service.connected.view(targetId)).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      f.service.connected.command({
+        action: 'approve_brief',
+        targetId,
+        journeyId: priorJourney.id,
+        key: randomUUID(),
+        version: inspected.version,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(() => preparedPitchContext(f.state(), prior.cycle?.id ?? '')).toThrow(ConflictError);
+  });
+
+  it('keeps focused retry evidence separate from the full preparation review gate', async () => {
+    const f = fixture();
+    await f.throughBrief();
+    const { session, evaluation } = await f.addReview(true);
+    await f.service.change((state) => {
+      const focused = structuredClone(session);
+      focused.id = randomUUID();
+      focused.createdAt = new Date(Date.parse(session.createdAt) + 1000).toISOString();
+      focused.turns = [
+        { role: 'agent', text: 'Explain this single finding.' },
+        { role: 'user', text: 'A fictional focused retry.' },
+      ];
+      const focusedEvaluation = structuredClone(evaluation);
+      focusedEvaluation.id = randomUUID();
+      focusedEvaluation.parentEvaluationId = evaluation.id;
+      focusedEvaluation.parentItemId =
+        evaluation.report?.coaching.items[0]?.id ?? 'fixture-finding';
+      if (!focusedEvaluation.report) throw new Error('Missing focused report');
+      focusedEvaluation.report.coaching.items = [];
+      focusedEvaluation.report.checks = [];
+      focused.evaluations = [focusedEvaluation];
+      state.rehearsals.push(focused);
+    });
+    const current = await f.service.connected.view();
+    expect(current.latestSession?.id).toBe(session.id);
+    expect(current.latestSession?.hasGaps).toBe(true);
+    await f.act({ action: 'review_feedback', sessionId: session.id, evaluationId: evaluation.id });
+    await expect(f.act({ action: 'finish_cycle' })).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('opens an exact older practice cycle without replacing the current command cycle', async () => {
+    const f = fixture();
+    await f.throughBrief();
+    const original = (await f.service.connected.view()).cycle;
+    if (!original) throw new Error('Missing original cycle');
+    await f.act({
+      action: 'save_pitch',
+      text: 'A later fictional financial story; earlier evidence remains available.',
+    });
+    await f.act({ action: 'approve_pitch' });
+    await f.act({ action: 'approve_brief' });
+    for (let index = 0; index < 10; index++) {
+      const { session, evaluation } = await f.addReview(false);
+      await f.act({
+        action: 'review_feedback',
+        sessionId: session.id,
+        evaluationId: evaluation.id,
+      });
+      await f.act({ action: 'finish_cycle' });
+      await f.act({ action: 'repeat' });
+      await f.act({ action: 'approve_brief' });
+    }
+    const current = await f.service.connected.view();
+    expect(current.history.some((cycle) => cycle.id === original.id)).toBe(false);
+    const inspected = await f.service.connected.view(undefined, original.id);
+    expect(inspected.cycle).toEqual(current.cycle);
+    expect(inspected.history).toHaveLength(10);
+    expect(inspected.history.some((cycle) => cycle.id === original.id)).toBe(true);
+    expect(inspected.historyPitches.some((pitch) => pitch.id === original.pitchId)).toBe(true);
+    await expect(f.service.connected.view(undefined, randomUUID())).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+  });
+
+  it('preserves independent target cycles, immutable briefs and exact practice lineage across focus changes', async () => {
+    const f = fixture(true);
+    await f.start();
+    await f.act({ action: 'approve_pitch' });
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    const secondInvestorId = randomUUID();
+    await f.service.change((state) => {
+      const journey = state.preparation?.journey;
+      const firstInvestor = state.investors.find((item) => item.id === f.investorId);
+      if (!journey || !firstInvestor) throw new Error('Missing fixture records');
+      state.investors.push({
+        ...structuredClone(firstInvestor),
+        id: secondInvestorId,
+        key: 'fictional-second',
+        name: 'Fictional second investor',
+        discoveryEvidenceId: null,
+      });
+      for (const [id, investorId] of [
+        [firstId, f.investorId],
+        [secondId, secondInvestorId],
+      ]) {
+        journey.targets.push(
+          goalInvestorTargetSchema.parse({
+            id,
+            investorId,
+            assessmentId: null,
+            rationale: 'Fictional target for preparation',
+            status: 'active',
+            included: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            eventId: null,
+          }),
+        );
+        ensureTargetPreparation(state, id ?? '', investorId ?? '');
+      }
+      journey.focusedTargetId = firstId;
+    });
+    await f.act({ action: 'approve_brief', targetId: firstId });
+    await f.act({ action: 'approve_brief', targetId: secondId });
+    const first = await f.service.connected.view(firstId);
+    const second = await f.service.connected.view(secondId);
+    if (!first.cycle || !second.cycle) throw new Error('Missing target cycle');
+    expect(first.cycle.id).not.toBe(second.cycle.id);
+    expect(first.cycle.briefVersionId).toBeTruthy();
+    expect(
+      first.briefVersions
+        .find((brief) => brief.id === first.cycle?.briefVersionId)
+        ?.sources.some((source) => source.id === 'loop-source'),
+    ).toBe(true);
+    await expect(f.service.connected.view(secondId, first.cycle.id)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    const frozen = preparedPitchContext(f.state(), first.cycle.id);
+    expect(frozen).toMatchObject({
+      targetId: firstId,
+      journeyId: f.state().preparation?.journey?.id,
+      briefVersionId: first.cycle.briefVersionId,
+    });
+    await f.service.change((state) => {
+      if (state.preparation?.journey) state.preparation.journey.focusedTargetId = secondId;
+      state.profile.version++;
+      state.profile.watchlist = ['Unrelated investor'];
+      const goal = state.preparation?.goals.at(-1);
+      if (goal) {
+        goal.investorId = secondInvestorId;
+        goal.targetDate = '2026-12-01';
+      }
+    });
+    expect(preparedPitchContext(f.state(), first.cycle.id)).toEqual(frozen);
+    expect((await f.service.connected.view()).cycle?.id).toBe(second.cycle.id);
+    expect((await f.service.connected.view(firstId)).outdated).toBe(false);
+    const priorBrief = structuredClone(
+      f
+        .state()
+        .preparation?.connected?.briefVersions.find(
+          (brief) => brief.id === first.cycle?.briefVersionId,
+        ),
+    );
+    await f.act({
+      action: 'save_pitch',
+      targetId: firstId,
+      text: 'Investor-specific fictional wording; cash evidence remains unknown.',
+    });
+    expect((await f.service.connected.view(firstId)).pitch?.scope).toBe('target');
+    expect((await f.service.connected.view(secondId)).cycle).toEqual(second.cycle);
+    expect(
+      f
+        .state()
+        .preparation?.connected?.briefVersions.find(
+          (brief) => brief.id === first.cycle?.briefVersionId,
+        ),
+    ).toEqual(priorBrief);
+    expect(() => preparedPitchContext(f.state(), first.cycle?.id ?? '')).toThrow(ConflictError);
+    expect(() => preparedPitchContext(f.state(), second.cycle?.id ?? '')).not.toThrow();
+    await f.act({
+      action: 'save_pitch',
+      targetId: firstId,
+      scope: 'shared',
+      text: 'Reviewed fictional company story proposed for every investor.',
+    });
+    expect((await f.service.connected.view(secondId)).outdated).toBe(true);
+    await f.service.change((state) => {
+      expect(ensureTargetPreparation(state, secondId, secondInvestorId)).toBeNull();
+    });
+    await f.act({ action: 'approve_pitch', targetId: firstId });
+    const rebuiltSecond = await f.service.connected.view(secondId);
+    expect(rebuiltSecond.cycle?.id).not.toBe(second.cycle.id);
+    expect(rebuiltSecond.cycle?.briefApprovedAt).toBeNull();
+    expect(rebuiltSecond.pitch?.text).toContain('for every investor');
+    expect(() => z.json().parse(f.state().preparation)).not.toThrow();
+  });
+
+  it('ignores incidental profile revisions for prepared source hashes and invalidates only affected investor research', async () => {
+    const f = fixture(true);
+    await f.throughBrief();
+    const view = await f.service.connected.view();
+    if (!view.cycle) throw new Error('Missing cycle');
+    const cycleId = view.cycle.id;
+    const initialHash = connectedSourceHash(f.state());
+    const initialInputHash = scenarioInputHash(
+      assembleScenarioInput(f.state(), f.investorId, '', cycleId),
+    );
+    await f.service.change((state) => {
+      state.profile.version++;
+    });
+    expect(connectedSourceHash(f.state())).toBe(initialHash);
+    expect(scenarioInputHash(assembleScenarioInput(f.state(), f.investorId, '', cycleId))).toBe(
+      initialInputHash,
+    );
+    await f.service.change((state) => {
+      const source = state.evidence.find((item) => item.id === 'loop-source');
+      if (source) source.excerpt = 'Changed fictional investor observation.';
+    });
+    expect((await f.service.connected.view()).outdated).toBe(true);
+    expect(() => preparedPitchContext(f.state(), cycleId)).toThrow(ConflictError);
+  });
+
+  it('keeps a shortlisted target before story approval and reconciles feedback on an unfocused target', async () => {
+    const f = fixture(true);
+    await f.start();
+    const targetId = randomUUID();
+    await f.service.change((state) => {
+      const journey = state.preparation?.journey;
+      if (!journey) throw new Error('Missing journey');
+      journey.targets.push(
+        goalInvestorTargetSchema.parse({
+          id: targetId,
+          investorId: f.investorId,
+          assessmentId: null,
+          rationale: 'Fictional shortlist before shared-story review',
+          status: 'active',
+          included: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          eventId: null,
+        }),
+      );
+      expect(ensureTargetPreparation(state, targetId, f.investorId)).toBeNull();
+    });
+    expect((await f.service.connected.view(targetId)).cycle).toBeNull();
+    await f.act({ action: 'approve_pitch' });
+    await f.act({ action: 'approve_brief', targetId });
+    const { evaluation } = await f.addReview(true, false, targetId);
+    await f.service.connected.reconcile();
+    expect((await f.service.connected.view(targetId)).cycle?.proposal?.evaluationId).toBe(
+      evaluation.id,
+    );
+    expect((await f.service.connected.view()).cycle?.targetId).toBeUndefined();
+  });
+
   it('feeds checklist approvals and feedback into the timeline without losing earlier cycles', async () => {
     const f = fixture();
     await f.throughBrief();

@@ -185,7 +185,11 @@ export function assembleScenarioInput(
 ): ScenarioInput {
   const investor = state.investors.find((item) => item.id === investorId);
   if (!investor) throw new Error('Investor unavailable. Choose a saved investor.');
-  if (preparationCycleId && state.preparation?.connected?.cycles.at(-1)?.investorId !== investorId)
+  if (
+    preparationCycleId &&
+    state.preparation?.connected?.cycles.find((cycle) => cycle.id === preparationCycleId)
+      ?.investorId !== investorId
+  )
     throw new ConflictError('Prepared investor selection changed.');
   const capturedAt = new Date().toISOString();
   const providers: ScenarioSourceProvider[] = [
@@ -195,13 +199,22 @@ export function assembleScenarioInput(
     new RehearsalScenarioSource(),
   ];
   const sources = providers.flatMap((provider) => provider.collect(state, investorId, capturedAt));
+  const prepared = preparationCycleId ? preparedPitchContext(state, preparationCycleId) : null;
+  if (prepared?.journeyId) {
+    for (const source of sources) {
+      if (source.kind === 'founder_initial')
+        source.id =
+          'founder:' +
+          hashValue({ company: source.company, meetingNotes: source.meetingNotes }).slice(0, 24);
+    }
+  }
   const research = sources.filter((source) => source.kind === 'investor_research');
   const financials = sources.find((source) => source.kind === 'financials');
   const rehearsals = sources.filter((source) => source.kind === 'prior_calls');
   return scenarioInputSchema.parse({
     schemaVersion: 1,
     capturedAt,
-    ...(preparationCycleId ? { preparation: preparedPitchContext(state, preparationCycleId) } : {}),
+    ...(prepared ? { preparation: prepared } : {}),
     ...(state.peers?.length && currentSnapshot(state)
       ? {
           peerComparison: buildPeerComparison(
@@ -278,10 +291,22 @@ export function scenarioInputHash(input: ScenarioInput): string {
     ...input,
     previousScenarios: [],
     ...(input.peerComparison
-      ? { peerComparison: { ...input.peerComparison, capturedAt: null } }
+      ? {
+          peerComparison: {
+            ...input.peerComparison,
+            capturedAt: null,
+            ...(input.preparation?.journeyId ? { profileVersion: null } : {}),
+          },
+        }
       : {}),
     capturedAt: null,
-    sources: input.sources.map((source) => ({ ...source, capturedAt: null })),
+    sources: input.sources.map((source) => ({
+      ...source,
+      capturedAt: null,
+      ...(input.preparation?.journeyId && source.kind === 'founder_initial'
+        ? { profileVersion: null, meetingRevision: null }
+        : {}),
+    })),
   });
 }
 

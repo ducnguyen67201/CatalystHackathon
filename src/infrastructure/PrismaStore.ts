@@ -1,4 +1,13 @@
 import { preparedPitchContext, connectedHash } from '../features/ConnectedPreparation.js';
+import {
+  loadCurrentGoalJourney,
+  loadArchivedGoalJourneys,
+  preparationForStorage,
+  saveGoalJourneys,
+  listGoalProgress,
+  findGoalProgress,
+} from './GoalJourneyStore.js';
+import type { GoalProgressQuery } from '../contracts/GoalJourney.js';
 import { workerHeartbeatSchema, type WorkerHeartbeat } from '../contracts/RadarDelivery.js';
 import {
   researchRunSchema,
@@ -35,46 +44,57 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
     this.client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
   }
   async load(): Promise<Workspace | null> {
-    const record = await this.client.workspace.findUnique({
-      where: { id: workspaceId },
-      include: {
-        snapshots: { orderBy: { createdAt: 'asc' } },
-        evidence: { orderBy: { createdAt: 'asc' } },
-        briefs: { orderBy: { createdAt: 'asc' } },
-        rehearsals: { orderBy: { createdAt: 'asc' } },
-        milestones: { orderBy: { createdAt: 'asc' } },
-        notices: { orderBy: { createdAt: 'asc' } },
-        investors: { orderBy: { createdAt: 'asc' } },
-        radarEvents: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
-        deliveries: { orderBy: { createdAt: 'asc' } },
+    return this.client.$transaction(
+      async (tx) => {
+        const record = await tx.workspace.findUnique({
+          where: { id: workspaceId },
+          include: {
+            snapshots: { orderBy: { createdAt: 'asc' } },
+            evidence: { orderBy: { createdAt: 'asc' } },
+            briefs: { orderBy: { createdAt: 'asc' } },
+            rehearsals: { orderBy: { createdAt: 'asc' } },
+            milestones: { orderBy: { createdAt: 'asc' } },
+            notices: { orderBy: { createdAt: 'asc' } },
+            investors: { orderBy: { createdAt: 'asc' } },
+            radarEvents: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+            deliveries: { orderBy: { createdAt: 'asc' } },
+          },
+        });
+        if (!record) {
+          return null;
+        }
+        const journey = await loadCurrentGoalJourney(tx, workspaceId);
+        const journeyHistory = await loadArchivedGoalJourneys(tx, workspaceId);
+        return workspaceSchema.parse({
+          id: record.id,
+          revision: record.revision,
+          profile: record.profile,
+          peers: record.peers,
+          preparation: {
+            ...z.record(z.string(), z.json()).parse(record.preparation),
+            ...(journey ? { journey } : {}),
+            ...(journeyHistory.length ? { journeyHistory } : {}),
+          },
+          onboarding: record.onboarding,
+          schedule: record.schedule,
+          discovery: record.discovery,
+          radar: {
+            preferences: record.notificationSettings,
+            backfilledAt: record.radarBackfilledAt?.toISOString() ?? null,
+            events: record.radarEvents.map((item) => item.payload),
+            deliveries: record.deliveries.map((item) => item.payload),
+          },
+          snapshots: record.snapshots.map((item) => item.payload),
+          evidence: record.evidence.map((item) => item.payload),
+          briefs: record.briefs.map((item) => item.payload),
+          rehearsals: record.rehearsals.map((item) => item.payload),
+          milestones: record.milestones.map((item) => item.payload),
+          notices: record.notices.map((item) => item.payload),
+          investors: record.investors.map((item) => item.payload),
+        });
       },
-    });
-    if (!record) {
-      return null;
-    }
-    return workspaceSchema.parse({
-      id: record.id,
-      revision: record.revision,
-      profile: record.profile,
-      peers: record.peers,
-      preparation: record.preparation,
-      onboarding: record.onboarding,
-      schedule: record.schedule,
-      discovery: record.discovery,
-      radar: {
-        preferences: record.notificationSettings,
-        backfilledAt: record.radarBackfilledAt?.toISOString() ?? null,
-        events: record.radarEvents.map((item) => item.payload),
-        deliveries: record.deliveries.map((item) => item.payload),
-      },
-      snapshots: record.snapshots.map((item) => item.payload),
-      evidence: record.evidence.map((item) => item.payload),
-      briefs: record.briefs.map((item) => item.payload),
-      rehearsals: record.rehearsals.map((item) => item.payload),
-      milestones: record.milestones.map((item) => item.payload),
-      notices: record.notices.map((item) => item.payload),
-      investors: record.investors.map((item) => item.payload),
-    });
+      { isolationLevel: 'RepeatableRead', timeout: 15000 },
+    );
   }
   async initialize(workspace: Workspace): Promise<void> {
     await this.client.workspace.upsert({
@@ -84,7 +104,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
         id: workspaceId,
         profile: json(workspace.profile),
         peers: workspace.peers ?? [],
-        preparation: json(workspace.preparation ?? {}),
+        preparation: json(preparationForStorage(workspace.preparation)),
         onboarding: json(workspace.onboarding),
         schedule: json(workspace.schedule),
         discovery: json(workspace.discovery),
@@ -109,7 +129,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
             revision: { increment: 1 },
             profile: json(workspace.profile),
             peers: workspace.peers ?? [],
-            preparation: json(workspace.preparation ?? {}),
+            preparation: json(preparationForStorage(workspace.preparation)),
             onboarding: json(workspace.onboarding),
             schedule: json(workspace.schedule),
             discovery: json(workspace.discovery),
@@ -123,6 +143,7 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
         if (lock.count !== 1) {
           throw new ConflictError('The workspace changed. Retry this operation.');
         }
+        await saveGoalJourneys(tx, workspaceId, workspace.preparation);
         // Always lock workspace before jobs, matching ordinary receipt writes.
         if (checkpointJob) {
           const guarded = await tx.workflowJob.updateMany({
@@ -510,6 +531,14 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
     await this.client.$disconnect();
   }
 
+  async listGoalProgress(journeyId: string, query: GoalProgressQuery) {
+    return listGoalProgress(this.client, workspaceId, journeyId, query);
+  }
+
+  async findGoalProgress(journeyId: string, eventId: string) {
+    return findGoalProgress(this.client, workspaceId, journeyId, eventId);
+  }
+
   async getGenerationByRequestKey(key: string) {
     const row = await this.client.scenarioGeneration.findFirst({
       where: { workspaceId, job: { key: workspaceId + ':scenario:' + key } },
@@ -532,7 +561,9 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
               connectedHash(preparation)
           )
             throw new ConflictError('Prepared sources changed before generation.');
-          const active = linkedState.preparation?.connected?.cycles.at(-1);
+          const active = linkedState.preparation?.connected?.cycles.find(
+            (cycle) => cycle.id === preparation.cycleId,
+          );
           if (active?.generationId) {
             const existing = await tx.scenarioGeneration.findUnique({
               where: { id: active.generationId },
@@ -567,14 +598,20 @@ export class PrismaStore implements WorkspaceStore, ResearchRunStore, ScenarioSt
         if (generation.requestHash !== input.requestHash)
           throw new ConflictError('Request key reused with different scenario inputs.');
         if (linkedState?.preparation?.connected) {
-          const active = linkedState.preparation.connected.cycles.at(-1);
+          const active = linkedState.preparation.connected.cycles.find(
+            (cycle) => cycle.id === preparation?.cycleId,
+          );
           if (active && !active.generationId) {
             active.generationId = generation.id;
             linkedState.preparation.connected.version++;
             await tx.workspace.update({
               where: { id: workspaceId },
-              data: { preparation: json(linkedState.preparation), revision: { increment: 1 } },
+              data: {
+                preparation: json(preparationForStorage(linkedState.preparation)),
+                revision: { increment: 1 },
+              },
             });
+            await saveGoalJourneys(tx, workspaceId, linkedState.preparation);
           }
         }
         return generation.id;

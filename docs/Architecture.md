@@ -1,6 +1,82 @@
 # June implemented architecture
 
+The implemented [Goal investor journey](GoalInvestorJourneySpec.md) adds stable goal
+identity, evidence-backed investor match, independent target preparation, and a persistent
+history/current-position graph. Its [delivery record](GoalInvestorJourneyDelivery.md) and
+[implementation checklist](GoalInvestorJourneyImplementationChecklist.md) record verification
+and limits. The journey section below supersedes earlier single-investor ownership notes.
+
 June is one standalone pnpm root using strict TypeScript. The React/Vite client talks to a Fastify API over same-origin `/api` requests. Prisma 7 and its PostgreSQL driver adapter own database access. The separate worker processes durable jobs from the same database.
+
+## Goal investor journey
+
+`contracts/GoalJourney.ts` owns stable journey identity, independent investor targets,
+versioned preparation scope, saved assessments and immutable progress snapshots.
+`PreparationIntent.ts` and `PreparationPlanService.ts` activate the journey only on an
+explicit goal mutation. Goal revisions retain the journey; starting a different goal
+archives it. Meeting edits and focus changes preserve goal identity. Legacy artifacts
+remain inspectable; there is no inferred backfill of historical practice or chart points.
+
+`features/InvestorMatch.ts` deterministically scores normalized, explicitly attributed
+mandate facts against the saved goal using Decimal arithmetic. `InvestorMatchInputs.ts`
+selects the exact saved evidence and detects stale assessments. `Research.ts` extracts
+optional mandate facts in the existing bounded research operation. Historical deals,
+portfolio companies, round totals and inferred priorities never become mandate facts.
+Radar and connected recommendations use this same projection. Insufficient coverage,
+identity uncertainty, conflict, exclusions or age suppress the numerical score with an
+explanation; no currency conversion is inferred.
+
+`GoalJourneyService.ts` atomically assesses saved evidence, shortlists an investor,
+records a rationale, changes scope, focuses/archives/resumes tracks and starts a new goal.
+Commands carry the expected journey/revision and payload-bound idempotency key. Selecting
+a new identity leaves monitoring paused. Story approval is a later preparation gate,
+so the target can be saved before financial evidence or an approved pitch exists.
+
+`ConnectedPreparationService.ts` resolves current cycles by journey and target, and
+historical cycles by exact ID. Shared story edits invalidate the appropriate dependent
+tracks; target-specific edits preserve other investors' cycles. Connected briefs have
+immutable versions. Scenario previews, saved generation inputs and all practice modes
+carry optional goal/target/assessment/brief/cycle/scope lineage. Existing hash behavior
+remains valid for legacy records. Transaction guards reject stale scenario starts; late
+assessments remain attached to their originating track. Historical deep links are read-only.
+
+`GoalProgress.ts` projects one shared story gate plus five gates per included target.
+Before the first target it reserves one empty slot. It records semantic changes and
+per-session assessed observations, independently of match scores and preparation counts.
+Focus, reads, polling and temporary schedule controls add no observations. Scope changes
+append a new denominator; earlier snapshots retain their original counts, sources and
+artifact IDs. Dates are conditional preparation estimates using saved capacity and effort,
+with explicit external-dependency/provisional states.
+
+`WorkspaceService.change` records progress before the same optimistic workspace save.
+`GoalJourneyStore.ts` persists five focused Prisma models (`GoalJourney`,
+`GoalInvestorTarget`, `InvestorMatchAssessment`, `GoalPreparationScope`, `GoalProgressEvent`)
+inside that transaction; append-only data is checked for conflicting rewrites. The
+preparation JSON aggregate retains existing plans, pitches, cycles and decisions, while
+journey tables own the new records. Loads use a repeatable-read snapshot. Event queries
+use indexed cursor pagination with a fixed sequence boundary. The current projection
+hydrates the most recent 100 events; older points use the paged history endpoint.
+Archived metadata and the final snapshot keep exact historical artifacts reachable.
+There is a 50-target bound per journey; assessment/scope and existing cycle histories
+still share the small-workspace aggregate loading model.
+
+`server/GoalJourneyRoutes.ts` exposes private/no-store goal, target, match and progress
+reads plus version-checked commands under `/api/goal-journeys`. Existing workspace/session,
+origin and rate controls apply. Reading a page never launches research or generation.
+`Worker.ts` reconciles meaningful saved-source, assessment-expiry and job-result changes.
+
+`web/GoalJourney.tsx` leads Overview with recorded history, current progress and a distinct
+planned region, exact-event inspection, filters, paged event table, per-session evidence
+and one next action. `RadarUpdates.tsx` provides fit review and target management.
+`ConnectedPreparation.tsx` resumes the exact target and routes missing-story targets into
+story preparation. The older selected-investor schedule remains in a collapsed details
+panel. Charts use native buttons, labels and equivalent tables, with responsive overflow
+and reduced-motion support.
+
+Migration: `20261018010000_goal_investor_journey` is additive; existing IDs, financial
+snapshots, transcripts and hashes are preserved. Normal local startup applies migrations,
+or use `pnpm db:deploy` against the configured local database. Local verification used
+disposable databases only; live paid voice/video and a remote rollout are separate work.
 
 ```text
 React UI ----- HTTP -----> Fastify API ----- Prisma -----> PostgreSQL

@@ -1,6 +1,12 @@
 import type { WorkerHeartbeat } from '../contracts/RadarDelivery.js';
 import type { Job, Workspace } from '../contracts/Workspace.js';
+import type {
+  GoalProgressQuery,
+  GoalProgressPage,
+  GoalProgressEvent,
+} from '../contracts/GoalJourney.js';
 export class ConflictError extends Error {}
+export class UnavailableError extends Error {}
 export interface ClaimedJob {
   id: string;
   kind: string;
@@ -23,5 +29,7 @@ export interface WorkspaceStore {
   failJob(job: ClaimedJob, error: string): Promise<void>;
   recordHeartbeat?(heartbeat: WorkerHeartbeat): Promise<void>;
   readHeartbeat?(): Promise<WorkerHeartbeat | null>;
+  listGoalProgress?(journeyId: string, query: GoalProgressQuery): Promise<GoalProgressPage>;
+  findGoalProgress?(journeyId: string, eventId: string): Promise<GoalProgressEvent | null>;
   close(): Promise<void>;
 }

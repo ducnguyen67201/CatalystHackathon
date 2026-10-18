@@ -29,7 +29,11 @@ export function projectPreparationPosition(
 ) {
   const snapshot = state.snapshots.find((item) => item.id === state.onboarding.snapshotId);
   const row = snapshot?.rows.at(-1);
-  const investor = state.investors.find((item) => item.id === goal?.investorId);
+  const journey = state.preparation?.journey;
+  const focused = journey?.targets.find((target) => target.id === journey.focusedTargetId);
+  const investor = state.investors.find(
+    (item) => item.id === (focused?.investorId ?? goal?.investorId),
+  );
   const check = investor?.checks.at(-1);
   const job = investor
     ? jobs
